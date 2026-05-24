@@ -108,13 +108,15 @@ pub fn read_page_header<R: Read>(r: &mut R, big_endian: bool) -> Result<PageHead
 
 /// Read one page's raster data into a [`MonoPage`], given its header.
 ///
-/// Only supports `compression = 0` (uncompressed) and 1-bit monochrome
-/// (`bits_per_pixel == 1`). The IPP server is configured to negotiate
-/// this format with clients.
+/// Decodes the PWG-Raster wire format (PackBits-style per-scanline RLE with
+/// line-repeat prefix) into a packed 1-bit-per-pixel bitmap. The
+/// `cupsCompression` field in the header is *not* what gates this — that
+/// field signals additional CUPS-internal compression and is almost always
+/// 0; the PWG-Raster body itself always uses the scanline encoding.
 pub fn read_page_data<R: Read>(r: &mut R, hdr: &PageHeader) -> Result<MonoPage> {
     if hdr.compression != 0 {
         bail!(
-            "PWG-Raster compression {} not supported (only uncompressed PackBits=0)",
+            "PWG-Raster cupsCompression {} not supported (CUPS-internal compression)",
             hdr.compression
         );
     }
@@ -134,9 +136,8 @@ pub fn read_page_data<R: Read>(r: &mut R, hdr: &PageHeader) -> Result<MonoPage> 
         );
     }
 
-    let n_bytes = (hdr.bytes_per_line as usize) * (hdr.height_px as usize);
-    let mut data = vec![0u8; n_bytes];
-    r.read_exact(&mut data).context("reading PWG raster body")?;
+    let mut data = decode_pwg_page_data(r, hdr.bytes_per_line as usize, hdr.height_px as usize)
+        .context("decoding PWG raster body")?;
 
     // PWG-Raster uses "black is 0, white is 1" for Black color space (18),
     // but "white is 0, black is 1" for sGray (3) and other. The HP Laser
@@ -166,6 +167,69 @@ pub fn read_page_data<R: Read>(r: &mut R, hdr: &PageHeader) -> Result<MonoPage> 
     })
 }
 
+/// Decode one PWG-Raster page body.
+///
+/// Format (PWG 5102.4 §5.4):
+///   loop:
+///     LineRepeat: u8  (line appears LineRepeat+1 times)
+///     PackBits-encoded scanline (decodes to exactly `stride` bytes):
+///       loop until stride bytes produced:
+///         ctrl: i8
+///         if ctrl >= 0:  read (ctrl+1) literal bytes
+///         if ctrl <  0:  read 1 byte, repeat (-ctrl+1) times
+///     emit decoded line (LineRepeat+1) times
+///   ...until `height` total lines emitted.
+fn decode_pwg_page_data<R: Read>(r: &mut R, stride: usize, height: usize) -> Result<Vec<u8>> {
+    let mut out = Vec::with_capacity(stride * height);
+    let mut row = vec![0u8; stride];
+    let mut rows_emitted = 0;
+
+    while rows_emitted < height {
+        let mut byte = [0u8; 1];
+        r.read_exact(&mut byte).context("reading line-repeat byte")?;
+        let line_repeat = (byte[0] as usize) + 1;
+
+        // Decode one scanline into `row` via PackBits.
+        let mut pos = 0;
+        while pos < stride {
+            r.read_exact(&mut byte).context("reading scanline ctrl byte")?;
+            let ctrl = byte[0] as i8;
+            if ctrl >= 0 {
+                // Literal run: (ctrl + 1) bytes
+                let n = (ctrl as usize) + 1;
+                let take = n.min(stride - pos);
+                r.read_exact(&mut row[pos..pos + take])
+                    .context("reading literal run")?;
+                pos += take;
+                // If the run was longer than stride remainder, consume rest
+                for _ in take..n {
+                    r.read_exact(&mut byte).context("consuming literal overrun")?;
+                }
+            } else {
+                // Repeated run: (-ctrl + 1) copies of next byte
+                let n = ((-(ctrl as i32)) as usize) + 1;
+                let mut rep = [0u8; 1];
+                r.read_exact(&mut rep).context("reading repeated-run byte")?;
+                let take = n.min(stride - pos);
+                for i in 0..take {
+                    row[pos + i] = rep[0];
+                }
+                pos += take;
+                // Any overrun beyond stride is just dropped (run was longer than line).
+            }
+        }
+
+        // Emit (line_repeat) copies of the decoded row, capped at remaining rows.
+        let to_emit = line_repeat.min(height - rows_emitted);
+        for _ in 0..to_emit {
+            out.extend_from_slice(&row);
+            rows_emitted += 1;
+        }
+    }
+
+    Ok(out)
+}
+
 /// Read every page from a PWG-Raster stream until EOF.
 ///
 /// Note: PWG-Raster has no "end of stream" marker — pages just keep coming
@@ -175,19 +239,42 @@ pub fn read_all_pages<R: Read>(r: &mut R) -> Result<Vec<MonoPage>> {
     let big_endian = read_sync_word(r)?;
     let mut pages = Vec::new();
     loop {
-        let mut peek = [0u8; 1];
-        match r.read(&mut peek) {
-            Ok(0) => break, // clean EOF
-            Ok(1) => {
-                let chain = std::io::Cursor::new(peek).chain(&mut *r);
-                let mut chain = chain;
-                let header = read_page_header(&mut chain, big_endian)?;
-                let page = read_page_data(&mut chain, &header)?;
-                pages.push(page);
-            }
-            Ok(_) => unreachable!(),
-            Err(e) => return Err(e).context("reading next page record"),
+        // Try to read the next page header; treat UnexpectedEof at the
+        // very first byte as a clean end-of-stream.
+        let mut hdr_buf = [0u8; HEADER_SIZE];
+        match r.read_exact(&mut hdr_buf) {
+            Ok(()) => {}
+            Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(e) => return Err(e).context("reading next PWG page header"),
         }
+        let header = parse_page_header(&hdr_buf, big_endian);
+        let page = read_page_data(r, &header)?;
+        pages.push(page);
     }
     Ok(pages)
+}
+
+/// Pure-byte page-header parser, factored out so read_all_pages can do its
+/// own EOF detection on the read.
+fn parse_page_header(buf: &[u8; HEADER_SIZE], big_endian: bool) -> PageHeader {
+    let read_u32 = |offset: usize| -> u32 {
+        let bytes = [buf[offset], buf[offset + 1], buf[offset + 2], buf[offset + 3]];
+        if big_endian {
+            u32::from_be_bytes(bytes)
+        } else {
+            u32::from_le_bytes(bytes)
+        }
+    };
+    PageHeader {
+        x_dpi: read_u32(276),
+        y_dpi: read_u32(280),
+        num_copies: read_u32(340),
+        width_px: read_u32(372),
+        height_px: read_u32(376),
+        bits_per_color: read_u32(384),
+        bits_per_pixel: read_u32(388),
+        bytes_per_line: read_u32(392),
+        color_space: read_u32(400),
+        compression: read_u32(404),
+    }
 }
