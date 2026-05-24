@@ -74,19 +74,23 @@ pub fn read_page_header<R: Read>(r: &mut R, big_endian: bool) -> Result<PageHead
         }
     };
 
-    // Offsets are documented per PWG 5102.4; the first 256 bytes are
-    // strings (MediaColor, MediaType, etc.), then u32 fields begin.
-    let hw_res_x = read_u32(280);
-    let hw_res_y = read_u32(284);
-    let num_copies = read_u32(344);
-    let width = read_u32(376);
-    let height = read_u32(380);
-    let bits_per_color = read_u32(388);
-    let bits_per_pixel = read_u32(392);
-    let bytes_per_line = read_u32(396);
-    let _color_order = read_u32(400);
-    let color_space = read_u32(404);
-    let compression = read_u32(424);
+    // Per CUPS-Raster v3 / PWG-Raster v1 page-header layout (cups_page_header2_s).
+    // Offsets verified against real cgpdftoraster|rastertopwg output:
+    //   bytes 0..256   = 4 × 64-byte strings (MediaClass, Color, Type, OutputType)
+    //   bytes 256..272 = AdvanceDistance/Media + Collate + CutMedia (per CUPS-Raster v3)
+    //                    or "reserved" per PWG-Raster v1 (same byte range, zeros).
+    //   bytes 272+     = u32 fields, big-endian.
+    let hw_res_x = read_u32(276);
+    let hw_res_y = read_u32(280);
+    let num_copies = read_u32(340);
+    let width = read_u32(372);
+    let height = read_u32(376);
+    let bits_per_color = read_u32(384);
+    let bits_per_pixel = read_u32(388);
+    let bytes_per_line = read_u32(392);
+    let _color_order = read_u32(396);
+    let color_space = read_u32(400);
+    let compression = read_u32(404);
 
     Ok(PageHeader {
         width_px: width,
