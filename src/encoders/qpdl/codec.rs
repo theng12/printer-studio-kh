@@ -93,7 +93,12 @@ use super::stream::BeWriter;
 use crate::encoders::{Duplex, JobOptions, PaperSize};
 use crate::raster::MonoPage;
 
-const QPDL_VERSION: u8 = 3; // Default version. Per ml1660.ppd. May need to be 2 for HP Laser 107a.
+// QPDL version byte in the page header. Verified against a real Samsung
+// driver capture (Samsung ML-2010, https://emergent.unpythonic.net/software/samsung-ml2010):
+// the byte at offset 14 of the page header is 0x02, not 0x03.
+// ml1660.ppd from splix says "3", but the firmware on real hardware
+// processes 0x02.
+const QPDL_VERSION: u8 = 2;
 const BAND_HEIGHT: u32 = 128; // Per most Samsung mono PPDs (*QPDL BandSize: "128").
 const COMPRESSION_ALGO_0X11: u8 = 0x11; // Samsung mono dictionary-pointer RLE.
 
@@ -111,7 +116,10 @@ pub fn encode_job(pages: &[MonoPage], opts: &JobOptions) -> Result<Vec<u8>> {
     let mut w = BeWriter::new(&mut out);
 
     pjl_header(&mut w, opts);
-    document_header(&mut w);
+    // No DocumentHeader: the reference Samsung capture has no extra bytes
+    // between the PJL header and the first page header. The ml1660.ppd's
+    // `*General DocHeaderValues: "<0><0><1>"` field is consumed by splix
+    // for a different purpose (not as a preamble after PJL).
 
     for (page_idx, page) in pages.iter().enumerate() {
         let _ = page_idx;
@@ -144,36 +152,18 @@ pub fn encode_job(pages: &[MonoPage], opts: &JobOptions) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn pjl_header(w: &mut BeWriter, opts: &JobOptions) {
-    // UEL — Universal Exit Language. Resets the printer to PJL state.
-    w.bytes(b"\x1B%-12345X");
-
-    // Identification
+fn pjl_header(w: &mut BeWriter, _opts: &JobOptions) {
+    // Match the exact PJL header that Samsung's official driver sends, verified
+    // against the public ML-2010 driver capture
+    // (https://emergent.unpythonic.net/software/samsung-ml2010 — testpage.spd2,
+    // emptypage.spd2). The firmware appears intolerant of extra @PJL SET lines.
+    //
+    // Note the unusual spaces around `=` for PAPERTYPE/JAMRECOVERY/ENTER —
+    // Samsung's driver emits them that way and we mirror it exactly.
     let date = today_yyyymmdd();
+    w.bytes(b"\x1B%-12345X@PJL SET PAPERTYPE = OFF\n");
+    w.bytes(b"@PJL SET JAMRECOVERY = OFF\n");
     w.bytes(format!("@PJL DEFAULT SERVICEDATE={date}\n").as_bytes());
-    w.bytes(format!("@PJL SET USERNAME=\"{}\"\n", opts.user_name).as_bytes());
-    w.bytes(format!("@PJL SET JOBNAME=\"{}\"\n", opts.job_name).as_bytes());
-
-    // Defaults known-safe for Samsung mono engines (from ml1660.ppd defaults).
-    w.bytes(b"@PJL SET JAMRECOVERY=OFF\n");
-    w.bytes(b"@PJL SET PAPERTYPE=OFF\n");
-    w.bytes(b"@PJL SET ALTITUDE=LOW\n");
-    w.bytes(b"@PJL SET DENSITY=3\n");
-    w.bytes(b"@PJL SET RET=NORMAL\n");
-
-    // Duplex
-    match opts.duplex {
-        Duplex::None => w.bytes(b"@PJL SET DUPLEX=OFF\n"),
-        Duplex::LongEdge => {
-            w.bytes(b"@PJL SET DUPLEX=ON\n");
-            w.bytes(b"@PJL SET BINDING=LONGEDGE\n");
-        }
-        Duplex::ShortEdge => {
-            w.bytes(b"@PJL SET DUPLEX=ON\n");
-            w.bytes(b"@PJL SET BINDING=SHORTEDGE\n");
-        }
-    }
-
     w.bytes(b"@PJL ENTER LANGUAGE = QPDL\n");
 }
 
@@ -191,28 +181,36 @@ fn page_header(
     w: &mut BeWriter,
     page: &MonoPage,
     opts: &JobOptions,
-    printable_width_px: u32,
-    printable_height_px: u32,
+    _printable_width_px: u32,
+    _printable_height_px: u32,
 ) {
     let y_res = (page.dpi / 100) as u8;
     let x_res = y_res; // square pixels for the common 600/1200 modes
 
+    // Values matching the Samsung ML-2010 reference capture exactly. See
+    // docs/phase-1b-byte-diff-plan.md and the ML-2010 testpage.spd2 dump.
     w.u8(0x00); // Signature
     w.u8(y_res); // Y resolution / 100
     w.u16(opts.copies); // Number of copies
-    w.u8(paper_type_byte(opts.paper)); // Paper type
-    w.u16(printable_width_px as u16); // Printable width (px) — MUST match band width
-    w.u16(printable_height_px as u16); // Printable height (px) — band-aligned
+    w.u8(paper_type_byte(opts.paper)); // Paper type byte (0 = use printer default)
+    // Width and height: the reference emits 0x0000 for both, meaning
+    // "use the printer's default for this paper type." Reporting the
+    // band-aligned width here caused SPL parse errors on the M2026.
+    w.u16(0); // Printable width — 0 = paper-type default
+    w.u16(0); // Printable height — 0 = paper-type default
     w.u8(1); // Paper source = auto
-    w.u8(0); // unknownByte1 (always 0 in ULD)
+    w.u8(0); // unknownByte1
+    // Duplex byte: the reference sets it to 0x01 even for simplex jobs
+    // (splix actually does the same — `duplex = 0x15 == comp ? 0 : 1` for
+    // Request::Simplex). Counter-intuitive but verified.
     w.u8(match opts.duplex {
-        Duplex::None => 0,
-        _ => 1,
-    }); // Duplex
-    w.u8(0); // Tumble (TODO: for duplex jobs, alternate per page)
-    w.u8(0); // unknownByte2 (always 0 in ULD)
-    w.u8(QPDL_VERSION); // QPDL version
-    w.u8(0); // unknownByte3 / colorplanes (0 for mono)
+        Duplex::None => 1,
+        _ => 1, // duplex jobs also keep this 0x01; tumble field differentiates
+    });
+    w.u8(0); // Tumble (would be page#%2 for actual duplex jobs)
+    w.u8(0); // unknownByte2
+    w.u8(QPDL_VERSION); // QPDL version (0x02 per reference)
+    w.u8(1); // unknownByte3 / colorplanes = 1 plane (mono) per reference
     w.u8(x_res); // X resolution / 100
 }
 
@@ -293,12 +291,12 @@ fn encode_page_bands(w: &mut BeWriter, page: &MonoPage, opts: &JobOptions) -> Re
             }
         }
 
-        // Step 2: skip entirely-white bands.
-        if band_is_all_white(&band_buf) {
-            continue;
-        }
-
-        // Step 3: compress.
+        // Step 2: compress. The Samsung firmware expects sequential band
+        // numbering with NO gaps — verified against the ML-2010 reference
+        // (emptypage.spd2: 51 sequential bands, each ~1440 bytes for a
+        // blank page). splix's `_isEmptyBand` skip optimization is wrong
+        // for M2026: skipping any band causes the firmware's row counter
+        // to fall out of sync, and at ~8 KB of input it SPL-errors.
         let compressed = algo0x11::compress(&band_buf);
 
         // Step 4: checksum = wrapping sum of compressed bytes + sub-header sig bytes.
@@ -328,6 +326,8 @@ fn encode_page_bands(w: &mut BeWriter, page: &MonoPage, opts: &JobOptions) -> Re
     Ok(())
 }
 
+#[allow(dead_code)] // kept in case we revisit the skip optimization for printers
+                    // whose firmware tolerates non-contiguous band numbers.
 fn band_is_all_white(band: &[u8]) -> bool {
     // After bit-inversion, wire-white is 0xFF.
     band.iter().all(|&b| b == 0xFF)
