@@ -114,14 +114,28 @@ pub fn encode_job(pages: &[MonoPage], opts: &JobOptions) -> Result<Vec<u8>> {
     document_header(&mut w);
 
     for (page_idx, page) in pages.iter().enumerate() {
-        page_header(&mut w, page, opts);
-
-        // Drive band encoding. With compression-algorithm-0x11 still
-        // unimplemented, this is the line that aborts the job rather than
-        // emitting half-formed bytes.
         let _ = page_idx;
-        encode_page_bands(&mut w, page, opts)?;
+        // The page header's reported width MUST match the per-band width the
+        // printer expects (the Samsung M2026 special-band-width table value),
+        // otherwise the firmware's SPL parser rejects the stream with
+        // "SPL ERROR - Please use the proper driver" at the start of the
+        // first band. The actual source MonoPage may be slightly wider or
+        // narrower; encode_page_bands handles the padding/clipping.
+        let line_width_bytes = ((page.width_px + 7) / 8) as usize;
+        let printable_width_px = samsung_m2026_band_width(opts.paper, page.dpi)
+            .map(|b| (b * 8) as u32)
+            .unwrap_or((line_width_bytes * 8) as u32);
 
+        // EXPERIMENTAL: round page height up to the next band_height multiple.
+        // CUPS-rasterized pages always have band-aligned heights via the PPD;
+        // ours don't, so the height field disagrees with what the firmware
+        // expects when summing band heights.
+        let band_h = BAND_HEIGHT;
+        let printable_height_px =
+            ((page.height_px + band_h - 1) / band_h) * band_h;
+
+        page_header(&mut w, page, opts, printable_width_px, printable_height_px);
+        encode_page_bands(&mut w, page, opts)?;
         page_footer(&mut w, opts);
     }
 
@@ -173,10 +187,13 @@ fn document_header(w: &mut BeWriter) {
     w.bytes(&[0x00, 0x00, 0x01]);
 }
 
-fn page_header(w: &mut BeWriter, page: &MonoPage, opts: &JobOptions) {
-    let (paper_w, paper_h) = opts.paper.pixels(page.dpi);
-    let _ = (paper_w, paper_h); // currently we trust page.{width,height}_px
-
+fn page_header(
+    w: &mut BeWriter,
+    page: &MonoPage,
+    opts: &JobOptions,
+    printable_width_px: u32,
+    printable_height_px: u32,
+) {
     let y_res = (page.dpi / 100) as u8;
     let x_res = y_res; // square pixels for the common 600/1200 modes
 
@@ -184,8 +201,8 @@ fn page_header(w: &mut BeWriter, page: &MonoPage, opts: &JobOptions) {
     w.u8(y_res); // Y resolution / 100
     w.u16(opts.copies); // Number of copies
     w.u8(paper_type_byte(opts.paper)); // Paper type
-    w.u16(page.width_px as u16); // Printable width (px)
-    w.u16(page.height_px as u16); // Printable height (px)
+    w.u16(printable_width_px as u16); // Printable width (px) — MUST match band width
+    w.u16(printable_height_px as u16); // Printable height (px) — band-aligned
     w.u8(1); // Paper source = auto
     w.u8(0); // unknownByte1 (always 0 in ULD)
     w.u8(match opts.duplex {
@@ -339,9 +356,11 @@ fn write_band_header(
 /// `None` means "no special width — use source line width".
 fn samsung_m2026_band_width(paper: PaperSize, dpi: u32) -> Option<usize> {
     // (standard 600 DPI, high 1200 DPI) widths in bytes.
+    // From splix/src/compress.cpp::_get2020BandWidthInB — Samsung M2026 table.
     let (w600, w1200): (usize, usize) = match paper {
         PaperSize::Letter => (640, 1248),
         PaperSize::A4 => (608, 1216),
+        PaperSize::A5 => (416, 832),
         PaperSize::Legal => (640, 1248),
     };
     match dpi {

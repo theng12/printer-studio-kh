@@ -106,8 +106,9 @@ fn parse_paper(s: &str) -> Result<PaperSize> {
     Ok(match s.to_ascii_lowercase().as_str() {
         "letter" => PaperSize::Letter,
         "a4" => PaperSize::A4,
+        "a5" => PaperSize::A5,
         "legal" => PaperSize::Legal,
-        other => bail!("unknown paper size {other:?}; expected letter, a4, legal"),
+        other => bail!("unknown paper size {other:?}; expected letter, a4, a5, legal"),
     })
 }
 

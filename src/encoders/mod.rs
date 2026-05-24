@@ -30,6 +30,7 @@ impl Default for JobOptions {
 pub enum PaperSize {
     Letter,
     A4,
+    A5,
     Legal,
 }
 
@@ -39,6 +40,7 @@ impl PaperSize {
         let (w_in, h_in) = match self {
             PaperSize::Letter => (8.5, 11.0),
             PaperSize::A4 => (8.27, 11.69),
+            PaperSize::A5 => (5.83, 8.27),
             PaperSize::Legal => (8.5, 14.0),
         };
         ((w_in * dpi as f32) as u32, (h_in * dpi as f32) as u32)
