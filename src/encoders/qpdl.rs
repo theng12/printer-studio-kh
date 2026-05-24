@@ -32,6 +32,7 @@ impl PrinterEncoder for QpdlEncoder {
     }
 }
 
+mod algo0x11;
 mod codec;
 mod stream;
 

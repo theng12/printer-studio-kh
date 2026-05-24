@@ -88,13 +88,19 @@
 
 use anyhow::{Result, bail};
 
+use super::algo0x11;
 use super::stream::BeWriter;
 use crate::encoders::{Duplex, JobOptions, PaperSize};
 use crate::raster::MonoPage;
 
 const QPDL_VERSION: u8 = 3; // Default version. Per ml1660.ppd. May need to be 2 for HP Laser 107a.
-#[allow(dead_code)] // Will be consumed by Phase 1b band writer.
 const BAND_HEIGHT: u32 = 128; // Per most Samsung mono PPDs (*QPDL BandSize: "128").
+const COMPRESSION_ALGO_0X11: u8 = 0x11; // Samsung mono dictionary-pointer RLE.
+
+/// Sub-header signature bytes (LE encoding of 0x09ABCDEF, subVersion=0).
+/// algo0x11 sets endian to `Dependant` which on x86/arm64 hosts is LE — every
+/// real-world Samsung driver therefore emits these four bytes in this order.
+const SUB_HEADER_SIG: [u8; 4] = [0xEF, 0xCD, 0xAB, 0x09];
 
 pub fn encode_job(pages: &[MonoPage], opts: &JobOptions) -> Result<Vec<u8>> {
     if pages.is_empty() {
@@ -215,29 +221,135 @@ fn today_yyyymmdd() -> String {
 
 /// Encode the bands of a single page.
 ///
-/// Right now this bails out unconditionally — the compression algorithm
-/// (`algo0x11`) and the transpose/bit-invert pipeline that feeds it are
-/// the missing pieces of Phase 1b. When a real-printer test loop is
-/// available, the implementation slots in here.
-fn encode_page_bands(_w: &mut BeWriter, _page: &MonoPage, _opts: &JobOptions) -> Result<()> {
-    bail!(
-        "QPDL band encoding (Phase 1b) is not yet implemented. \n\
-         The PJL header, document header, page header, and page footer are all \n\
-         ready and validated against splix's reference (ml1660.ppd, qpdl.cpp). \n\
-         What's left: port `splix/src/algo0x11.cpp` (244 lines of Samsung \n\
-         dictionary-pointer RLE) and the band-data transpose/bit-invert step. \n\
-         This requires a real-printer test loop to validate safely — running \n\
-         a malformed job risks the printer entering an error state. \n\
-         See `docs/phase-1b-notes.md` for the implementation plan."
-    )
+/// For each `BAND_HEIGHT`-row band of the page:
+///   1. Build a band buffer of `band_width_bytes × BAND_HEIGHT` bytes:
+///      - Copy source rows, padding right edge with zeros to band_width_bytes.
+///      - Transpose: store column-major (byte at column x, row y → `buf[x*H + y]`).
+///      - Bit-invert every byte (printer expects 1 = white on the wire).
+///   2. Skip the band if it's entirely white (saves wire bytes).
+///   3. Compress via algo0x11.
+///   4. Compute checksum: sum of all compressed bytes + sub-header sig bytes,
+///      as a wrapping u32.
+///   5. Emit: band header (12B) + sub-header sig (4B) + compressed data + checksum (4B BE).
+fn encode_page_bands(w: &mut BeWriter, page: &MonoPage, opts: &JobOptions) -> Result<()> {
+    let line_width_bytes = ((page.width_px + 7) / 8) as usize;
+    let band_width_bytes = samsung_m2026_band_width(opts.paper, page.dpi)
+        .unwrap_or(line_width_bytes); // fallback: source width if paper/DPI not in table
+    let band_height = BAND_HEIGHT as usize;
+    let band_size = band_width_bytes * band_height;
+
+    let total_height = page.height_px as usize;
+    let n_bands = (total_height + band_height - 1) / band_height;
+
+    let mut band_buf = vec![0u8; band_size];
+
+    for band_idx in 0..n_bands {
+        let row_start = band_idx * band_height;
+        let row_end = (row_start + band_height).min(total_height);
+        let rows_in_band = row_end - row_start;
+
+        // Step 1: build the transposed + bit-inverted band buffer.
+        // Zero the whole band first; we'll fill (rows_in_band × min(line, band)) bytes
+        // and leave the rest as zeros (white) which the printer renders as paper.
+        band_buf.fill(0);
+        let copy_width = line_width_bytes.min(band_width_bytes);
+
+        for y in 0..rows_in_band {
+            let src_row_off = (row_start + y) * line_width_bytes;
+            for x in 0..copy_width {
+                // Source pixel: 1 = black. Invert: printer wants 1 = white.
+                let inv = !page.data[src_row_off + x];
+                // Transposed destination: column-major.
+                band_buf[x * band_height + y] = inv;
+            }
+            // Pad-out (already zeroed) — but the inverted "white" is 0xFF,
+            // not 0! Rows in the source that don't exist (past page edge)
+            // should be wire-white too, which after inversion is 0xFF.
+            for x in copy_width..band_width_bytes {
+                band_buf[x * band_height + y] = 0xFF; // padded right edge = wire-white
+            }
+        }
+        // Rows past the last source row of the page: also wire-white.
+        for y in rows_in_band..band_height {
+            for x in 0..band_width_bytes {
+                band_buf[x * band_height + y] = 0xFF;
+            }
+        }
+
+        // Step 2: skip entirely-white bands.
+        if band_is_all_white(&band_buf) {
+            continue;
+        }
+
+        // Step 3: compress.
+        let compressed = algo0x11::compress(&band_buf);
+
+        // Step 4: checksum = wrapping sum of compressed bytes + sub-header sig bytes.
+        let mut checksum: u32 = compressed.iter().map(|&b| b as u32).sum::<u32>();
+        for &b in SUB_HEADER_SIG.iter() {
+            checksum = checksum.wrapping_add(b as u32);
+        }
+
+        // Step 5: emit band header + sub-header + data + checksum.
+        // dataSize = compressed_size + 4 (sub-header sig) + 4 (checksum)
+        let data_size = (compressed.len() + 4 + 4) as u32;
+        let band_width_px = (band_width_bytes * 8) as u16;
+
+        write_band_header(
+            w,
+            band_idx as u8,
+            band_width_px,
+            band_height as u16,
+            COMPRESSION_ALGO_0X11,
+            data_size,
+        );
+        w.bytes(&SUB_HEADER_SIG);
+        w.bytes(&compressed);
+        w.u32(checksum); // BeWriter writes big-endian by default
+    }
+
+    Ok(())
 }
 
-#[allow(dead_code)] // Helper kept ready for the Phase 1b band writer.
-fn band_header(w: &mut BeWriter, band_nr: u8, width: u16, height: u16, compression: u8, data_size: u32) {
+fn band_is_all_white(band: &[u8]) -> bool {
+    // After bit-inversion, wire-white is 0xFF.
+    band.iter().all(|&b| b == 0xFF)
+}
+
+fn write_band_header(
+    w: &mut BeWriter,
+    band_nr: u8,
+    width_px: u16,
+    height_px: u16,
+    compression: u8,
+    data_size: u32,
+) {
     w.u8(0x0C); // Signature
     w.u8(band_nr); // Band number
-    w.u16(width); // Band width (px)
-    w.u16(height); // Band height (px)
+    w.u16(width_px); // Band width (px, big-endian)
+    w.u16(height_px); // Band height (px, big-endian)
     w.u8(compression); // Compression algorithm
-    w.u32(data_size); // Data size (incl. sub-header signature + checksum, per spec)
+    w.u32(data_size); // Data size (incl. sub-header sig + checksum), big-endian
+}
+
+/// Samsung M2026 (= HP Laser 107a) band-width table — per
+/// `splix/src/compress.cpp::_get2020BandWidthInB`.
+///
+/// Returns the per-band stride **in bytes** for the given paper + DPI.
+/// `None` means "no special width — use source line width".
+fn samsung_m2026_band_width(paper: PaperSize, dpi: u32) -> Option<usize> {
+    // (standard 600 DPI, high 1200 DPI) widths in bytes.
+    let (w600, w1200): (usize, usize) = match paper {
+        PaperSize::Letter => (640, 1248),
+        PaperSize::A4 => (608, 1216),
+        PaperSize::Legal => (640, 1248),
+    };
+    match dpi {
+        600 => Some(w600),
+        1200 => Some(w1200),
+        // Other DPI (e.g. 100 from our PWG dry-runs): no special width — use
+        // source line width. The printer is unlikely to print at this DPI
+        // for real output anyway.
+        _ => None,
+    }
 }
