@@ -6,9 +6,10 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use printer_studio::encoders::{Duplex, JobOptions, PaperSize, find_encoder_for};
+use printer_studio::encoders::{Duplex, JobOptions, PaperSize, find_encoder_for, registry};
 use printer_studio::raster::{MonoPage, pattern, pwg};
 use printer_studio::usb::{PrinterId, UsbPrinter, probe_all};
+use nusb::MaybeFuture;
 
 #[derive(Parser)]
 #[command(
@@ -75,6 +76,13 @@ enum Command {
         i_know_what_im_doing: bool,
     },
 
+    /// List every printer driver this build knows about, with the USB VID:PID
+    /// pairs each one claims.
+    ListDrivers,
+
+    /// Scan the USB bus for any device a registered driver supports.
+    DetectPrinters,
+
     /// Send an already-encoded QPDL byte stream from FILE to the printer's
     /// bulk OUT endpoint. The lowest-level transmit command.
     SendRaw {
@@ -128,6 +136,8 @@ fn run(cli: Cli) -> Result<()> {
             pid,
             i_know_what_im_doing,
         } => cmd_print_job(input, dry_run_out, vid, pid, i_know_what_im_doing),
+        Command::ListDrivers => cmd_list_drivers(),
+        Command::DetectPrinters => cmd_detect_printers(),
         Command::SendRaw {
             file,
             vid,
@@ -135,6 +145,48 @@ fn run(cli: Cli) -> Result<()> {
             i_know_what_im_doing,
         } => cmd_send_raw(file, vid, pid, i_know_what_im_doing),
     }
+}
+
+fn cmd_list_drivers() -> Result<()> {
+    println!("Registered printer drivers:\n");
+    for enc in registry() {
+        println!("  {}", enc.name());
+        for (vid, pid) in enc.supported_devices() {
+            println!("    - {:04x}:{:04x}", vid, pid);
+        }
+    }
+    println!();
+    println!("Add new drivers by implementing the PrinterEncoder trait in");
+    println!("src/encoders/<your_family>.rs and adding it to registry() in");
+    println!("src/encoders/mod.rs. See docs/adding-a-new-model.md.");
+    Ok(())
+}
+
+fn cmd_detect_printers() -> Result<()> {
+    let devices: Vec<_> = nusb::list_devices().wait()?.collect();
+    let regs = registry();
+    let mut matched = 0;
+    println!("Scanning USB bus for printers matching a registered driver...\n");
+    for d in &devices {
+        let vid = d.vendor_id();
+        let pid = d.product_id();
+        for enc in &regs {
+            if enc.supported_devices().iter().any(|&(v, p)| v == vid && p == pid) {
+                matched += 1;
+                println!("  {:04x}:{:04x}  {}", vid, pid,
+                    d.product_string().unwrap_or("<no product>"));
+                println!("    driver: {}", enc.name());
+                println!("    serial: {}", d.serial_number().unwrap_or("<none>"));
+                println!();
+            }
+        }
+    }
+    if matched == 0 {
+        println!("(no supported printers found)");
+        println!();
+        println!("Tip: run `printer-studio probe` to list every USB device the system sees.");
+    }
+    Ok(())
 }
 
 fn cmd_info(vid: u16, pid: u16) -> Result<()> {
