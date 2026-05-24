@@ -57,12 +57,33 @@ if [ -n "$INPUT" ] && [ -f "$INPUT" ]; then
             ;;
         pdf|urf|jpg|jpeg|ps)
             CONVERTED="$WORK/job.pwg"
-            echo "printer-studio-print-cmd: converting $EXT → PWG-Raster via cupsfilter" >&2
-            if ! /usr/bin/cupsfilter -m image/pwg-raster "$INPUT" \
-                    > "$CONVERTED" 2> "$WORK/cupsfilter.err" ; then
-                echo "cupsfilter conversion failed:" >&2
-                cat "$WORK/cupsfilter.err" >&2
-                # Save the original for forensics.
+            # cupsfilter is the obvious tool, but on macOS 26 it exits 1 on a
+            # benign "Unknown operator dict" PPD warning even though the
+            # underlying filters succeed. Chain the filters ourselves:
+            #
+            #   <input.pdf>  cgpdftoraster  →  CUPS-Raster  →  rastertopwg  →  PWG-Raster
+            #
+            # This matches what cupsfilter does internally for application/pdf
+            # → image/pwg-raster, minus the failing PPD-options parse.
+            CGTORASTER=/usr/libexec/cups/filter/cgpdftoraster
+            RASTERTOPWG=/usr/libexec/cups/filter/rastertopwg
+            if [ ! -x "$CGTORASTER" ] || [ ! -x "$RASTERTOPWG" ]; then
+                echo "CUPS filter binaries missing: $CGTORASTER, $RASTERTOPWG" >&2
+                cp "$INPUT" "$DUMP_DIR/$JOB_TAG.input.$EXT" 2>/dev/null || true
+                exit 1
+            fi
+            echo "printer-studio-print-cmd: converting $EXT → PWG-Raster (cgpdftoraster | rastertopwg)" >&2
+            # CUPS filter calling convention:
+            #   filter  job-id  user  title  copies  options  [filename]
+            "$CGTORASTER"  1 "${USER:-printer-studio}" "printer-studio job" 1 "" "$INPUT" \
+                2> "$WORK/cg.err" \
+              | "$RASTERTOPWG" 1 "${USER:-printer-studio}" "printer-studio job" 1 "" \
+                2>> "$WORK/cg.err" \
+              > "$CONVERTED"
+            rc=$?
+            if [ $rc -ne 0 ] || [ ! -s "$CONVERTED" ]; then
+                echo "PDF→PWG conversion failed (rc=$rc, output empty):" >&2
+                tail -20 "$WORK/cg.err" >&2
                 cp "$INPUT" "$DUMP_DIR/$JOB_TAG.input.$EXT" 2>/dev/null || true
                 exit 1
             fi
