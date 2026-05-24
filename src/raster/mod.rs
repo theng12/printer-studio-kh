@@ -1,4 +1,5 @@
 pub mod pattern;
+pub mod pwg;
 
 /// A monochrome raster page, 1 bit per pixel, packed MSB-first.
 ///

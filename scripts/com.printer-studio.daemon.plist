@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for printer-studio.
+
+  Installation:
+    cp scripts/com.printer-studio.daemon.plist ~/Library/LaunchAgents/
+    # adjust the path below if your project lives elsewhere
+    launchctl load -w ~/Library/LaunchAgents/com.printer-studio.daemon.plist
+
+  To stop:
+    launchctl unload -w ~/Library/LaunchAgents/com.printer-studio.daemon.plist
+
+  Logs:
+    tail -f /tmp/printer-studio.log /tmp/printer-studio.err
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.printer-studio.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/you/Developer/printer-studio-kh/scripts/printer-studio-ippeveprinter.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PRINTER_STUDIO_NAME</key>
+        <string>HP Laser 107a (Mac mini)</string>
+        <key>PRINTER_STUDIO_MANUFACTURER</key>
+        <string>HP</string>
+        <key>PRINTER_STUDIO_MODEL</key>
+        <string>Laser 107a</string>
+        <key>PRINTER_STUDIO_LOCATION</key>
+        <string>Home</string>
+        <key>PRINTER_STUDIO_PORT</key>
+        <string>8631</string>
+        <key>PRINTER_STUDIO_DRY_RUN_DIR</key>
+        <string>/tmp/printer-studio-jobs</string>
+        <!-- Flip to "1" only once Phase 1b's encoder is validated. -->
+        <key>PRINTER_STUDIO_TRANSMIT</key>
+        <string>0</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/printer-studio.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/printer-studio.err</string>
+</dict>
+</plist>
