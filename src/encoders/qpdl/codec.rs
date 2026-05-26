@@ -93,11 +93,8 @@ use super::stream::BeWriter;
 use crate::encoders::{Duplex, JobOptions, PaperSize};
 use crate::raster::MonoPage;
 
-// QPDL version byte in the page header. Verified against a real Samsung
-// driver capture (Samsung ML-2010, https://emergent.unpythonic.net/software/samsung-ml2010):
-// the byte at offset 14 of the page header is 0x02, not 0x03.
-// ml1660.ppd from splix says "3", but the firmware on real hardware
-// processes 0x02.
+// QPDL version byte. ML-2010 reference uses 2. Version 3 caused the
+// USB write to hang on the 107a, suggesting it's not supported there.
 const QPDL_VERSION: u8 = 2;
 const BAND_HEIGHT: u32 = 128; // Per most Samsung mono PPDs (*QPDL BandSize: "128").
 const COMPRESSION_ALGO_0X11: u8 = 0x11; // Samsung mono dictionary-pointer RLE.
@@ -181,9 +178,11 @@ fn page_header(
     w: &mut BeWriter,
     page: &MonoPage,
     opts: &JobOptions,
-    _printable_width_px: u32,
-    _printable_height_px: u32,
+    printable_width_px: u32,
+    printable_height_px: u32,
 ) {
+    let _printable_width_px = printable_width_px;
+    let _printable_height_px = printable_height_px;
     let y_res = (page.dpi / 100) as u8;
     let x_res = y_res; // square pixels for the common 600/1200 modes
 
@@ -193,11 +192,11 @@ fn page_header(
     w.u8(y_res); // Y resolution / 100
     w.u16(opts.copies); // Number of copies
     w.u8(paper_type_byte(opts.paper)); // Paper type byte (0 = use printer default)
-    // Width and height: the reference emits 0x0000 for both, meaning
-    // "use the printer's default for this paper type." Reporting the
-    // band-aligned width here caused SPL parse errors on the M2026.
-    w.u16(0); // Printable width — 0 = paper-type default
-    w.u16(0); // Printable height — 0 = paper-type default
+    // Width and height: try actual band-aligned dimensions. The reference
+    // emits 0x0000 (use defaults) but the M2026 firmware may need actual
+    // dimensions to know how much to render and trigger paper feed.
+    w.u16(_printable_width_px as u16); // Printable width (px) — band-aligned
+    w.u16(_printable_height_px as u16); // Printable height (px) — band-aligned
     w.u8(1); // Paper source = auto
     w.u8(0); // unknownByte1
     // Duplex byte: the reference sets it to 0x01 even for simplex jobs
@@ -220,11 +219,16 @@ fn page_footer(w: &mut BeWriter, opts: &JobOptions) {
 }
 
 fn paper_type_byte(paper: PaperSize) -> u8 {
-    // Reverse-engineered values would go here; PPD currently encodes paper
-    // size as 0 meaning "use the page's printable area". Setting 0 keeps
-    // the driver matching whatever the printer's panel/firmware default is.
-    let _ = paper;
-    0
+    // Paper-type byte per Samsung M2026 / HP Laser 107a printer firmware.
+    // Values from splix/src/compress.cpp::_get2020BandWidthInB lookup table.
+    // The byte tells the printer's firmware which paper-sized rendering
+    // pipeline to use — must match the page-header width/height we declare.
+    match paper {
+        PaperSize::Letter => 0,
+        PaperSize::Legal => 1,
+        PaperSize::A4 => 2,
+        PaperSize::A5 => 16,
+    }
 }
 
 fn today_yyyymmdd() -> String {
