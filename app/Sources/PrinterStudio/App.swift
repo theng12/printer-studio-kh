@@ -49,6 +49,8 @@ final class AppState: ObservableObject {
     @Published var printerHeldByIPPUSB = false
     /// True when the AirPrint advertisement for iOS is installed.
     @Published var airPrintInstalled = false
+    /// True when the app is registered to open at login.
+    @Published var startsAtLogin = false
     @Published var unfinishedJobs: [String] = []
     @Published var activity: [LogEntry] = []
 
@@ -65,6 +67,20 @@ final class AppState: ObservableObject {
 
     init() {
         log("Printer Studio KH started.")
+
+        // When launchd starts us at login we should leave only the menu bar
+        // icon. The window scene always opens one, and macOS 13 and 14 have no
+        // way to suppress that declaratively — `defaultLaunchBehavior` is
+        // macOS 15 and cannot be applied conditionally, because SwiftUI has no
+        // type-erased Scene. So close it as soon as it exists.
+        if CommandLine.arguments.contains("--background") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                for window in NSApp.windows where window.title == "Printer Studio KH" {
+                    window.close()
+                }
+            }
+        }
+
         refresh()
     }
 
@@ -128,6 +144,7 @@ final class AppState: ObservableObject {
             let loaded = ShareFix.isWatcherLoaded
             let held = Driver.ippusbdHoldingPrinter()
             let airPrint = DriverInstaller.isAirPrintInstalled
+            let login = LoginItem.isEnabled
 
             DispatchQueue.main.async {
                 self.printers = printers
@@ -138,6 +155,7 @@ final class AppState: ObservableObject {
                 self.watcherLoaded = loaded
                 self.printerHeldByIPPUSB = held
                 self.airPrintInstalled = airPrint
+                self.startsAtLogin = login
                 // Keep the detailed list in step for queues that no longer exist.
                 let names = Set(printers.map(\.name))
                 self.detailedPrinters.removeAll { !names.contains($0.name) }
@@ -271,6 +289,14 @@ final class AppState: ObservableObject {
         perform("Stopping the AirPrint advertisement…",
                 { DriverInstaller.removeAirPrintBridge() },
                 success: "AirPrint advertisement stopped.")
+    }
+
+    func setStartAtLogin(_ enabled: Bool) {
+        let result = enabled ? LoginItem.enable() : LoginItem.disable()
+        report(result, success: enabled
+               ? "Printer Studio KH will open at login."
+               : "Printer Studio KH will no longer open at login.")
+        refresh()
     }
 
     func refreshNow() {

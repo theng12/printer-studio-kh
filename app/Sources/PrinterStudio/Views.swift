@@ -10,7 +10,7 @@ import AppKit
 /// ships only with full Xcode, so this app avoids it entirely and keeps view
 /// state in the observable model instead.
 enum Screen: String, CaseIterable, Identifiable {
-    case overview, printers, sharing, setup, activity
+    case overview, printers, sharing, setup, activity, settings
     var id: String { rawValue }
 
     var title: String {
@@ -20,6 +20,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .sharing: return "Sharing"
         case .setup: return "HP Laser 107a"
         case .activity: return "Activity"
+        case .settings: return "Settings"
         }
     }
 
@@ -30,6 +31,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .sharing: return "wifi"
         case .setup: return "wrench.and.screwdriver"
         case .activity: return "list.bullet.rectangle"
+        case .settings: return "gearshape"
         }
     }
 }
@@ -69,6 +71,7 @@ struct MainWindow: View {
                 case .sharing: SharingView()
                 case .setup: SetupView()
                 case .activity: ActivityView()
+                case .settings: SettingsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -675,6 +678,123 @@ struct SetupStep: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+    }
+}
+
+// MARK: - Settings
+
+struct SettingsView: View {
+    @EnvironmentObject var state: AppState
+
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? "—"
+        return "\(short) (build \(build))"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Settings").font(.title2.weight(.semibold))
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Open Printer Studio KH at login",
+                               isOn: Binding(get: { state.startsAtLogin },
+                                             set: { state.setStartAtLogin($0) }))
+                            .toggleStyle(.switch)
+                        Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(6)
+                }
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("About").font(.headline)
+                        SettingsRow("Printer Studio KH", version)
+                        SettingsRow("Bundle", Bundle.main.bundleIdentifier ?? "—")
+                        SettingsRow("System", ProcessInfo.processInfo.operatingSystemVersionString)
+                        SettingsRow("Architecture", Self.architecture)
+                    }
+                    .padding(6)
+                }
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Installed components").font(.headline)
+                        SettingsRow("Print driver", Driver.isFilterInstalled
+                                    ? (Driver.installedFilter ?? "installed")
+                                    : "not installed",
+                                    good: Driver.isFilterInstalled)
+                        SettingsRow("PPD", Driver.isPPDInstalled ? "installed" : "not installed",
+                                    good: Driver.isPPDInstalled)
+                        SettingsRow("Share-fix watcher", state.watcherInstalled
+                                    ? "installed, runs every 60s" : "not installed",
+                                    good: state.watcherInstalled)
+                        SettingsRow("AirPrint for iOS", state.airPrintInstalled
+                                    ? "advertising shared printers" : "off",
+                                    good: state.airPrintInstalled)
+                        SettingsRow("Open at login", state.startsAtLogin ? "on" : "off",
+                                    good: state.startsAtLogin)
+                    }
+                    .padding(6)
+                }
+
+                HStack(spacing: 10) {
+                    Button("Read Me First") { state.openReadMe() }
+                    Button("Refresh") { state.refreshNow() }
+                    if let log = URL(string: "file://\(ShareFix.logFile.path)") {
+                        Button("Show Log") { NSWorkspace.shared.open(log) }
+                    }
+                }
+                .disabled(state.busy)
+
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+        }
+    }
+
+    private static var architecture: String {
+        #if arch(arm64)
+        return "Apple Silicon (arm64)"
+        #elseif arch(x86_64)
+        return "Intel (x86_64)"
+        #else
+        return "unknown"
+        #endif
+    }
+}
+
+struct SettingsRow: View {
+    let label: String
+    let value: String
+    var good: Bool?
+
+    init(_ label: String, _ value: String, good: Bool? = nil) {
+        self.label = label
+        self.value = value
+        self.good = good
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: 150, alignment: .leading)
+            if let good {
+                Image(systemName: good ? "checkmark.circle.fill" : "circle.dashed")
+                    .foregroundStyle(good ? .green : .secondary)
+            }
+            Text(value)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .font(.callout)
     }
 }
 

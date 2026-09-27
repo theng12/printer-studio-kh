@@ -29,6 +29,16 @@ struct Report {
             print(result.combined.isEmpty ? "Watcher removed." : result.combined)
             exit(result.ok ? 0 : 1)
         }
+        if arguments.contains("--enable-login-item") {
+            let result = LoginItem.enable()
+            print(result.combined.isEmpty ? "Login item enabled." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
+        if arguments.contains("--disable-login-item") {
+            let result = LoginItem.disable()
+            print(result.combined.isEmpty ? "Login item disabled." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
         if arguments.contains("--install-airprint") {
             let result = DriverInstaller.installAirPrintBridge()
             print(result.combined.isEmpty ? "AirPrint advertisement installed." : result.combined)
@@ -135,6 +145,7 @@ struct Report {
 
         section("AirPrint advertisement for iOS")
         print("Installed       \(DriverInstaller.isAirPrintInstalled ? "yes" : "no")")
+        print("Open at login   \(LoginItem.isEnabled ? "yes" : "no")")
         let advertisers = Shell.run(Tool.pgrep, ["-fl", "dns-sd -R"])
         let advertised = advertisers.stdout
             .split(separator: "\n")

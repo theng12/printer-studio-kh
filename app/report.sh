@@ -8,15 +8,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT="$ROOT/../dist/printer-studio-report"
 
-SOURCES=(
-  "$ROOT/Sources/PrinterStudio/Shell.swift"
-  "$ROOT/Sources/PrinterStudio/Models.swift"
-  "$ROOT/Sources/PrinterStudio/CUPS.swift"
-  "$ROOT/Sources/PrinterStudio/ShareFix.swift"
-  "$ROOT/Sources/PrinterStudio/Driver.swift"
-  "$ROOT/Sources/PrinterStudio/DriverInstaller.swift"
-  "$ROOT/Tools/Report.swift"
-)
+# Every service source except the two that are SwiftUI-only. Globbing rather
+# than a hand-written list: a hardcoded list silently went stale when
+# LoginItem.swift was added, and because the old binary was still on disk the
+# build failure produced plausible-looking output from stale code.
+SOURCES=()
+while IFS= read -r file; do
+  case "$(basename "$file")" in
+    App.swift|Views.swift) continue ;;   # SwiftUI and @main; the CLI needs neither
+  esac
+  SOURCES+=("$file")
+done < <(find "$ROOT/Sources/PrinterStudio" -name '*.swift' | sort)
+SOURCES+=("$ROOT/Tools/Report.swift")
 
 for file in "${SOURCES[@]}"; do
   if [ ! -f "$file" ]; then
