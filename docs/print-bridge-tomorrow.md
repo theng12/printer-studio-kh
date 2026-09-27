@@ -1,5 +1,10 @@
 # Linux VM print bridge — tomorrow's checklist
 
+> **Superseded — kept for history.** No Linux VM is needed. The printer is now
+> driven natively on macOS by the splix CUPS filter, and macOS's own Printer
+> Sharing makes it AirPrint-visible. See
+> [root-cause-and-fix.md](root-cause-and-fix.md).
+
 ## Current state (tonight)
 
 - ✅ UTM installed at `/Applications/UTM.app` (Homebrew cask)

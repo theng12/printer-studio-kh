@@ -1,5 +1,10 @@
 # Phase 1b — QPDL Band Encoding (in progress)
 
+> **Superseded — kept for history.** The band-encoding problem this document
+> plans for turned out to be a single missing invariant: the band *width*.
+> See [root-cause-and-fix.md](root-cause-and-fix.md). The hand-written encoder
+> is archived and this plan was never carried out.
+
 The structural QPDL byte stream (PJL header, document header, page header,
 page footer, PJL footer) is implemented and matches splix's reference output.
 What remains is the band-data path: the actual page bitmap, compressed with
