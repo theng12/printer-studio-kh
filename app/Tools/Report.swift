@@ -77,6 +77,30 @@ struct Report {
         print("CUPS filter     \(Driver.installedFilter ?? "NOT INSTALLED")")
         print("PPD             \(Driver.installedPPD ?? "NOT INSTALLED")")
         print("Ready           \(Driver.isReady ? "yes" : "no")")
+        print("Would install   \(DriverInstaller.usbDeviceURI() ?? "(no USB printer found)")")
+        print("Bundled filter  \(DriverInstaller.bundledFilter ?? "MISSING FROM BUILD")")
+        print("Bundled PPD     \(DriverInstaller.bundledPPD ?? "MISSING FROM BUILD")")
+
+        // The USB backend's own discovery output. This is the first thing to
+        // look at when the printer is attached but nothing prints: it says
+        // whether CUPS can see the device at all, and it is the layer that
+        // this printer family is reported to be fussy about.
+        section("CUPS USB backend discovery")
+        let usbBackend = "/usr/libexec/cups/backend/usb"
+        if FileManager.default.isExecutableFile(atPath: usbBackend) {
+            let discovery = Shell.run(usbBackend, [])
+            let lines = discovery.stdout
+                .split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            if lines.isEmpty {
+                print("(the backend reports no USB printers)")
+            } else {
+                for line in lines { print(line) }
+            }
+        } else {
+            print("(no USB backend at \(usbBackend))")
+        }
 
         section("Share-fix watcher")
         print("Installed       \(ShareFix.isWatcherInstalled ? "yes" : "no")")

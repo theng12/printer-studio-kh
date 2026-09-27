@@ -172,12 +172,20 @@ Verified offline, no hardware needed:
 - The shipped filter emits **640-byte bands** for Letter @ 600 dpi, and
   removing the PPD gate reproduces the original failure (638 bytes).
 - The shipped filter's page header is on the **300-DPI grid** (2550 × 3300).
+- **A real PDF goes all the way to printer-ready QPDL.** CUPS's own
+  `cgpdftoraster` turns a document into CUPS raster, and the shipped driver
+  turns that into a 3.2 MB QPDL job: correct PJL header, QPDL declared, page
+  header on the 300-DPI grid, and **all 182 bands exactly 640 bytes**.
 - A quarantined copy of the driver does not run; a cleared one does.
 - The app builds, launches, and reads real queue state from CUPS.
 - The share fix clears a pinned ACL on a real queue, and is idempotent.
 
-All three of the above are covered by `app/verify-bandwidth.sh`, which needs
-no printer.
+Two scripts cover all of that, and neither needs a printer:
+
+| script | what it proves |
+|---|---|
+| `app/verify-bandwidth.sh` | band width, the PPD gate, and the page-header grid |
+| `app/verify-pipeline.sh` | a real PDF survives the whole chain to QPDL |
 
 **Not yet verified — needs the printer plugged in:**
 
@@ -190,3 +198,5 @@ no printer.
   remaining unknown.
 
 Everything up to USB transmission is proven; the last hop is untested.
+`printer-studio-report` prints the USB backend's own discovery output, which
+is the first thing to read once the printer is attached.
