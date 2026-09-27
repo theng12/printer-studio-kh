@@ -9,6 +9,27 @@ import Foundation
 @main
 struct Report {
     static func main() {
+        // Actions, so the service code can be exercised (and recovered) from
+        // a shell without the GUI. `printer-studio-report` with no arguments
+        // prints the report.
+        let arguments = Array(CommandLine.arguments.dropFirst())
+
+        if arguments.contains("--fix-sharing") {
+            let result = ShareFix.fixNow()
+            print(result.combined.isEmpty ? "Shared queues checked." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
+        if arguments.contains("--install-watcher") {
+            let result = ShareFix.installWatcher()
+            print(result.combined.isEmpty ? "Watcher installed." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
+        if arguments.contains("--remove-watcher") {
+            let result = ShareFix.uninstallWatcher()
+            print(result.combined.isEmpty ? "Watcher removed." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
+
         let line = String(repeating: "─", count: 68)
 
         print(line)

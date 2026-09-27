@@ -55,6 +55,7 @@ enum Tool {
     static var ioreg: String { path("ioreg") }
     static var launchctl: String { path("launchctl") }
     static var bash: String { path("bash") }
+    static var awk: String { path("awk") }
     static var open: String { path("open") }
 }
 

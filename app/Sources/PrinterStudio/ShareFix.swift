@@ -68,8 +68,14 @@ enum ShareFix {
         ts() { date '+%Y-%m-%d %H:%M:%S'; }
 
         changed=0
-        for P in $(\(Tool.lpstat) -p 2>/dev/null | awk '{print $2}'); do
+        # Only lines that really are queues. `lpstat -p` also prints warnings on
+        # stdout, and a naive `awk '{print $2}'` turns those into bogus "queue
+        # names" — it has been observed to emit a quoted filter path this way,
+        # which then gets queried as if it were a printer.
+        for P in $(\(Tool.lpstat) -p 2>/dev/null | \(Tool.awk) '/^printer /{print $2}'); do
           [ -n "$P" ] || continue
+          # Defensive: a real queue name never contains a path separator.
+          case "$P" in */*|*:*) continue ;; esac
           attrs=$(\(Tool.ipptool) -tv "ipp://localhost/printers/$P" get-printer-attributes.test 2>/dev/null) || continue
           # only shared queues matter
           echo "$attrs" | grep -q 'printer-is-shared (boolean) = true' || continue

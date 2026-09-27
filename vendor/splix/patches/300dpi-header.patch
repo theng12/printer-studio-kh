@@ -1,0 +1,22 @@
+diff --git a/src/qpdl.cpp b/src/qpdl.cpp
+index 035432f..b2a8c3c 100644
+--- a/src/qpdl.cpp
++++ b/src/qpdl.cpp
+@@ -382,9 +382,14 @@ bool renderPage(const Request& request, Page* page, bool lastPage)
+         selectedRenderBand = &_renderBand;
+     }
+ 
+-    if (request.printer()->fixedBandWidth() || 0x15 == page->compression()) {
+-        // For CLP-310/315 and fixed bandwidth printers, multiply page
+-        // dimensions in inches by 300.
++    if (request.printer()->fixedBandWidth() ||
++        request.printer()->specialBandWidth() || 0x15 == page->compression()) {
++        // For CLP-310/315, fixed bandwidth and SpecialBandWidth printers,
++        // multiply page dimensions in inches by 300.
++        // ULD uses these dimensions for all models, including the
++        // SpecialBandWidth ones (HP Laser 10x / Samsung M2020 family), whose
++        // page header must use the 300 DPI grid even though their bands are
++        // rendered at 600 DPI.
+         width = ceil(300 * (request.printer()->pageWidth() / 72.0));
+         height = ceil(300 * (request.printer()->pageHeight() / 72.0));
+     }

@@ -89,8 +89,15 @@ enum DriverInstaller {
         # The PPD refers to the filter by bare name, so it must live in CUPS's
         # own filter directory. /usr/libexec/cups is exempt from SIP.
         /bin/cp -f '\(filter)' '\(filterDestination)'
-        /bin/chmod 755 '\(filterDestination)'
         /usr/sbin/chown root:wheel '\(filterDestination)'
+        # CUPS refuses to run a filter that is group- or world-writable; 0555
+        # is what it documents and expects.
+        /bin/chmod 555 '\(filterDestination)'
+        # Ad-hoc signing is mandatory on Apple Silicon. An unsigned binary is
+        # killed by AMFI the instant cupsd execs it, and CUPS reports that only
+        # as "Filter failed". Notarization is not needed for a local copy.
+        /usr/bin/codesign --force --sign - '\(filterDestination)' 2>/dev/null || true
+        /usr/bin/codesign --verify '\(filterDestination)' 2>/dev/null || echo "warning: filter signature could not be verified"
 
         /bin/cp -f '\(ppd)' '\(ppdDestination)'
         /bin/chmod 644 '\(ppdDestination)'
