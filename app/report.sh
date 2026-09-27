@@ -27,12 +27,20 @@ done
 
 mkdir -p "$(dirname "$OUT")"
 
-/usr/bin/swiftc \
-  -O \
-  -parse-as-library \
-  -swift-version 5 \
-  -target arm64-apple-macos15.0 \
-  -o "$OUT" \
-  "${SOURCES[@]}"
+# Universal, like the app: the diagnostic should run on whatever Mac is in
+# front of you, including an Intel one.
+SLICES="$(mktemp -d)"
+trap 'rm -rf "$SLICES"' EXIT
 
-echo "==> Built: $OUT"
+for ARCH in arm64 x86_64; do
+  /usr/bin/swiftc \
+    -O \
+    -parse-as-library \
+    -swift-version 5 \
+    -target "${ARCH}-apple-macos13.0" \
+    -o "$SLICES/report.$ARCH" \
+    "${SOURCES[@]}"
+done
+
+/usr/bin/lipo -create "$SLICES/report.arm64" "$SLICES/report.x86_64" -output "$OUT"
+echo "==> Built: $OUT ($(/usr/bin/lipo -info "$OUT" | sed 's/.*are: //'))"

@@ -7,20 +7,6 @@ import AppKit
 struct PrinterStudioApp: App {
     @StateObject private var state = AppState()
 
-    /// The menu bar is home, so the window stays closed on a normal launch.
-    /// It opens on the very first run (so the app is discoverable) and
-    /// whenever `--show-window` is passed, which the build smoke test uses.
-    ///
-    /// Decided once, in `init`, and stored: reading the "first run" flag
-    /// lazily would already have been overwritten by the time `body` ran.
-    private let showWindowOnLaunch: Bool
-
-    init() {
-        let isFirstRun = !UserDefaults.standard.bool(forKey: "hasCompletedFirstRun")
-        UserDefaults.standard.set(true, forKey: "hasCompletedFirstRun")
-        showWindowOnLaunch = isFirstRun || CommandLine.arguments.contains("--show-window")
-    }
-
     var body: some Scene {
         MenuBarExtra {
             MenuBarContent()
@@ -30,12 +16,20 @@ struct PrinterStudioApp: App {
         }
         .menuBarExtraStyle(.menu)
 
+        // The window opens at launch on every supported version.
+        //
+        // macOS 15 added `defaultLaunchBehavior`, which would let it stay shut
+        // until asked for. It cannot be used here: SwiftUI has no type-erased
+        // Scene and `SceneBuilder` does not accept `if #available`, so the
+        // modifier cannot be applied conditionally, and applying it
+        // unconditionally would raise the deployment target to 15 and lock out
+        // older Macs. Showing the window is the predictable option, and the
+        // menu bar icon stays put either way.
         Window("Printer Studio KH", id: "main") {
             MainWindow()
                 .environmentObject(state)
                 .frame(minWidth: 860, minHeight: 580)
         }
-        .defaultLaunchBehavior(showWindowOnLaunch ? .presented : .suppressed)
     }
 }
 

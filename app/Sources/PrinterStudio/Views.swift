@@ -86,6 +86,33 @@ struct MainWindow: View {
     }
 }
 
+/// A stand-in for `ContentUnavailableView`, which requires macOS 14.
+/// Declared here so the app's deployment target can stay at macOS 13.
+struct EmptyState: View {
+    let title: String
+    let symbol: String
+    var detail: String?
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            if let detail {
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+    }
+}
+
 // MARK: - Reusable pieces
 
 struct StatusCard: View {
@@ -259,8 +286,8 @@ struct PrintersView: View {
                 Text("Printers on this Mac").font(.title2.weight(.semibold))
 
                 if state.printers.isEmpty {
-                    ContentUnavailableView("No printers", systemImage: "printer.slash",
-                                           description: Text("This Mac has no print queues yet."))
+                    EmptyState(title: "No printers", symbol: "printer.slash",
+                               detail: "This Mac has no print queues yet.")
                         .frame(height: 240)
                 } else {
                     ForEach(state.printers) { printer in
@@ -617,7 +644,7 @@ struct ActivityView: View {
             }
 
             if state.activity.isEmpty {
-                ContentUnavailableView("Nothing yet", systemImage: "list.bullet.rectangle")
+                EmptyState(title: "Nothing yet", symbol: "list.bullet.rectangle")
             } else {
                 List(state.activity) { entry in
                     HStack(alignment: .top, spacing: 10) {

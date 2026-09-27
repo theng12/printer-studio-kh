@@ -6,8 +6,14 @@
 # CLT SDK, so swiftc can produce a real, launchable .app bundle. SwiftPM is
 # avoided because its manifest API is broken in a CLT-only install.
 #
+# Compatibility, so this runs on older Macs too:
+#   * deployment target is macOS 13 (Ventura), not 15
+#   * the binary is universal — arm64 AND x86_64 — so Intel Macs work
+#   * the bundled splix driver is universal for the same reason
+#
 #   ./app/build.sh          build into ./dist
 #   ./app/build.sh --run    build, then launch
+#   ./app/build.sh --dmg    also produce a single file to send
 #
 set -euo pipefail
 
@@ -15,6 +21,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$ROOT/../dist"
 APP="$DIST/Printer Studio KH.app"
 BIN_NAME="PrinterStudio"
+MIN_MACOS="13.0"
 
 echo "==> Building $BIN_NAME"
 
@@ -35,16 +42,26 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # -parse-as-library is required for the @main attribute.
 # -swift-version 5 keeps us in the non-strict-concurrency language mode.
-echo "==> Compiling ${#SOURCES[@]} source files"
-/usr/bin/swiftc \
-  -O \
-  -parse-as-library \
-  -swift-version 5 \
-  -target arm64-apple-macos15.0 \
-  -framework SwiftUI \
-  -framework AppKit \
-  -o "$APP/Contents/MacOS/$BIN_NAME" \
-  "${SOURCES[@]}"
+echo "==> Compiling ${#SOURCES[@]} source files for arm64 and x86_64"
+SLICES="$(mktemp -d)"
+trap 'rm -rf "$SLICES"' EXIT
+
+for ARCH in arm64 x86_64; do
+  /usr/bin/swiftc \
+    -O \
+    -parse-as-library \
+    -swift-version 5 \
+    -target "${ARCH}-apple-macos${MIN_MACOS}" \
+    -framework SwiftUI \
+    -framework AppKit \
+    -o "$SLICES/$BIN_NAME.$ARCH" \
+    "${SOURCES[@]}"
+done
+
+/usr/bin/lipo -create \
+  "$SLICES/$BIN_NAME.arm64" "$SLICES/$BIN_NAME.x86_64" \
+  -output "$APP/Contents/MacOS/$BIN_NAME"
+echo "==> $(/usr/bin/lipo -info "$APP/Contents/MacOS/$BIN_NAME" | sed 's/.*are: //')"
 
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"

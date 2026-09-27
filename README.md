@@ -144,9 +144,22 @@ docs/root-cause-and-fix.md      why the first attempt failed
 
 ## Requirements
 
-- Apple Silicon Mac. macOS 15 or later (developed on macOS 27).
+- **macOS 13 (Ventura) or later**, on **Apple Silicon or Intel**.
+  The app, the diagnostic tool and the bundled driver are all universal
+  binaries (`arm64` + `x86_64`), so an older Intel Mac works.
 - Command Line Tools only — **full Xcode is not required**.
 - Administrator rights on first setup, to install the print driver.
+
+The macOS 13 floor comes from SwiftUI's `MenuBarExtra` and `Window` scenes.
+`defaultLaunchBehavior` — which would keep the window shut until you ask for it
+— needs macOS 15, and it cannot be applied conditionally: SwiftUI has no
+type-erased `Scene`, and `SceneBuilder` rejects `if #available` (unlike
+`ViewBuilder`). So the window opens at launch on every version, rather than
+raising the floor to 15 to suppress it.
+
+Anything below macOS 13 would mean dropping `MenuBarExtra` for an AppKit
+`NSStatusItem` and `NavigationSplitView` for an `NSSplitView`. That is a real
+rewrite of the UI layer, not a flag, so it has not been done speculatively.
 
 ## Notes on the build
 
