@@ -10,6 +10,8 @@
 	<string>com.theng12.printerstudio</string>
 	<key>CFBundleExecutable</key>
 	<string>PrinterStudio</string>
+	<key>CFBundleIconFile</key>
+	<string>PrinterStudio</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

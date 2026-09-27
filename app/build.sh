@@ -87,6 +87,14 @@ chmod 644 "$APP/Contents/Resources/Read Me First.txt"
 cp "$ROOT/Resources/airprint-bridge.sh" "$APP/Contents/Resources/"
 chmod 755 "$APP/Contents/Resources/airprint-bridge.sh"
 
+# The app icon. Regenerate with ./app/make-icon.sh.
+if [ -f "$ROOT/Resources/PrinterStudio.icns" ]; then
+  cp "$ROOT/Resources/PrinterStudio.icns" "$APP/Contents/Resources/"
+  echo "==> Icon bundled"
+else
+  echo "!! warning: Resources/PrinterStudio.icns missing — run ./app/make-icon.sh" >&2
+fi
+
 # A .dmg is the one file to send by AirDrop or Telegram: it holds the app, the
 # Read Me, and an Applications shortcut. Build with --dmg.
 if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
