@@ -72,6 +72,37 @@ struct Report {
             print("• \(device.name)  [\(device.vendorID):\(device.productID)]\(device.isLaser107a ? "   <-- HP Laser 107a" : "")")
         }
 
+        let interfaces = Driver.usbInterfaces()
+        section("USB interfaces")
+        print("(\(interfaces.count) interface descriptor\(interfaces.count == 1 ? "" : "s") readable)")
+        let notable = interfaces.filter { $0.note != nil }
+        if notable.isEmpty {
+            print("(none are printer-class)")
+        } else {
+            for entry in notable {
+                print("• \(entry.productName)  [\(entry.summary)]")
+                if let note = entry.note { print("      \(note)") }
+            }
+        }
+
+        if let laser = Driver.connectedLaser107a {
+            let own = interfaces.filter { $0.productName == laser.name }
+            print("")
+            print("Verdict for \(laser.name):")
+            if own.isEmpty {
+                print("    interface descriptors could not be read")
+            } else if own.contains(where: { $0.isIPPOverUSB }) {
+                print("    exposes IPP-over-USB (protocol 4). If that is the setting the")
+                print("    firmware is currently on, it will discard a raw print stream")
+                print("    without reporting anything. This is the known risk for this family.")
+            } else if own.contains(where: { $0.isClassicPrinter }) {
+                print("    offers a classic printer interface (protocol 1 or 2) — the mode")
+                print("    a CUPS backend needs.")
+            } else {
+                print("    printer-class, but no classic or IPP-over-USB interface seen.")
+            }
+        }
+
         section("HP Laser 107a driver")
         print("Connected       \(Driver.connectedLaser107a != nil ? "yes" : "no")")
         print("CUPS filter     \(Driver.installedFilter ?? "NOT INSTALLED")")
