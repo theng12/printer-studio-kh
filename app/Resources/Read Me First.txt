@@ -1,5 +1,5 @@
 Printer Studio KH — Read Me First
-==============================
+=================================
 
 WHAT THIS IS
 ------------
@@ -14,28 +14,34 @@ Printer Studio KH, to fix shared queues, or to quit.
 
 OPENING IT THE FIRST TIME — PLEASE READ
 ---------------------------------------
-This app is not sold through the App Store. The first time you open it on
-a Mac that received it over AirDrop, Telegram, email or a download, macOS
-will refuse, saying the developer "cannot be verified", or that the app is
-damaged and should be moved to the Trash.
+This app is not sold through the App Store, so the first time you open it
+on a Mac that received it over AirDrop, Telegram, email or a download,
+macOS will refuse. It may say the developer "cannot be verified", or it may
+say the app "is damaged and can't be opened. You should move it to the
+Trash."
 
-That is macOS being cautious about anything arriving over a network. The
-app is fine. To open it:
+Either way, this is the fix. Open Terminal (in Applications > Utilities),
+paste this line, and press Return:
 
-    1. Find "Printer Studio KH" in your Applications folder
-    2. Right-click it (or hold Control and click), and choose "Open"
-    3. Click "Open" again in the dialog that appears
+    xattr -cr "/Applications/Printer Studio KH.app"
 
-You only do this once per Mac. After that it opens normally.
+Then open the app normally. That is the whole procedure, and you only do
+it once per Mac.
 
-If macOS instead offers "Open Anyway" under
-System Settings > Privacy & Security, that button does the same thing.
+You may have seen advice to right-click the app and choose "Open" instead.
+That works for some of these warnings and does nothing at all for others —
+and when it does nothing, there is no button anywhere, including in System
+Settings, that will get you past it. The command above always works, so
+use that.
 
-Why this is necessary: Apple only removes that warning for apps signed
+It is safe. It removes only macOS's marker recording that the file arrived
+over a network. It changes nothing inside the app itself, and it is the
+same thing the "Open Anyway" button does when macOS offers one.
+
+Why this is necessary: Apple only removes these warnings for apps signed
 with a paid Apple Developer account and notarized by Apple. Without that,
-one right-click is the price. There is no way around it from inside the
-app, because the warning appears before the app is allowed to run.
-
+this one step is the price. It cannot be done from inside the app, because
+the warning appears before the app is allowed to run at all.
 
 AFTER IT OPENS
 --------------
@@ -57,7 +63,8 @@ SENDING THIS APP TO ANOTHER MAC
 Send the app on its own. It carries this file inside it, so there is no
 separate Read Me to send.
 
-On the receiving Mac, do the right-click > Open step above, once.
+On the receiving Mac, run the one-line command near the top of this file,
+once. That is the only setup step.
 
 After that the driver install works normally. The app deliberately clears
 the "downloaded from the internet" flag from the driver files as it
@@ -75,3 +82,4 @@ For a fuller picture you can also run the diagnostic report that ships
 alongside this app in the project folder:
 
     ./app/report.sh && ./dist/printer-studio-report
+
