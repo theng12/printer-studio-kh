@@ -87,5 +87,38 @@ else:
     print("NOTE: the gate made no difference in this run.")
     ok = False
 
+# ---------------------------------------------------------------------------
+# Second invariant: the page header must sit on ULD's 300-DPI grid.
+#
+# The page header is 17 bytes and follows the PJL block directly. From
+# src/qpdl.cpp the printable area is written at [5..6] (width) and [7..8]
+# (height), big-endian. US Letter is 612x792 pt, so 300 DPI gives 2550x3300.
+#
+# splix 2.0.2 left specialBandWidth() out of this branch, so SpecialBandWidth
+# printers got 5104x6495 here — a 600-DPI-sized page the firmware does not
+# expect. Fixed by vendor/splix/patches/300dpi-header.patch.
+# ---------------------------------------------------------------------------
+def page_header(path):
+    data = open(path, "rb").read()
+    marker = b"@PJL ENTER LANGUAGE = QPDL\n"
+    index = data.find(marker)
+    if index < 0:
+        return None
+    start = index + len(marker)
+    header = data[start:start + 17]
+    if len(header) < 17:
+        return None
+    return ((header[5] << 8) | header[6], (header[7] << 8) | header[8])
+
+header = page_header(sys.argv[1])
+if header == (2550, 3300):
+    print(f"PASS: page header is on the 300-DPI grid ({header[0]} x {header[1]}) — matches ULD.")
+elif header is None:
+    print("FAIL: could not locate the page header.")
+    ok = False
+else:
+    print(f"FAIL: page header is {header[0]} x {header[1]}; expected 2550 x 3300.")
+    ok = False
+
 sys.exit(0 if ok else 1)
 PYTHON

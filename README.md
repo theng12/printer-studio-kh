@@ -51,6 +51,34 @@ on, open the **HP Laser 107a** tab, and press **Set up the printer**. macOS
 will ask for your password once, because installing a print driver needs
 administrator rights.
 
+## Sending it to another Mac
+
+```bash
+./app/build.sh --dmg
+```
+
+produces `dist/Printer Studio KH.dmg` — a single file to AirDrop or Telegram. It
+holds the app, an Applications shortcut, and the Read Me.
+
+The app also carries the Read Me inside itself, so sending the app on its own
+is enough. Read it from the menu bar under **Read Me First…**.
+
+**The one thing macOS will not let the app do for itself.** An app that
+arrives over AirDrop, Telegram or a download is blocked on first launch,
+because it is not notarized by Apple — and notarization requires a paid
+Developer ID. The recipient has to **right-click the app and choose Open**,
+once per Mac. Nothing inside the app can prevent that, because the warning
+appears before the app is allowed to run at all.
+
+What the app *does* handle is the consequence, and this part matters more
+than it sounds. The driver ships inside the app bundle, so it inherits that
+same "downloaded from the internet" flag — and a flagged driver makes
+Gatekeeper stall every print job rather than run it, which looks exactly like
+printing doing nothing at all. The installer clears the flag with `xattr -c`,
+along with setting the ownership, mode and code signature that CUPS requires
+of a filter. Without those steps the printer would appear installed and
+simply never work.
+
 ## Diagnostics
 
 ```bash

@@ -120,18 +120,73 @@ encoder is the part that was wrong, and there is no reason to finish it now
 that a maintained driver with the correct table exists and has been proven
 against the same reference raster.
 
+## The second bug: the page header must be on a 300-DPI grid
+
+The band width was not the only silent failure. The page header carries the
+printable area, and ULD — the vendor driver that demonstrably works on this
+printer — writes it on a **300-DPI grid regardless of the rendering
+resolution**. splix does this correctly for some models, but left
+`specialBandWidth()` out of that branch, so HP Laser 10x and Samsung M2020
+printers took the wrong path and got a 600-DPI-sized page header. The
+firmware then believes the page is roughly 16 × 23 inches, lays down one
+band, meets the real paper edge and ejects.
+
+That bug is **still present in splix 2.0.2 and in master**. The fix is five
+lines, applied by `vendor/splix/patches/300dpi-header.patch` and verified at
+byte level. For US Letter:
+
+| | page-header width × height |
+|---|---|
+| without the patch | 5104 × 6495 (600-DPI grid) |
+| with the patch | **2550 × 3300** (= 300 × 612/72, 300 × 792/72) |
+
+`cmp -l` shows the patch changes **exactly four bytes** — the width and
+height fields — and nothing else. Band widths, band count, compression
+`0x11`, the PJL block and the total file size are all untouched.
+
+## The third trap: a quarantined driver silently does nothing
+
+Anything arriving by AirDrop, Telegram or a download is stamped with
+`com.apple.quarantine`. The driver lives inside the app bundle, so **the
+copied filter inherits that flag**, and Gatekeeper then refuses to run it.
+Reproduced directly:
+
+| | result |
+|---|---|
+| plain copy | runs normally |
+| with `com.apple.quarantine` set | **hangs, then killed (SIGKILL)** |
+| quarantine cleared first | runs normally |
+
+This is the same symptom as the original bug — a print job that does
+nothing and reports no error — one layer further out. The installer
+therefore runs `xattr -c` on the filter and the PPD before signing them.
+CUPS also refuses to run a filter that is group- or world-writable, and on
+Apple Silicon refuses to run one that is not signed, so the install does
+all three: `chown root:wheel`, `chmod 0555`, `xattr -c`, `codesign -s -`.
+
 ## Verified, and not yet verified
 
 Verified offline, no hardware needed:
 
 - splix 2.0.2 builds natively for arm64 with Command Line Tools only.
-- The shipped filter and PPD emit 640-byte bands for Letter @ 600 dpi.
-- Removing the gate reproduces the original failure (638-byte bands).
+- The shipped filter emits **640-byte bands** for Letter @ 600 dpi, and
+  removing the PPD gate reproduces the original failure (638 bytes).
+- The shipped filter's page header is on the **300-DPI grid** (2550 × 3300).
+- A quarantined copy of the driver does not run; a cleared one does.
 - The app builds, launches, and reads real queue state from CUPS.
+- The share fix clears a pinned ACL on a real queue, and is idempotent.
+
+All three of the above are covered by `app/verify-bandwidth.sh`, which needs
+no printer.
 
 **Not yet verified — needs the printer plugged in:**
 
 - That the printer accepts the stream and physically feeds paper.
-- That the queue survives a real job end to end.
+- Whether the stock macOS `usb` CUPS backend can drive this printer at all.
+  This family is reported to be left on the IPP-over-USB interface, where the
+  firmware silently discards raw SPL, and the sibling HP Laser 1003–1008
+  project needed a custom IOKit backend to seize the port and force the
+  classic interface. That is unproven for the 107a and is the largest
+  remaining unknown.
 
 Everything up to USB transmission is proven; the last hop is untested.

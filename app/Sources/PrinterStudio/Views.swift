@@ -186,6 +186,8 @@ struct OverviewView: View {
                             state.setSharing(!state.sharingEnabled)
                         }
                         Button("Refresh") { state.refreshNow() }
+                        Button("Read Me First") { state.openReadMe() }
+                            .help("Instructions that travel with the app, including how to open it on a Mac that received it over AirDrop or Telegram.")
                     }
                     .disabled(state.busy)
                 }

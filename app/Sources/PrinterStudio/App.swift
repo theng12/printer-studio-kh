@@ -256,6 +256,16 @@ final class AppState: ObservableObject {
         log("Refreshing…")
         refresh()
     }
+
+    /// Opens the instructions that ship inside the app, so the app can be sent
+    /// on its own without a separate Read Me.
+    func openReadMe() {
+        guard let url = Bundle.main.url(forResource: "Read Me First", withExtension: "txt") else {
+            log("The bundled Read Me could not be found.", kind: .warning)
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
 }
 
 // MARK: - Menu bar
@@ -277,6 +287,7 @@ struct MenuBarContent: View {
 
         Button("Fix shared queues now") { state.fixSharingNow() }
         Button("Refresh") { state.refreshNow() }
+        Button("Read Me First…") { state.openReadMe() }
 
         if state.busy {
             Divider()

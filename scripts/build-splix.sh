@@ -56,6 +56,23 @@ if ! /usr/bin/git merge-base --is-ancestor 206e283 HEAD 2>/dev/null; then
 fi
 echo "    $(/usr/bin/git describe --always) — has the M2020/HP Laser 10x support commit"
 
+# ---------------------------------------------------------------------------
+# The 300-DPI page-header fix is NOT upstream, in 2.0.2 or in master. Without
+# it a SpecialBandWidth printer gets a 600-DPI-sized page header (5104x6495
+# for Letter) where the firmware expects the 300-DPI grid (2550x3300).
+# ---------------------------------------------------------------------------
+PATCH="$ROOT/vendor/splix/patches/300dpi-header.patch"
+if [ -f "$PATCH" ]; then
+  echo "==> Applying $(basename "$PATCH")"
+  /usr/bin/git apply "$PATCH" || {
+    echo "!! Could not apply the 300-DPI header patch." >&2
+    exit 1
+  }
+else
+  echo "!! The 300-DPI header patch is missing; the driver will emit a 600-DPI page header." >&2
+  exit 1
+fi
+
 # CC/CXX must be overridden: the Makefile hardcodes gcc/g++, which do not exist
 # here. DISABLE_JBIG because there is no libjbig85; QPDL v3 mono never uses it.
 echo "==> Building"

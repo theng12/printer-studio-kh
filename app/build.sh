@@ -61,6 +61,27 @@ else
   echo "!! warning: vendor/splix payload missing — the app cannot install the driver" >&2
 fi
 
+# The app carries its own instructions, so it can be sent on its own without a
+# separate Read Me — see the "Read Me First" item in the menu bar.
+cp "$ROOT/Resources/Read Me First.txt" "$APP/Contents/Resources/"
+chmod 644 "$APP/Contents/Resources/Read Me First.txt"
+
+# A .dmg is the one file to send by AirDrop or Telegram: it holds the app, the
+# Read Me, and an Applications shortcut. Build with --dmg.
+if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
+  DMG="$DIST/Printer Studio KH.dmg"
+  STAGE="$(mktemp -d)"
+  echo "==> Building $DMG"
+  cp -R "$APP" "$STAGE/"
+  cp "$ROOT/Resources/Read Me First.txt" "$STAGE/"
+  ln -s /Applications "$STAGE/Applications"
+  rm -f "$DMG"
+  /usr/bin/hdiutil create -quiet -volname "Printer Studio KH" -srcfolder "$STAGE" \
+    -ov -format UDZO "$DMG"
+  rm -rf "$STAGE"
+  echo "==> Built: $DMG"
+fi
+
 # Ad-hoc signature: enough for local use, no developer account needed.
 if /usr/bin/codesign --force --sign - "$APP" 2>/dev/null; then
   echo "==> Ad-hoc signed"

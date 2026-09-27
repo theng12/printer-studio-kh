@@ -93,6 +93,12 @@ enum DriverInstaller {
         # CUPS refuses to run a filter that is group- or world-writable; 0555
         # is what it documents and expects.
         /bin/chmod 555 '\(filterDestination)'
+        # Clear every extended attribute, and above all com.apple.quarantine.
+        # If this app arrived by AirDrop, Telegram or a download, that flag is
+        # on the bundle, and the copied driver inherits it. A quarantined
+        # filter makes Gatekeeper stall the job rather than run it, which
+        # looks exactly like "printing silently does nothing".
+        /usr/bin/xattr -c '\(filterDestination)' 2>/dev/null || true
         # Ad-hoc signing is mandatory on Apple Silicon. An unsigned binary is
         # killed by AMFI the instant cupsd execs it, and CUPS reports that only
         # as "Filter failed". Notarization is not needed for a local copy.
@@ -102,6 +108,7 @@ enum DriverInstaller {
         /bin/cp -f '\(ppd)' '\(ppdDestination)'
         /bin/chmod 644 '\(ppdDestination)'
         /usr/sbin/chown root:wheel '\(ppdDestination)'
+        /usr/bin/xattr -c '\(ppdDestination)' 2>/dev/null || true
 
         # Remove any previous queue, then create the real one.
         /usr/sbin/lpadmin -x '\(queueName)' 2>/dev/null || true
