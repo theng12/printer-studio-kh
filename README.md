@@ -1,166 +1,126 @@
-# printer-studio
+# Printer Studio KH
 
-A native macOS print engine that turns USB-tethered legacy printers — starting
-with the HP Laser 107a, a rebadged Samsung SL-M2026 with no Mac driver — into
-**AirPrint-discoverable network printers** for every device on the LAN.
+A macOS menu-bar app that makes a USB-only legacy printer usable from every
+device on your network, and keeps shared printers from silently locking up.
 
-Architecture (M4 mini as always-on print server):
+Built so that **no terminal is ever required**: install it, click a button,
+print from your iPhone.
 
-```
-┌──── iPhone, iPad, MacBook ────┐
-│  Cmd+P → AirPrint             │  ← Bonjour-discovered as
-└─────────────┬─────────────────┘    "HP Laser 107a (Mac mini)"
-              │ IPP Everywhere / PWG-Raster
-              ▼
-┌─── Mac mini (M4) ─────────────────────┐
-│  /usr/bin/ippeveprinter (Apple)       │  ← IPP/Bonjour, ships with macOS
-│             │                         │
-│             │ per-job command         │
-│             ▼                         │
-│  printer-studio  print-job            │  ← Rust binary
-│    ├─ PWG-Raster decoder              │
-│    ├─ PrinterEncoder (per-model)      │
-│    │   └─ Samsung QPDL  (HP Laser ▒)  │
-│    └─ USB transport via nusb          │
-│             │                         │
-└─────────────┼─────────────────────────┘
-              │ USB bulk OUT, EP 0x02
-              ▼
-       ┌──────────────┐
-       │ HP Laser 107a│
-       └──────────────┘
-```
+## What it does
 
-## Project status
+### 1. Sets up the HP Laser 107a
 
-| Phase | Status |
-|---|---|
-| 0  Validate USB access                                | ✅ done |
-| 1a USB transport module                               | ✅ done |
-| 1b QPDL encoder (PJL/headers/footers + algo0x11)      | ⚠️  structural parts done; band-encoding awaits real-printer validation |
-| 1c PWG-Raster decoder                                 | ✅ done (uncompressed 1-bpp) |
-| 1d End-to-end print-job CLI                           | ✅ done (dry-run; transmit gated behind flag) |
-| 2  ippeveprinter wrapper + LaunchAgent                | ✅ done; verified via ipptool round-trip |
-| 3  SwiftUI menu bar app                               | ⏸  deferred — needs full Xcode (only CLT installed) |
-| 4  Multi-model architecture                           | ✅ done — `PrinterEncoder` trait + registry |
-| 5  Installer + .app packaging                         | ✅ install/uninstall scripts; .app deferred with #3 |
+The HP Laser 107a is a rebadged Samsung SL-M2026 with no Apple driver and no
+AirPrint. It speaks Samsung's QPDL language over USB. This app installs a real
+driver for it, creates the print queue, and shares it — after which the printer
+appears to every iPhone, iPad and Mac on the network as a normal AirPrint
+printer.
 
-The single piece holding back a working end-to-end print is the **band encoding
-inside the QPDL driver** — see [docs/phase-1b-notes.md](docs/phase-1b-notes.md).
-It deliberately needs a real-printer test loop to validate safely; running it
-unsupervised risks paper/toner waste or the printer entering an error state.
+The driver is [splix](https://github.com/OpenPrinting/splix) 2.0.2, built from
+source for Apple Silicon. **See [docs/root-cause-and-fix.md](docs/root-cause-and-fix.md)
+for why this specific driver and version matter** — it is the whole story of
+the project.
 
-## Quick start
+### 2. Printer Share Fix
+
+When you share a printer from a Mac, macOS pins a per-printer user ACL onto the
+queue. Other Macs then submit as an unmatched user, and the job parks with
+**"Job held for authentication"**.
+
+The app keeps every shared queue open with `lpadmin -u allow:all`, either on
+demand or continuously via a background watcher that re-checks every 60
+seconds. It is idempotent — it only touches a queue when a restriction is
+actually present — and discovers printers dynamically, so nothing is
+hardcoded. This does not weaken administrator authentication; it only widens
+who may submit jobs, and `cupsd.conf` still limits that to the local network.
+
+## Install
 
 ```bash
-# 1. Build
-cargo build --release
-
-# 2. Verify the printer is reachable
-./target/release/printer-studio probe              # all USB devices
-./target/release/printer-studio detect-printers    # devices a registered driver supports
-./target/release/printer-studio info               # full identification + endpoint info
-
-# 3. Install the IPP daemon as a LaunchAgent
-./scripts/install.sh
-
-# 4. The printer is now advertised on the LAN
-dns-sd -B _ipp._tcp local
-# You should see: "HP Laser 107a (Mac mini)"
-
-# 5. From your Mac / iPhone / iPad: System Settings → Printers → Add → the new entry appears.
-#    Cmd+P from any app submits a job. Currently dry-run: the job is parsed
-#    and dumped to ~/Library/Logs/printer-studio/jobs/ but NOT transmitted.
+./app/build.sh --run
 ```
 
-## Going live (after Phase 1b is finished)
+That produces `dist/Printer Studio KH.app` and launches it. Drag it to
+`/Applications` if you want to keep it.
 
-Once the QPDL band encoder is validated against the physical printer:
+It lives in the menu bar. The window opens on first launch; afterwards, click
+the printer icon in the menu bar and choose **Open Printer Studio KH**.
+
+To set up the printer: plug the HP Laser 107a into this Mac by USB, switch it
+on, open the **HP Laser 107a** tab, and press **Set up the printer**. macOS
+will ask for your password once, because installing a print driver needs
+administrator rights.
+
+## Diagnostics
 
 ```bash
-launchctl setenv PRINTER_STUDIO_TRANSMIT 1
-./scripts/install.sh    # rebake the plist with the new value
+./app/report.sh && ./dist/printer-studio-report
 ```
 
-Now jobs flow all the way to USB and paper comes out.
+Prints everything the app knows: queues, states, sharing, whether the ACL is
+locking a queue, USB devices, driver presence, and the watcher's log.
 
-## Adding support for another printer model
+To confirm the driver emits the byte stream this printer requires:
 
-See [docs/adding-a-new-model.md](docs/adding-a-new-model.md). The short version:
+```bash
+./app/verify-bandwidth.sh
+```
 
-- Same family (another Samsung-engine HP/Samsung model): add the VID:PID to
-  `src/encoders/qpdl.rs` `supported_devices()`.
-- New family (HP ZjStream, PCL6, ESC/P, etc.): add a new file under
-  `src/encoders/`, implement the `PrinterEncoder` trait, register it in
-  `src/encoders/mod.rs::registry()`.
+This is an offline test — no printer and no paper needed. It is the regression
+test for the bug that stalled the project for months.
 
 ## Layout
 
 ```
-printer-studio-kh/
-├── src/
-│   ├── main.rs                       CLI entry (clap subcommands)
-│   ├── lib.rs                        re-exports
-│   ├── usb.rs                        UsbPrinter transport (nusb-based)
-│   ├── raster/
-│   │   ├── mod.rs                    MonoPage type
-│   │   ├── pattern.rs                test-page generator
-│   │   └── pwg.rs                    PWG-Raster decoder
-│   └── encoders/
-│       ├── mod.rs                    PrinterEncoder trait + registry
-│       └── qpdl/
-│           ├── codec.rs              PJL + page/band wrappers (Phase 1b)
-│           └── stream.rs             byte/bit writers
-├── scripts/
-│   ├── install.sh                    install LaunchAgent + binary
-│   ├── uninstall.sh                  remove same
-│   ├── printer-studio-ippeveprinter.sh  starts the IPP server
-│   ├── printer-studio-print-cmd.sh      per-job dispatch (called by ippeveprinter)
-│   ├── com.printer-studio.daemon.plist  reference LaunchAgent (install.sh writes a real one)
-│   └── make-test-pwg.py             generate a tiny PWG-Raster file for testing
-├── docs/
-│   ├── phase-1b-notes.md             how to finish the QPDL encoder safely
-│   ├── adding-a-new-model.md         extending to other printer families
-│   └── phase-3-menu-bar-app.md       deferred SwiftUI app design
-└── Cargo.toml
+app/
+├── build.sh                    build the .app (Command Line Tools only)
+├── report.sh                   build the diagnostic CLI
+├── verify-bandwidth.sh         prove the driver's band width is correct
+├── Resources/Info.plist
+├── Tools/Report.swift          the diagnostic CLI
+└── Sources/PrinterStudio/
+    ├── App.swift               menu bar entry point + app state
+    ├── Views.swift             all screens
+    ├── Models.swift            Printer, USBDevice, LogEntry
+    ├── Shell.swift             process running, admin escalation
+    ├── CUPS.swift              lpstat / lpadmin / ipptool
+    ├── ShareFix.swift          the "held for authentication" fix
+    ├── Driver.swift            HP Laser 107a detection, USB parsing
+    └── DriverInstaller.swift   installs the filter, PPD and queue
+vendor/splix/
+├── bin/rastertoqpdl            built for arm64, bundled into the app
+├── ppd/laser10x.ppd            the correct PPD — SpecialBandWidth: True
+└── reference/                  a known-good raster for the regression test
+src/                            the original Rust encoder — archived, see below
+docs/root-cause-and-fix.md      why the first attempt failed
 ```
 
-## CLI reference
+## Requirements
 
-```
-printer-studio probe
-    Dump every USB device + descriptors for printer-class ones.
+- Apple Silicon Mac. macOS 15 or later (developed on macOS 27).
+- Command Line Tools only — **full Xcode is not required**.
+- Administrator rights on first setup, to install the print driver.
 
-printer-studio info [--vid 0x03F0 --pid 0xE82A]
-    Show identification + endpoint info for one device. Confirms which
-    registered driver matches it.
+## Notes on the build
 
-printer-studio detect-printers
-    Scan the bus for any device a registered driver supports.
+Two things are unusual here, both deliberate:
 
-printer-studio list-drivers
-    Show every PrinterEncoder this build knows about + its VID:PIDs.
+- **No SwiftPM.** Its manifest API is broken in a Command Line Tools-only
+  install, so `build.sh` drives `swiftc` directly.
+- **No `@State`.** SwiftUI's `@State` is a macro, and the macro plugin ships
+  only with full Xcode. Every other property wrapper works, so view state lives
+  in the observable model instead. If you add a view, do not reach for `@State`.
 
-printer-studio encode-test-page --out /tmp/out.spl
-    Generate the built-in test pattern, encode as QPDL, save to file.
-    Currently bails at the band-encoder (Phase 1b).
+## The original Rust encoder
 
-printer-studio print-job [INPUT] [--dry-run-out PATH] [--i-know-what-im-doing]
-    Read PWG-Raster from stdin or INPUT file, parse, encode, optionally
-    transmit. This is what ippeveprinter calls per job.
+`src/` holds the first attempt: a native print engine with a USB transport, a
+PWG-Raster decoder, an IPP/AirPrint wrapper and a hand-written QPDL encoder.
+Everything works except the encoder's band width, which is what defeated it.
+It is kept for reference and is not on the print path. See
+[docs/root-cause-and-fix.md](docs/root-cause-and-fix.md).
 
-printer-studio send-raw FILE --i-know-what-im-doing
-    Lowest-level transmit: send raw bytes from FILE to the printer's
-    bulk OUT endpoint. Use only with a known-good QPDL stream.
-```
+## Licence
 
-## License
-
-This project is the user's own work. References that informed the byte
-layout (splix, foo2zjs) are GPLv2; this Rust port reads but does not
-include any source from them.
-
-## Hardware confirmed working
-
-- HP Laser 107a (rebadged Samsung SL-M2026), USB `03F0:E82A`, on macOS 26.4.1
-  arm64 (M4 Mac mini).
+This project is the user's own work. splix is GPLv2 and is used as a separate
+binary; its source is not included here. `vendor/splix/bin/rastertoqpdl` is a
+build of OpenPrinting/splix and carries that licence.
