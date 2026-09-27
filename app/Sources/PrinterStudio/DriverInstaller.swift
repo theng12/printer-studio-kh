@@ -155,6 +155,26 @@ enum DriverInstaller {
         """
     }
 
+    /// Releases the printer from Apple's IPP-over-USB daemon.
+    ///
+    /// Needed again after a reboot or a replug: `ippusbd` is launchd-managed,
+    /// re-claims the device, and the queue then sits at "The printer is
+    /// offline" for ever without logging anything.
+    static func releasePrinter() -> CommandResult {
+        Shell.runAsAdministrator(
+            """
+            /usr/bin/killall ippusbd 2>/dev/null || true
+            /bin/sleep 1
+            if /usr/bin/pgrep -q ippusbd; then
+                echo "ippusbd is still running — the printer may stay offline."
+            else
+                echo "Printer released from the IPP-over-USB service."
+            fi
+            """,
+            prompt: "Printer Studio KH needs to release the printer from macOS's IPP-over-USB service."
+        )
+    }
+
     /// Removes the queue, the filter and the PPD.
     static func uninstall(queueName: String = DriverInstaller.queueName) -> CommandResult {
         let script = """

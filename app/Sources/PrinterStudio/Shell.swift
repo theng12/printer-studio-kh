@@ -56,6 +56,7 @@ enum Tool {
     static var launchctl: String { path("launchctl") }
     static var bash: String { path("bash") }
     static var awk: String { path("awk") }
+    static var pgrep: String { path("pgrep") }
     static var open: String { path("open") }
 }
 

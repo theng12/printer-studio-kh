@@ -236,6 +236,14 @@ struct OverviewView: View {
     private var advice: [Advice] {
         var items: [Advice] = []
 
+        if state.printerHeldByIPPUSB {
+            items.append(Advice(
+                symbol: "exclamationmark.triangle.fill", tint: .red,
+                text: "macOS's IPP-over-USB service has claimed the printer. While it holds the device, CUPS cannot open it: the queue reports “offline” and jobs never print, with nothing logged to explain why. This comes back after a reboot or a replug.",
+                actionTitle: "Release",
+                action: { state.releasePrinter() }))
+        }
+
         if !state.sharingEnabled {
             items.append(Advice(
                 symbol: "wifi.slash", tint: .orange,
@@ -547,10 +555,20 @@ struct SetupView: View {
                         : "Turn on Printer Sharing so your other devices can print to it.",
                     done: state.sharingEnabled)
 
+                SetupStep(
+                    number: 5,
+                    title: "Release it from macOS's IPP-over-USB service",
+                    detail: state.printerHeldByIPPUSB
+                        ? "The printer is being held by ippusbd, so the queue will report “offline” and nothing will print. Press Release below."
+                        : "Not held — CUPS has the device, so jobs can print.",
+                    done: !state.printerHeldByIPPUSB)
+
                 HStack(spacing: 10) {
                     Button("Set up the printer") { state.installDriver() }
                         .buttonStyle(.borderedProminent)
                         .disabled(state.busy || !DriverInstaller.hasPayload)
+                    Button("Release printer") { state.releasePrinter() }
+                        .disabled(state.busy || !state.printerHeldByIPPUSB)
                     Button("Remove driver") { state.uninstallDriver() }
                         .disabled(state.busy || !Driver.isFilterInstalled)
                     if state.busy {

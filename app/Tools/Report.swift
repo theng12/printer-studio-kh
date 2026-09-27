@@ -115,6 +115,7 @@ struct Report {
 
         section("HP Laser 107a driver")
         print("Connected       \(Driver.connectedLaser107a != nil ? "yes" : "no")")
+        print("Held by ippusbd \(Driver.ippusbdHoldingPrinter() ? "YES — queue will report offline and nothing will print" : "no")")
         print("CUPS filter     \(Driver.installedFilter ?? "NOT INSTALLED")")
         print("PPD             \(Driver.installedPPD ?? "NOT INSTALLED")")
         print("Ready           \(Driver.isReady ? "yes" : "no")")

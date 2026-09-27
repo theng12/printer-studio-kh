@@ -107,6 +107,29 @@ enum Driver {
         usbDevices().first { $0.isLaser107a }
     }
 
+    /// True when Apple's IPP-over-USB daemon is running and holding this printer.
+    ///
+    /// This is the condition that makes the queue report "The printer is
+    /// offline" for ever while nothing is logged against it, which makes it
+    /// look exactly like a driver fault. Setup releases the device, but
+    /// `ippusbd` is launchd-managed and comes back after a reboot or a replug,
+    /// so it is worth being able to detect rather than guess at.
+    static func ippusbdHoldingPrinter() -> Bool {
+        let result = Shell.run(Tool.pgrep, ["-fl", "ippusbd"])
+        guard result.ok else { return false }            // non-zero = not running
+        let listing = result.stdout.lowercased()
+        guard listing.contains("ippusbd") else { return false }
+
+        // If our printer is attached, only care when it is the one being held.
+        if let device = connectedLaser107a {
+            let name = device.name.lowercased()
+            return listing.contains(name)
+                || listing.contains("laser")
+                || listing.contains("107")
+        }
+        return true
+    }
+
     /// Any USB device that looks like a printer, even if we do not know it.
     static func unknownUSBPrinters() -> [USBDevice] {
         usbDevices().filter { device in

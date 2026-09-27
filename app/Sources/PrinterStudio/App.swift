@@ -44,6 +44,9 @@ final class AppState: ObservableObject {
     @Published var watcherLoaded = false
     @Published var shareLog: [String] = []
     @Published var usbDevices: [USBDevice] = []
+    /// True when Apple's IPP-over-USB daemon is holding the printer, which makes
+    /// the queue report "offline" for ever. See Driver.ippusbdHoldingPrinter().
+    @Published var printerHeldByIPPUSB = false
     @Published var unfinishedJobs: [String] = []
     @Published var activity: [LogEntry] = []
 
@@ -121,6 +124,7 @@ final class AppState: ObservableObject {
             let jobs = CUPS.unfinishedJobs()
             let installed = ShareFix.isWatcherInstalled
             let loaded = ShareFix.isWatcherLoaded
+            let held = Driver.ippusbdHoldingPrinter()
 
             DispatchQueue.main.async {
                 self.printers = printers
@@ -129,6 +133,7 @@ final class AppState: ObservableObject {
                 self.unfinishedJobs = jobs
                 self.watcherInstalled = installed
                 self.watcherLoaded = loaded
+                self.printerHeldByIPPUSB = held
                 // Keep the detailed list in step for queues that no longer exist.
                 let names = Set(printers.map(\.name))
                 self.detailedPrinters.removeAll { !names.contains($0.name) }
@@ -244,6 +249,12 @@ final class AppState: ObservableObject {
         perform("Removing the printer driver…",
                 { DriverInstaller.uninstall() },
                 success: "The printer driver and queue were removed.")
+    }
+
+    func releasePrinter() {
+        perform("Releasing the printer from macOS's IPP-over-USB service…",
+                { DriverInstaller.releasePrinter() },
+                success: "Printer released — it should come back online now.")
     }
 
     func refreshNow() {
