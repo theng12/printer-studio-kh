@@ -79,8 +79,22 @@ enum DriverInstaller {
         guard let filter = bundledFilter, let ppd = bundledPPD else {
             return .failure("The bundled splix driver is missing from this build.")
         }
+        return Shell.runAsAdministrator(
+            installScript(deviceURI: deviceURI, queueName: queueName, filter: filter, ppd: ppd),
+            prompt: "Printer Studio KH needs to install the printer driver for the HP Laser 107a."
+        )
+    }
 
-        let script = """
+    /// The exact shell the installer runs, returned as a value so it can be
+    /// inspected and syntax-checked without executing anything privileged.
+    /// `printer-studio-report --print-install-script` prints it.
+    static func installScript(
+        deviceURI: String,
+        queueName: String = DriverInstaller.queueName,
+        filter: String,
+        ppd: String
+    ) -> String {
+        """
         set -e
 
         /bin/mkdir -p /usr/libexec/cups/filter
@@ -128,10 +142,6 @@ enum DriverInstaller {
 
         echo "Printer Studio KH: installed '\(queueName)' on \(deviceURI)"
         """
-        return Shell.runAsAdministrator(
-            script,
-            prompt: "Printer Studio KH needs to install the printer driver for the HP Laser 107a."
-        )
     }
 
     /// Removes the queue, the filter and the PPD.

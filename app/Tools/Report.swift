@@ -29,6 +29,16 @@ struct Report {
             print(result.combined.isEmpty ? "Watcher removed." : result.combined)
             exit(result.ok ? 0 : 1)
         }
+        if arguments.contains("--print-install-script") {
+            // Prints the exact shell the installer would run as administrator,
+            // so it can be syntax-checked without executing anything.
+            print(DriverInstaller.installScript(
+                deviceURI: DriverInstaller.usbDeviceURI() ?? "usb://HP/Laser%20107a",
+                filter: DriverInstaller.bundledFilter ?? "/path/to/rastertoqpdl",
+                ppd: DriverInstaller.bundledPPD ?? "/path/to/laser10x.ppd"
+            ))
+            exit(0)
+        }
 
         let line = String(repeating: "─", count: 68)
 
