@@ -175,6 +175,124 @@ enum DriverInstaller {
         )
     }
 
+    // MARK: - AirPrint advertisement for iOS
+
+    static let airPrintLabel = "com.theng12.printerstudio.airprint"
+
+    /// Installed per-user, not per-machine.
+    ///
+    /// `dns-sd` needs no privileges to publish a Bonjour service, so this needs
+    /// no administrator password and matches how the share-fix watcher is
+    /// installed. The trade-off: it starts at login rather than at boot, so a
+    /// Mac that reboots to the login screen and stays there advertises nothing
+    /// until someone logs in.
+    static var airPrintAgentPath: String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/\(airPrintLabel).plist").path
+    }
+
+    static var airPrintScriptPath: String {
+        ShareFix.supportDirectory.appendingPathComponent("airprint-bridge.sh").path
+    }
+
+    /// The launcher script, shipped inside the app bundle, with a fallback to
+    /// the checkout so the standalone report tool can install it too.
+    static var bundledAirPrintScript: String? {
+        if let url = Bundle.main.url(forResource: "airprint-bridge", withExtension: "sh") {
+            return url.path
+        }
+        let executableDirectory = URL(fileURLWithPath: CommandLine.arguments.first ?? "")
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent()
+        let candidate = executableDirectory
+            .appendingPathComponent("../app/Resources/airprint-bridge.sh")
+            .standardizedFileURL.path
+        return FileManager.default.fileExists(atPath: candidate) ? candidate : nil
+    }
+
+    static var isAirPrintInstalled: Bool {
+        FileManager.default.fileExists(atPath: airPrintAgentPath)
+    }
+
+    /// Publishes an AirPrint advertisement for every shared queue.
+    ///
+    /// macOS Printer Sharing does not publish the `_universal` subtype or a
+    /// `URF=` TXT key, and iOS ignores a printer without them — which is why a
+    /// Mac-shared printer never appears on an iPhone even though it works from
+    /// other Macs. This adds a second Bonjour record per shared queue pointing
+    /// at the same CUPS queue. Nothing is proxied; jobs take the same path.
+    static func installAirPrintBridge() -> CommandResult {
+        guard let source = bundledAirPrintScript else {
+            return .failure("The AirPrint advertisement script is missing from this build.")
+        }
+
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(at: ShareFix.supportDirectory,
+                                            withIntermediateDirectories: true)
+            try fileManager.createDirectory(
+                at: URL(fileURLWithPath: airPrintAgentPath).deletingLastPathComponent(),
+                withIntermediateDirectories: true)
+
+            if fileManager.fileExists(atPath: airPrintScriptPath) {
+                try fileManager.removeItem(atPath: airPrintScriptPath)
+            }
+            try fileManager.copyItem(atPath: source, toPath: airPrintScriptPath)
+            try fileManager.setAttributes([.posixPermissions: 0o755],
+                                          ofItemAtPath: airPrintScriptPath)
+            try agentPlist.write(toFile: airPrintAgentPath, atomically: true, encoding: .utf8)
+        } catch {
+            return .failure("Could not install the AirPrint advertisement: \(error.localizedDescription)")
+        }
+
+        let uid = getuid()
+        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
+        let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", airPrintAgentPath])
+        if !bootstrap.ok {
+            let legacy = Shell.run(Tool.launchctl, ["load", "-w", airPrintAgentPath])
+            if !legacy.ok {
+                return .failure("The advertisement was written but could not be started: \(bootstrap.combined)")
+            }
+        }
+        _ = Shell.run(Tool.launchctl, ["kickstart", "-k", "gui/\(uid)/\(airPrintLabel)"])
+
+        return CommandResult(status: 0, stdout: "AirPrint advertisement installed.", stderr: "")
+    }
+
+    static func removeAirPrintBridge() -> CommandResult {
+        let uid = getuid()
+        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
+
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(atPath: airPrintAgentPath)
+        try? fileManager.removeItem(atPath: airPrintScriptPath)
+
+        return CommandResult(status: 0, stdout: "AirPrint advertisement removed.", stderr: "")
+    }
+
+    private static var agentPlist: String {
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key>
+            <string>\(airPrintLabel)</string>
+            <key>ProgramArguments</key>
+            <array>
+                <string>/bin/bash</string>
+                <string>\(airPrintScriptPath)</string>
+                <string>run</string>
+            </array>
+            <key>RunAtLoad</key>
+            <true/>
+            <key>KeepAlive</key>
+            <true/>
+        </dict>
+        </plist>
+        """
+    }
+
     /// Removes the queue, the filter and the PPD.
     static func uninstall(queueName: String = DriverInstaller.queueName) -> CommandResult {
         let script = """
@@ -189,3 +307,4 @@ enum DriverInstaller {
         )
     }
 }
+

@@ -29,6 +29,16 @@ struct Report {
             print(result.combined.isEmpty ? "Watcher removed." : result.combined)
             exit(result.ok ? 0 : 1)
         }
+        if arguments.contains("--install-airprint") {
+            let result = DriverInstaller.installAirPrintBridge()
+            print(result.combined.isEmpty ? "AirPrint advertisement installed." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
+        if arguments.contains("--remove-airprint") {
+            let result = DriverInstaller.removeAirPrintBridge()
+            print(result.combined.isEmpty ? "AirPrint advertisement removed." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
         if arguments.contains("--print-install-script") {
             // Prints the exact shell the installer would run as administrator,
             // so it can be syntax-checked without executing anything.
@@ -122,6 +132,27 @@ struct Report {
         print("Would install   \(DriverInstaller.usbDeviceURI() ?? "(no USB printer found)")")
         print("Bundled filter  \(DriverInstaller.bundledFilter ?? "MISSING FROM BUILD")")
         print("Bundled PPD     \(DriverInstaller.bundledPPD ?? "MISSING FROM BUILD")")
+
+        section("AirPrint advertisement for iOS")
+        print("Installed       \(DriverInstaller.isAirPrintInstalled ? "yes" : "no")")
+        let advertisers = Shell.run(Tool.pgrep, ["-fl", "dns-sd -R"])
+        let advertised = advertisers.stdout
+            .split(separator: "\n")
+            .compactMap { line -> String? in
+                guard let range = line.range(of: "dns-sd -R ") else { return nil }
+                let rest = line[range.upperBound...]
+                // The service name runs up to the service type; without this it
+                // truncates at the first space and prints just "HP".
+                if let type = rest.range(of: " _ipp._tcp") {
+                    return String(rest[rest.startIndex..<type.lowerBound])
+                }
+                return String(rest.prefix(50))
+            }
+        if advertised.isEmpty {
+            print("Advertising     (nothing)")
+        } else {
+            for name in advertised { print("Advertising     \(name)") }
+        }
 
         // The USB backend's own discovery output. This is the first thing to
         // look at when the printer is attached but nothing prints: it says

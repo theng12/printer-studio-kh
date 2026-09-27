@@ -28,7 +28,6 @@ Four separate problems had to be solved to get there, all documented in
 ## What it does
 
 ### 1. Sets up the HP Laser 107a
-
 The HP Laser 107a is a rebadged Samsung SL-M2026 with no Apple driver and no
 AirPrint. It speaks Samsung's QPDL language over USB. This app installs a real
 driver for it, creates the print queue, and shares it — after which the printer
@@ -52,6 +51,37 @@ seconds. It is idempotent — it only touches a queue when a restriction is
 actually present — and discovers printers dynamically, so nothing is
 hardcoded. This does not weaken administrator authentication; it only widens
 who may submit jobs, and `cupsd.conf` still limits that to the local network.
+
+### 3. AirPrint for iPhone and iPad
+
+macOS Printer Sharing publishes shared queues over Bonjour, but it does **not**
+publish the two things iOS AirPrint discovery actually requires:
+
+- the `_universal` service subtype, and
+- a `URF=` key in the TXT record.
+
+Without them an iPhone or iPad ignores the printer completely. That is why a
+Mac-shared printer never appears in the iOS print dialog — even a printer that
+is natively AirPrint-capable, and even though it works perfectly from other
+Macs on the same network.
+
+The app publishes a second Bonjour record per shared printer, carrying those
+markers and pointing at the same CUPS queue. **Nothing is proxied:** jobs still
+travel CUPS → the queue's own driver → the printer. It re-scans every minute, so
+printers shared later are picked up without a restart, and it skips queues that
+are already AirPrint-capable.
+
+It installs as a per-user LaunchAgent, so it needs **no administrator
+password** — publishing a Bonjour service requires no privileges. The trade-off
+is that it starts at login rather than at boot.
+
+Two things worth knowing:
+
+- macOS cannot decode URF, the raster format iOS prefers. The advertisement
+  therefore lists `application/pdf` in its `pdl`, which iOS can send and macOS
+  can convert.
+- The fix is at the CUPS level and per-printer, so it covers *every* shared
+  queue, not just the 107a.
 
 ## Install
 

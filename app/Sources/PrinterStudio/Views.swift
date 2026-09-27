@@ -407,6 +407,36 @@ struct SharingView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Image(systemName: state.airPrintInstalled ? "checkmark.circle.fill" : "circle.dashed")
+                                .foregroundStyle(state.airPrintInstalled ? .green : .secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Print from iPhone and iPad").font(.callout.weight(.medium))
+                                Text(state.airPrintInstalled
+                                     ? "On — every shared printer is advertised to iOS, and new ones are picked up automatically."
+                                     : "Off. macOS shares printers with other Macs, but iOS ignores them: it needs the “_universal” subtype and a URF marker that Printer Sharing never publishes.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            if state.airPrintInstalled {
+                                Button("Turn off") { state.removeAirPrint() }
+                            } else {
+                                Button("Turn on") { state.installAirPrint() }
+                                    .buttonStyle(.borderedProminent)
+                            }
+                        }
+                        if state.airPrintInstalled {
+                            Text("Nothing is proxied — jobs still go through CUPS and the queue's own driver. No administrator password is needed, because publishing a Bonjour service requires no privileges.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(6)
+                }
+
+                GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Share this Mac's printers on the network",
                                isOn: Binding(get: { state.sharingEnabled },

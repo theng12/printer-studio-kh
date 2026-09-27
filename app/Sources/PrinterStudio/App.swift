@@ -47,6 +47,8 @@ final class AppState: ObservableObject {
     /// True when Apple's IPP-over-USB daemon is holding the printer, which makes
     /// the queue report "offline" for ever. See Driver.ippusbdHoldingPrinter().
     @Published var printerHeldByIPPUSB = false
+    /// True when the AirPrint advertisement for iOS is installed.
+    @Published var airPrintInstalled = false
     @Published var unfinishedJobs: [String] = []
     @Published var activity: [LogEntry] = []
 
@@ -125,6 +127,7 @@ final class AppState: ObservableObject {
             let installed = ShareFix.isWatcherInstalled
             let loaded = ShareFix.isWatcherLoaded
             let held = Driver.ippusbdHoldingPrinter()
+            let airPrint = DriverInstaller.isAirPrintInstalled
 
             DispatchQueue.main.async {
                 self.printers = printers
@@ -134,6 +137,7 @@ final class AppState: ObservableObject {
                 self.watcherInstalled = installed
                 self.watcherLoaded = loaded
                 self.printerHeldByIPPUSB = held
+                self.airPrintInstalled = airPrint
                 // Keep the detailed list in step for queues that no longer exist.
                 let names = Set(printers.map(\.name))
                 self.detailedPrinters.removeAll { !names.contains($0.name) }
@@ -255,6 +259,18 @@ final class AppState: ObservableObject {
         perform("Releasing the printer from macOS's IPP-over-USB service…",
                 { DriverInstaller.releasePrinter() },
                 success: "Printer released — it should come back online now.")
+    }
+
+    func installAirPrint() {
+        perform("Publishing your shared printers to AirPrint…",
+                { DriverInstaller.installAirPrintBridge() },
+                success: "Done — your shared printers are now visible to iPhone and iPad.")
+    }
+
+    func removeAirPrint() {
+        perform("Stopping the AirPrint advertisement…",
+                { DriverInstaller.removeAirPrintBridge() },
+                success: "AirPrint advertisement stopped.")
     }
 
     func refreshNow() {
