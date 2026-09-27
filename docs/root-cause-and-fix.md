@@ -164,6 +164,88 @@ CUPS also refuses to run a filter that is group- or world-writable, and on
 Apple Silicon refuses to run one that is not signed, so the install does
 all three: `chown root:wheel`, `chmod 0555`, `xattr -c`, `codesign -s -`.
 
+## The fourth trap: `ippusbd` holds the printer
+
+With the driver installed and the queue created, jobs still did nothing:
+
+```
+printer HPLaser107a now printing HPLaser107a-5.  enabled
+        The printer is offline.
+Alerts: connecting-to-device offline-report
+```
+
+The cause was Apple's IPP-over-USB daemon:
+
+```
+/usr/libexec/ippusbd usb://HP%20Inc./HP%20Laser%20107a?serial=CNB3P899PY
+```
+
+The printer advertises an IPP-USB interface (`class 7/1/4`), so `ippusbd` claims
+the device as soon as it appears. CUPS's `usb` backend then cannot open it and
+reports the queue offline — the job never even reaches the filter. Nothing is
+logged against the queue, which is what makes it look like a driver problem.
+
+Releasing the device (`killall ippusbd`, the macOS equivalent of the documented
+Linux fix of purging `ipp-usb`) changed the outcome immediately:
+
+| | before | after |
+|---|---|---|
+| printer state | `The printer is offline` | `Sending data to printer` |
+| job | stuck, pending | **completed, page printed** |
+
+**And the interface mode changed with it.** Once the backend could open the
+device, it set the alternate setting itself:
+
+```
+before:  HP Laser 107a  [class 7/1/4, alt 1]  -> IPP-over-USB
+after:   HP Laser 107a  [class 7/1/2, alt 0]  -> classic printer
+```
+
+So the custom IOKit backend that the sibling HP Laser 1003–1008 project needed
+was **not** required here. Apple's own `usb` backend switches to the classic
+interface correctly — it just has to be able to open the device first. The
+installer now runs the release as part of setup. `ippusbd` is launchd-managed,
+so it returns after a reboot or a replug; re-running setup clears it again.
+
+## Result
+
+```
+printer HPLaser107a is idle.  enabled
+  connection  usb://HP/HP%20Laser%20103%20107%20108?serial=CNB3P899PY
+  model       HP Laser 10x Series, 2.0.0
+  shared      yes
+  access      open to everyone
+
+Bonjour:  HP Laser 107a @ vengtheng's Mac Studio
+          reachable at vengthengs-Mac-Studio.local.:631
+          rp=printers/HPLaser107a
+          pdl=application/octet-stream,application/pdf,image/jpeg,
+              image/png,image/pwg-raster
+```
+
+An IPP query to the LAN address returns `successful-ok`, and a test page with a
+solid black bar prints correctly. iPhone, iPad and other Macs see it as a normal
+AirPrint printer.
+
+## A parsing bug worth remembering
+
+`Driver.usbDevices()` listed the printer as **"USB2 Hub [0x05ac:0xe82a]"** — a
+hub's name with the printer's product ID — and dropped the printer entirely,
+which made the app report a connected printer as absent and refuse to set it up.
+
+Cause: **ioreg emits a parent's remaining properties *after* its children's
+subtrees.** Collecting a node and letting later keys overwrite earlier ones
+therefore lets a child inherit its parent's identity. Fix: first value wins.
+
+Two earlier variants of the same class of bug, both found by checking counts
+against reality rather than trusting a plausible empty result:
+
+- properties arrive in no fixed order, so a node must be collected whole —
+  scanning for `bInterfaceClass` also matches copies inside the device's
+  `USB Device Info` dictionary;
+- ioreg indents with `|`, `+`, `-` and backtick, so trimming whitespace alone
+  silently skips every nested node.
+
 ## Verified, and not yet verified
 
 Verified offline, no hardware needed:
@@ -179,24 +261,28 @@ Verified offline, no hardware needed:
 - A quarantined copy of the driver does not run; a cleared one does.
 - The app builds, launches, and reads real queue state from CUPS.
 - The share fix clears a pinned ACL on a real queue, and is idempotent.
+- The install script runs end to end with paths redirected: filter lands at
+  0555 root:wheel with a valid signature, PPD at 0644, queue created and open.
 
-Two scripts cover all of that, and neither needs a printer:
+Verified on hardware:
+
+- The printer prints. A test page with a solid black bar comes out correctly,
+  which also confirms the 300-DPI page header, since a wrong header is exactly
+  what would leave the page blank.
+- The queue is reachable over the LAN and advertises AirPrint PDLs.
+
+Not verified:
+
+- Printing from an actual iPhone or iPad. The Bonjour record and the advertised
+  PDL list say it should work, but no iOS device was used.
+
+Two scripts cover the offline checks, and neither needs a printer:
 
 | script | what it proves |
 |---|---|
 | `app/verify-bandwidth.sh` | band width, the PPD gate, and the page-header grid |
 | `app/verify-pipeline.sh` | a real PDF survives the whole chain to QPDL |
 
-**Not yet verified — needs the printer plugged in:**
-
-- That the printer accepts the stream and physically feeds paper.
-- Whether the stock macOS `usb` CUPS backend can drive this printer at all.
-  This family is reported to be left on the IPP-over-USB interface, where the
-  firmware silently discards raw SPL, and the sibling HP Laser 1003–1008
-  project needed a custom IOKit backend to seize the port and force the
-  classic interface. That is unproven for the 107a and is the largest
-  remaining unknown.
-
-Everything up to USB transmission is proven; the last hop is untested.
-`printer-studio-report` prints the USB backend's own discovery output, which
-is the first thing to read once the printer is attached.
+`app/use-driver.sh patched\|stock\|status` swaps the page-header variant if a
+page ever comes out blank again, and `printer-studio-report` prints queue state,
+USB interfaces, and the USB backend's own discovery output.

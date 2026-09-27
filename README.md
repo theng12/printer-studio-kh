@@ -6,6 +6,25 @@ device on your network, and keeps shared printers from silently locking up.
 Built so that **no terminal is ever required**: install it, click a button,
 print from your iPhone.
 
+## Status
+
+**Working** — verified on 2026-09-27, macOS 27, HP Laser 107a.
+
+The printer prints, and it appears on the LAN as a normal AirPrint printer.
+Four separate problems had to be solved to get there, all documented in
+[docs/root-cause-and-fix.md](docs/root-cause-and-fix.md):
+
+1. **Band width.** The firmware demands exactly one of a fixed set of values,
+   taken from Samsung's own driver. A naive width is accepted without error and
+   silently produces nothing.
+2. **Page header geometry.** It must sit on ULD's 300-DPI grid. Still broken in
+   splix 2.0.2 and in master; patched here.
+3. **Quarantine.** A driver that arrived by AirDrop or a download inherits
+   `com.apple.quarantine`, and Gatekeeper then refuses to run it.
+4. **`ippusbd`.** Apple's IPP-over-USB daemon claims the printer, so CUPS's
+   `usb` backend cannot open it and the queue sits at "The printer is offline"
+   forever. Releasing the device is what makes it work at all.
+
 ## What it does
 
 ### 1. Sets up the HP Laser 107a

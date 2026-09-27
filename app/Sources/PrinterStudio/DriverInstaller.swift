@@ -136,6 +136,17 @@ enum DriverInstaller {
             -o printer-is-shared=true \\
             -o printer-error-policy=retry-job
 
+        # macOS's IPP-over-USB daemon (ippusbd) claims this printer the moment it
+        # appears, because the device advertises an IPP-USB interface. That leaves
+        # CUPS's usb backend unable to open it, and the queue reports
+        # "The printer is offline" while jobs sit there and never print.
+        #
+        # Releasing the device is what makes the queue work at all. It is the
+        # macOS equivalent of the documented Linux fix, purging ipp-usb.
+        # ippusbd is launchd-managed, so it returns after a reboot or if the
+        # printer is unplugged and replugged; re-run setup if that happens.
+        /usr/bin/killall ippusbd 2>/dev/null || true
+
         # Share it, and keep the queue open to the LAN from the start.
         /usr/sbin/cupsctl --share_printers=1 --remote_any=1
         /usr/sbin/lpadmin -p '\(queueName)' -u allow:all

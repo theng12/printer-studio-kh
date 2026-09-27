@@ -49,36 +49,54 @@ enum Driver {
 
     // MARK: - USB
 
-    /// Parses the IORegistry for printer-class USB devices.
+    /// Parses the IORegistry for USB devices.
+    ///
+    /// Collected one node at a time rather than streamed, because properties
+    /// arrive in no fixed order: idProduct can precede the product name, so a
+    /// streaming parser pairs one device's name with another's IDs. That is not
+    /// hypothetical — it produced "USB2 Hub [0x05ac:0xe82a]", Apple's vendor ID
+    /// with this printer's product ID, and dropped the printer from the list
+    /// entirely, which would make the app refuse to set up a connected printer.
     static func usbDevices() -> [USBDevice] {
-        let result = Shell.run(Tool.ioreg, ["-p", "IOUSB", "-w0", "-l"])
+        let result = Shell.run(Tool.ioreg, ["-r", "-c", "IOUSBHostDevice", "-w0", "-l"])
         guard result.ok else { return [] }
 
         var devices: [USBDevice] = []
-        var name: String?
-        var vendor: String?
-        var product: String?
+        var node: [String: String] = [:]
 
         func flush() {
-            if let name, let vendor, let product {
-                devices.append(USBDevice(name: name, vendorID: vendor, productID: product))
-            }
-            name = nil
-            vendor = nil
-            product = nil
+            defer { node = [:] }
+            guard
+                let name = node["USB Product Name"],
+                let vendor = node["idVendor"].flatMap(hexString),
+                let product = node["idProduct"].flatMap(hexString)
+            else { return }
+            devices.append(USBDevice(name: name, vendorID: vendor, productID: product))
         }
 
         for raw in result.stdout.split(separator: "\n") {
-            let line = raw.trimmingCharacters(in: .whitespaces)
+            let line = raw.trimmingCharacters(in: indentNoise)
 
-            if line.hasPrefix("\"USB Product Name\"") {
+            if line.contains("<class IOUSBHostDevice") {
                 flush()
-                name = quotedValue(line)
-            } else if line.hasPrefix("\"idVendor\"") {
-                vendor = hexValue(line)
-            } else if line.hasPrefix("\"idProduct\"") {
-                product = hexValue(line)
+                continue
             }
+            guard line.hasPrefix("\""), let equals = line.range(of: " = ") else { continue }
+
+            let key = String(line[line.startIndex..<equals.lowerBound])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            var value = String(line[equals.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") {
+                value = String(value.dropFirst().dropLast())
+            }
+            // First value wins, deliberately. ioreg emits a parent's remaining
+            // properties *after* its children's subtrees, so with last-wins a
+            // child node picks up its parent's name and IDs. That is exactly
+            // what happened: the printer came out listed as "USB2 Hub
+            // [0x05ac:0xe82a]" — the hub's name with the printer's product ID —
+            // and the printer itself disappeared from the list entirely, which
+            // would make the app refuse to set up a connected printer.
+            if node[key] == nil { node[key] = value }
         }
         flush()
 
@@ -169,11 +187,6 @@ enum Driver {
             ))
         }
 
-        // ioreg draws its tree with |, +, - and ` characters in the indentation,
-        // so trimming whitespace alone leaves a leading "|" and every nested
-        // interface gets skipped.
-        let indentNoise = CharacterSet(charactersIn: " |+-`")
-
         for raw in result.stdout.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: indentNoise)
 
@@ -189,7 +202,7 @@ enum Driver {
             if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") {
                 value = String(value.dropFirst().dropLast())
             }
-            node[key] = value
+            if node[key] == nil { node[key] = value }   // first wins — see usbDevices()
         }
         flush()
 
@@ -212,6 +225,13 @@ enum Driver {
 
     // MARK: - Parsing helpers
 
+    // MARK: - Parsing helpers
+
+    /// ioreg draws its tree with `|`, `+`, `-` and backtick characters in the
+    /// indentation, so trimming whitespace alone leaves a leading `|` and the
+    /// line is silently missed. Both parsers below depend on this.
+    private static let indentNoise = CharacterSet(charactersIn: " |+-`")
+
     private static func quotedValue(_ line: String) -> String? {
         guard let first = line.range(of: "= \"") else { return nil }
         let rest = line[first.upperBound...]
@@ -219,9 +239,8 @@ enum Driver {
         return String(rest[rest.startIndex..<end])
     }
 
-    private static func hexValue(_ line: String) -> String? {
-        guard let equals = line.range(of: "= ") else { return nil }
-        let raw = line[equals.upperBound...].trimmingCharacters(in: .whitespaces)
+    /// ioreg reports numeric properties in decimal; normalise to 0xNNNN.
+    private static func hexString(_ raw: String) -> String? {
         if raw.hasPrefix("0x") { return raw.lowercased() }
         if let decimal = Int(raw) { return String(format: "0x%04x", decimal) }
         return nil

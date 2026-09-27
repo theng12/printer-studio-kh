@@ -119,12 +119,19 @@ enum CUPS {
     }
 
     /// Turns Printer Sharing on or off. Needs administrator rights.
+    ///
+    /// Note the flag spelling. macOS's `cupsctl` takes `--share-printers` with
+    /// dashes and no value, while the settings it *reports* use underscores
+    /// (`_share_printers=1`). Passing `--share_printers=1` — which looks like
+    /// the obvious form — fails with "Unknown option".
+    ///
+    /// Only `--share-printers` is set, not `--remote-any`. Sharing covers the
+    /// local network, which is what a LAN printer needs; `--remote-any` would
+    /// additionally open the queue to hosts beyond it.
     static func setSharingEnabled(_ enabled: Bool) -> CommandResult {
-        let script = """
-        \(Tool.cupsctl) --share_printers=\(enabled ? 1 : 0) --remote_any=\(enabled ? 1 : 0)
-        """
+        let flag = enabled ? "--share-printers" : "--no-share-printers"
         return Shell.runAsAdministrator(
-            script,
+            "\(Tool.cupsctl) \(flag)",
             prompt: "Printer Studio KH needs to \(enabled ? "turn on" : "turn off") Printer Sharing."
         )
     }
