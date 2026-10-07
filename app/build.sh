@@ -95,6 +95,25 @@ else
   echo "!! warning: Resources/PrinterStudio.icns missing — run ./app/make-icon.sh" >&2
 fi
 
+# Ad-hoc signature: enough for local use, no developer account needed.
+#
+# This MUST happen before the disk image is built. It used to come after, so
+# every .dmg packed an unsigned app — and macOS does not merely call an
+# unsigned app "unidentified", it calls it "damaged and can't be opened" and
+# offers no way past it, not even by right-clicking. That is the difference
+# between one right-click and needing xattr -cr in a terminal.
+if /usr/bin/codesign --force --sign - "$APP" 2>/dev/null; then
+  echo "==> Ad-hoc signed"
+else
+  echo "==> warning: ad-hoc signing failed (the app will still run locally)"
+fi
+
+# Verify what we are about to ship, rather than assuming the signature took.
+if ! /usr/bin/codesign --verify --deep --strict "$APP" 2>/dev/null; then
+  echo "!! error: the app did not verify after signing; not packaging it" >&2
+  exit 1
+fi
+
 # A .dmg is the one file to send by AirDrop or Telegram: it holds the app, the
 # Read Me, and an Applications shortcut. Build with --dmg.
 if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
@@ -109,13 +128,6 @@ if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
     -ov -format UDZO "$DMG"
   rm -rf "$STAGE"
   echo "==> Built: $DMG"
-fi
-
-# Ad-hoc signature: enough for local use, no developer account needed.
-if /usr/bin/codesign --force --sign - "$APP" 2>/dev/null; then
-  echo "==> Ad-hoc signed"
-else
-  echo "==> warning: ad-hoc signing failed (the app will still run locally)"
 fi
 
 echo "==> Built: $APP"
