@@ -56,6 +56,10 @@ final class AppState: ObservableObject {
     @Published var stickerSizes: [StickerSize] = StickerSizeStore.load()
     /// Every CUPS queue, flagged where it looks like a label printer.
     @Published var labelQueues: [(queue: String, isLabel: Bool)] = []
+    /// What each label queue currently advertises, straight from the PPD —
+    /// the same list an iPhone reads. Lets the screen answer "did it work?"
+    /// without needing the phone.
+    @Published var offeredSizes: [String: [String]] = [:]
     @Published var unfinishedJobs: [String] = []
     @Published var activity: [LogEntry] = []
 
@@ -151,6 +155,10 @@ final class AppState: ObservableObject {
             let airPrint = DriverInstaller.isAirPrintInstalled
             let login = LoginItem.isEnabled
             let labelQueues = PageSizeInstaller.queues()
+            var offered: [String: [String]] = [:]
+            for entry in labelQueues where entry.isLabel {
+                offered[entry.queue] = PageSizeInstaller.currentSizes(queue: entry.queue)
+            }
 
             DispatchQueue.main.async {
                 self.printers = printers
@@ -163,6 +171,7 @@ final class AppState: ObservableObject {
                 self.airPrintInstalled = airPrint
                 self.startsAtLogin = login
                 self.labelQueues = labelQueues
+                self.offeredSizes = offered
                 // Keep the detailed list in step for queues that no longer exist.
                 let names = Set(printers.map(\.name))
                 self.detailedPrinters.removeAll { !names.contains($0.name) }

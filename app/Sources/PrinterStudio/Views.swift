@@ -699,6 +699,22 @@ struct StickerSizesView: View {
         state.labelQueues.filter(\.isLabel).map(\.queue)
     }
 
+    /// How many of a queue's advertised sizes are ours.
+    private func countOfOurs(_ queue: String) -> Int {
+        (state.offeredSizes[queue] ?? []).filter { $0.hasPrefix(PageSizeInstaller.marker) }.count
+    }
+
+    /// What a printer currently advertises, in the words a person would use.
+    /// Kept out of the ViewBuilder: a `let` binding inside one confused
+    /// ForEach overload resolution badly enough to pick the Binding variant.
+    private func summary(for queue: String) -> String {
+        let offered = (state.offeredSizes[queue] ?? []).count
+        let ours = countOfOurs(queue)
+        return ours == 0
+            ? "offers \(offered) sizes — none of yours yet"
+            : "offers \(offered) sizes, \(ours) of them yours"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -769,10 +785,16 @@ struct StickerSizesView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {
                             ForEach(targets, id: \.self) { queue in
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
-                                    Text(queue).font(.callout)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                        Text(queue).font(.callout)
+                                    }
+                                    Text(summary(for: queue))
+                                        .font(.caption)
+                                        .foregroundStyle(countOfOurs(queue) > 0 ? .green : .secondary)
+                                        .padding(.leading, 24)
                                 }
                             }
                             Text("Applying rewrites each printer's PPD, so macOS will ask for your password once. Sizes already applied are replaced, never duplicated.")
