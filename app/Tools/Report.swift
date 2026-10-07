@@ -29,6 +29,45 @@ struct Report {
             print(result.combined.isEmpty ? "Watcher removed." : result.combined)
             exit(result.ok ? 0 : 1)
         }
+        if arguments.contains("--list-sticker-sizes") {
+            for size in StickerSizeStore.load() {
+                print("\(size.enabled ? "[x]" : "[ ]") \(size.label)")
+                print("      ppd key: \(size.key)")
+            }
+            exit(0)
+        }
+        if let at = arguments.firstIndex(of: "--preview-sticker-ppd"), at + 1 < arguments.count {
+            let path = arguments[at + 1]
+            guard let ppd = try? String(contentsOfFile: path, encoding: .utf8) else {
+                print("cannot read \(path)")
+                exit(1)
+            }
+            // Written with FileHandle, not print(): print() appends a newline,
+            // which made a re-apply look non-idempotent when it was not.
+            let transformed = PageSizeInstaller.transform(
+                ppd: ppd, adding: StickerSizeStore.load())
+            FileHandle.standardOutput.write(Data(transformed.utf8))
+            exit(0)
+        }
+        if arguments.contains("--label-queues") {
+            let all = PageSizeInstaller.queues()
+            if all.isEmpty { print("no queues") }
+            for entry in all {
+                let maxWidth = PageSizeInstaller.maxWidthMM(queue: entry.queue)
+                    .map { String(format: "%.0f mm", $0) } ?? "unknown"
+                let sizes = PageSizeInstaller.currentSizes(queue: entry.queue)
+                print("\(entry.isLabel ? "LABEL" : "other")  \(entry.queue)")
+                print("       offers \(sizes.count): \(sizes.joined(separator: " "))")
+                print("       max width: \(maxWidth)")
+            }
+            exit(0)
+        }
+        if arguments.contains("--apply-sticker-sizes") {
+            let targets = PageSizeInstaller.queues().filter { $0.isLabel }.map { $0.queue }
+            let result = PageSizeInstaller.apply(sizes: StickerSizeStore.load(), to: targets)
+            print(result.combined.isEmpty ? "Applied." : result.combined)
+            exit(result.ok ? 0 : 1)
+        }
         if arguments.contains("--enable-login-item") {
             let result = LoginItem.enable()
             print(result.combined.isEmpty ? "Login item enabled." : result.combined)

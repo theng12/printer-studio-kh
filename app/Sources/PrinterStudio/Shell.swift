@@ -45,6 +45,9 @@ enum Tool {
     static var lpstat: String { path("lpstat") }
     static var lpadmin: String { path("lpadmin") }
     static var lpoptions: String { path("lpoptions") }
+    /// Validates a PPD before we install it, so a bad entry cannot leave a
+    /// printer unusable.
+    static var cupstestppd: String { path("cupstestppd") }
     static var lp: String { path("lp") }
     static var lpinfo: String { path("lpinfo") }
     static var cupsConfig: String { path("cups-config") }

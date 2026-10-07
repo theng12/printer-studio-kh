@@ -10,7 +10,7 @@ import AppKit
 /// ships only with full Xcode, so this app avoids it entirely and keeps view
 /// state in the observable model instead.
 enum Screen: String, CaseIterable, Identifiable {
-    case overview, printers, sharing, setup, activity, settings
+    case overview, printers, sharing, stickers, setup, activity, settings
     var id: String { rawValue }
 
     var title: String {
@@ -18,6 +18,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .overview: return "Overview"
         case .printers: return "Printers"
         case .sharing: return "Sharing"
+        case .stickers: return "Sticker Sizes"
         case .setup: return "HP Laser 107a"
         case .activity: return "Activity"
         case .settings: return "Settings"
@@ -29,6 +30,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .overview: return "gauge.medium"
         case .printers: return "printer"
         case .sharing: return "wifi"
+        case .stickers: return "tag"
         case .setup: return "wrench.and.screwdriver"
         case .activity: return "list.bullet.rectangle"
         case .settings: return "gearshape"
@@ -71,6 +73,7 @@ struct MainWindow: View {
                 case .sharing: SharingView()
                 case .setup: SetupView()
                 case .activity: ActivityView()
+                case .stickers: StickerSizesView()
                 case .settings: SettingsView()
                 }
             }
@@ -678,6 +681,114 @@ struct SetupStep: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+    }
+}
+
+// MARK: - Sticker sizes
+
+/// Where label sizes are managed.
+///
+/// This screen exists because an iPhone cannot invent a page size. Its print
+/// dialog offers exactly what the printer advertises and nothing more, so
+/// customising has to happen here, on the Mac, and then shows up on every phone
+/// that connects.
+struct StickerSizesView: View {
+    @EnvironmentObject var state: AppState
+
+    private var targets: [String] {
+        state.labelQueues.filter(\.isLabel).map(\.queue)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Sticker sizes").font(.title2.weight(.semibold))
+
+                Text("Label printers ship with three sizes — 2 x 4, 4 x 4 and 4 x 6 inches — and none of them match real sticker stock. Add the sizes you actually use, and they appear in the page-size menu when you print from an iPhone or iPad.\n\nAn iPhone cannot enter a custom size: it offers exactly what the printer advertises. So this is where sizes are set — once here, usable from every phone.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 8) {
+                            Text("On").frame(width: 30, alignment: .leading)
+                            Text("Name").frame(width: 150, alignment: .leading)
+                            Text("Width").frame(width: 80, alignment: .leading)
+                            Text("Height").frame(width: 80, alignment: .leading)
+                            Spacer()
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        ForEach($state.stickerSizes) { $size in
+                            HStack(spacing: 8) {
+                                Toggle("", isOn: $size.enabled)
+                                    .labelsHidden()
+                                    .frame(width: 30, alignment: .leading)
+                                TextField("Name", text: $size.name)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 150)
+                                TextField("mm", value: $size.widthMM, format: .number)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 80)
+                                TextField("mm", value: $size.heightMM, format: .number)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 80)
+                                Text("mm").font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                Button {
+                                    state.removeStickerSize(size.id)
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Remove this size")
+                            }
+                        }
+                    }
+                    .padding(6)
+                }
+
+                HStack(spacing: 10) {
+                    Button("Add a size") { state.addStickerSize() }
+                    Button("Restore defaults") { state.resetStickerSizes() }
+                    Spacer()
+                    Button("Apply to printers") { state.applyStickerSizes() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(targets.isEmpty || state.busy)
+                }
+                .disabled(state.busy)
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Where these go").font(.headline)
+                        if targets.isEmpty {
+                            Text("No label printer found yet. Install its driver and add it in System Settings > Printers & Scanners, then come back — the list updates itself.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            ForEach(targets, id: \.self) { queue in
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                    Text(queue).font(.callout)
+                                }
+                            }
+                            Text("Applying rewrites each printer's PPD, so macOS will ask for your password once. Sizes already applied are replaced, never duplicated.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(6)
+                }
+            }
+            .padding(24)
+            .onChange(of: state.stickerSizes) { _ in
+                state.saveStickerSizes()
+            }
+        }
     }
 }
 

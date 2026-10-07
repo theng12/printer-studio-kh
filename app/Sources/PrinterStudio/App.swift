@@ -51,6 +51,11 @@ final class AppState: ObservableObject {
     @Published var airPrintInstalled = false
     /// True when the app is registered to open at login.
     @Published var startsAtLogin = false
+
+    /// The user's sticker sizes, as last saved.
+    @Published var stickerSizes: [StickerSize] = StickerSizeStore.load()
+    /// Every CUPS queue, flagged where it looks like a label printer.
+    @Published var labelQueues: [(queue: String, isLabel: Bool)] = []
     @Published var unfinishedJobs: [String] = []
     @Published var activity: [LogEntry] = []
 
@@ -145,6 +150,7 @@ final class AppState: ObservableObject {
             let held = Driver.ippusbdHoldingPrinter()
             let airPrint = DriverInstaller.isAirPrintInstalled
             let login = LoginItem.isEnabled
+            let labelQueues = PageSizeInstaller.queues()
 
             DispatchQueue.main.async {
                 self.printers = printers
@@ -156,6 +162,7 @@ final class AppState: ObservableObject {
                 self.printerHeldByIPPUSB = held
                 self.airPrintInstalled = airPrint
                 self.startsAtLogin = login
+                self.labelQueues = labelQueues
                 // Keep the detailed list in step for queues that no longer exist.
                 let names = Set(printers.map(\.name))
                 self.detailedPrinters.removeAll { !names.contains($0.name) }
@@ -289,6 +296,40 @@ final class AppState: ObservableObject {
         perform("Stopping the AirPrint advertisement…",
                 { DriverInstaller.removeAirPrintBridge() },
                 success: "AirPrint advertisement stopped.")
+    }
+
+    // MARK: - Sticker sizes
+
+    func saveStickerSizes() {
+        StickerSizeStore.save(stickerSizes)
+    }
+
+    func addStickerSize() {
+        stickerSizes.append(StickerSize(name: "New size", widthMM: 50, heightMM: 30))
+        StickerSizeStore.save(stickerSizes)
+    }
+
+    func removeStickerSize(_ id: UUID) {
+        stickerSizes.removeAll { $0.id == id }
+        StickerSizeStore.save(stickerSizes)
+    }
+
+    func resetStickerSizes() {
+        stickerSizes = StickerSizeStore.defaults
+        StickerSizeStore.save(stickerSizes)
+    }
+
+    /// Writes the sizes into every queue that looks like a label printer, which
+    /// is what makes them appear on an iPhone.
+    func applyStickerSizes() {
+        StickerSizeStore.save(stickerSizes)
+        let targets = labelQueues.filter(\.isLabel).map(\.queue)
+        // Copied out first: the closure is @escaping, so it needs its own value
+        // rather than a reference to the published property.
+        let sizes = stickerSizes
+        perform("Adding your sizes to \(targets.count) printer\(targets.count == 1 ? "" : "s")…",
+                { PageSizeInstaller.apply(sizes: sizes, to: targets) },
+                success: "Done — your iPhone and iPad will now offer these sizes.")
     }
 
     func setStartAtLogin(_ enabled: Bool) {
