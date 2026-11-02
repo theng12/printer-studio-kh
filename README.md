@@ -130,7 +130,7 @@ ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
 the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
 
 For every release, bump the version and build in `app/Resources/Info.plist`
-and add a matching `## <version>` section to the root `CHANGELOG.md`. Settings
+and add a matching `## <version> — <date>` section to the root `CHANGELOG.md`. Settings
 shows that version and its What's New notes. The build bundles the matching
 notes and fails if they are missing or empty. Check extraction with
 `bash app/Tools/test-release-notes.sh`.

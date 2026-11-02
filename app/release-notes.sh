@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Extracts release notes for a specific version from CHANGELOG.md.
-# Matches literal "## <version>" headings exactly.
+# Matches "## <version> — <date>" (or a bare "## <version>") headings exactly.
 # Outputs trimmed lines or exits non-zero if missing or empty.
 #
 set -euo pipefail
@@ -25,7 +25,7 @@ if [ ! -f "$CHANGELOG" ]; then
 fi
 
 RAW_NOTES=$(awk -v ver="$VERSION" '
-  $0 == "## " ver { found=1; next }
+  $0 == "## " ver || index($0, "## " ver " — ") == 1 { found=1; next }
   found && /^## / { exit }
   found { print }
 ' "$CHANGELOG")
