@@ -405,6 +405,11 @@ struct TestPaperSizes {
         let shellResult = Shell.run("/bin/sh", ["-c", "printf '%s' \(PageSizeInstaller.shellQuoted(shellText))"])
         assertTest(shellResult.ok && shellResult.stdout == shellText,
                    "Root summary quoting keeps label text literal without shell evaluation")
+        let namedSize = StickerSize(name: "Small", widthMM: 30, heightMM: 40)
+        assertTest(namedSize.label == "Small (30 x 40 mm / 1.18 x 1.57 in)",
+                   "Printer label includes millimetres and inches even for a plain name")
+        let inchSize = StickerSize(name: "US sheet", widthMM: 215.9, heightMM: 279.4)
+        assertTest(inchSize.inchesLabel == "8.50 x 11.00", "Inch conversion uses exact 25.4 mm per inch")
         let controls = StickerSize(name: "Label\u{0}\tName", widthMM: 30, heightMM: 40)
         assertTest(!controls.sanitizedName.contains("\u{0}") && !controls.sanitizedName.contains("\t"),
                    "PPD labels strip control characters")
@@ -439,8 +444,8 @@ struct TestPaperSizes {
         ]
 
         let t1 = PageSizeInstaller.transform(ppd: thermalPPD, adding: sizes)
-        assertTest(t1.contains("*PageSize psz300x400-30x40/30x40 (30 x 40 mm)"), "Transformed PPD contains 30x40 PageSize")
-        assertTest(t1.contains("*PageSize psz500x700-50x70/50x70 (50 x 70 mm)"), "Transformed PPD contains 50x70 PageSize")
+        assertTest(t1.contains("*PageSize psz300x400-30x40/30x40 (30 x 40 mm / 1.18 x 1.57 in)"), "Transformed PPD contains 30x40 PageSize")
+        assertTest(t1.contains("*PageSize psz500x700-50x70/50x70 (50 x 70 mm / 1.97 x 2.76 in)"), "Transformed PPD contains 50x70 PageSize")
 
         // Idempotence: transforming the result again produces identical content
         let t2 = PageSizeInstaller.transform(ppd: t1, adding: sizes)

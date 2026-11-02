@@ -261,7 +261,8 @@ build of OpenPrinting/splix and carries that licence.
 
 Version 1.0.3 includes editable 30 × 40, 50 × 70 and 70 × 100 mm presets,
 plus A5 (148 × 210 mm) and A4 (210 × 297 mm), alongside the existing label
-presets. Existing saved sizes and switches are kept when the new presets are
+presets. The list and generated printer labels show both millimetres and inches
+(1 inch = 25.4 mm); editable width and height remain in millimetres. Existing saved sizes and switches are kept when the new presets are
 added. Width and height describe the stock's feed orientation.
 
 On each Mac, install the label printer's driver and queue, open **Paper &

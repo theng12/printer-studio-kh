@@ -41,8 +41,13 @@ struct StickerSize: Codable, Identifiable, Hashable {
 
     /// The human-readable part of the PPD entry, shown by `lpoptions -l` and
     /// therefore by the iPhone.
+    var inchesLabel: String {
+        let locale = Locale(identifier: "en_US_POSIX")
+        return String(format: "%.2f x %.2f", locale: locale, widthMM / 25.4, heightMM / 25.4)
+    }
+
     var label: String {
-        "\(sanitizedName) (\(Self.mm(widthMM)) x \(Self.mm(heightMM)) mm)"
+        "\(sanitizedName) (\(Self.mm(widthMM)) x \(Self.mm(heightMM)) mm / \(inchesLabel) in)"
     }
 
     /// Dimensions in PostScript points, which is what a PPD stores.

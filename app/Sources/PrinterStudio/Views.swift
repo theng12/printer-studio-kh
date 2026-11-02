@@ -729,8 +729,9 @@ struct StickerSizesView: View {
                         HStack(spacing: 8) {
                             Text("On").frame(width: 30, alignment: .leading)
                             Text("Name").frame(width: 150, alignment: .leading)
-                            Text("Width").frame(width: 80, alignment: .leading)
-                            Text("Height").frame(width: 80, alignment: .leading)
+                            Text("Width (mm)").frame(width: 80, alignment: .leading)
+                            Text("Height (mm)").frame(width: 80, alignment: .leading)
+                            Text("Inches").frame(width: 150, alignment: .leading)
                             Spacer()
                         }
                         .font(.caption)
@@ -750,7 +751,11 @@ struct StickerSizesView: View {
                                 TextField("mm", value: $size.heightMM, format: .number)
                                     .textFieldStyle(.roundedBorder)
                                     .frame(width: 80)
-                                Text("mm").font(.caption).foregroundStyle(.secondary)
+                                Text(size.inchesLabel + " in")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 150, alignment: .leading)
+                                    .textSelection(.enabled)
                                 Spacer()
                                 Button {
                                     state.removeStickerSize(size.id)

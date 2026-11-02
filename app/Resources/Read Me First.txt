@@ -101,7 +101,8 @@ change Mac login, FileVault, or privacy settings.
 PAPER AND STICKER SIZES (1.0.3)
 -------------------------------
 Open Paper & Sticker Sizes. The list includes 30 x 40, 50 x 70 and 70 x 100 mm,
-A5 (148 x 210 mm), A4 (210 x 297 mm), and common label sizes. You can edit or
+A5 (148 x 210 mm), A4 (210 x 297 mm), and common label sizes. Dimensions show
+both millimetres and inches (in); edit width and height in millimetres. You can edit or
 switch off any entry. Width and height follow the stock's feed orientation.
 
 For label printers, install the correct driver and add the printer on each
