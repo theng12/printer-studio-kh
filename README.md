@@ -125,7 +125,7 @@ successful paper test.
 
 For KH Updater: `./app/build.sh --dmg` builds the universal app, verifies its
 ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
-`com.theng12.printerstudio`. Version: **1.0.1**, build **2**. Requires macOS 13+
+`com.theng12.printerstudio`. Version: **1.0.2**, build **3**. Requires macOS 13+
 (Apple Silicon or Intel). Old builds go into `_trash`; nothing is published by
 the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
 
@@ -141,7 +141,7 @@ notes and fails if they are missing or empty. Check extraction with
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer-Studio-KH-1.0.1.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer-Studio-KH-1.0.2.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own
@@ -164,6 +164,13 @@ of a filter. Without those steps the printer would appear installed and
 simply never work.
 
 ## Diagnostics
+
+If printing fails, open **Settings → Copy error report**, then paste it when
+asking Developer for help. It includes the app and macOS versions, whether the
+USB printer is seen, the USB helper's status and last result, and recent app
+and helper log lines. Unavailable logs are marked as unavailable. Copying the
+report needs no administrator password and does not upload anything.
+
 
 ```bash
 ./app/report.sh && ./dist/printer-studio-report

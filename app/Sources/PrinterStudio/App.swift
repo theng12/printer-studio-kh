@@ -67,6 +67,7 @@ final class AppState: ObservableObject {
     @Published var busy = false
     @Published var busyMessage = ""
     @Published var lastError: String?
+    @Published var reportFeedback: String?
 
     /// Which sidebar screen is showing. This lives here rather than in a
     /// `@State` because SwiftUI's `@State` is a macro whose plugin is only
@@ -379,6 +380,34 @@ final class AppState: ObservableObject {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    /// Generates a diagnostic error report off the main thread and copies it
+    /// to the macOS clipboard.
+    func copyErrorReport() {
+        let snapshot = activity
+        reportFeedback = "Generating…"
+        work.async { [weak self] in
+            guard let self else { return }
+            let report = DiagnosticReport.generate(activitySnapshot: snapshot)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                NSPasteboard.general.clearContents()
+                let ok = NSPasteboard.general.setString(report, forType: .string)
+                if ok {
+                    self.log("Diagnostic error report copied to clipboard.", kind: .success)
+                    self.reportFeedback = "Copied to clipboard"
+                } else {
+                    self.log("Failed to copy error report to clipboard.", kind: .error)
+                    self.reportFeedback = "Failed to copy"
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                    if self?.reportFeedback == "Copied to clipboard" {
+                        self?.reportFeedback = nil
+                    }
+                }
+            }
+        }
     }
 }
 

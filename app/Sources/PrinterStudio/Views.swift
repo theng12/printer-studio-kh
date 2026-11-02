@@ -901,6 +901,13 @@ struct SettingsView: View {
                     if let log = URL(string: "file://\(ShareFix.logFile.path)") {
                         Button("Show Log") { NSWorkspace.shared.open(log) }
                     }
+                    Button("Copy Error Report") { state.copyErrorReport() }
+                        .disabled(state.reportFeedback == "Generating…")
+                    if let feedback = state.reportFeedback {
+                        Text(feedback)
+                            .font(.caption)
+                            .foregroundStyle(feedback.contains("Failed") ? .red : .secondary)
+                    }
                 }
                 .disabled(state.busy)
 
