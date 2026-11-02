@@ -826,6 +826,15 @@ struct SettingsView: View {
         return "\(short) (build \(build))"
     }
 
+    private var whatsNew: String? {
+        guard let url = Bundle.main.url(forResource: "WhatsNew", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -855,6 +864,9 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("About").font(.headline)
                         SettingsRow("Printer Studio KH", version)
+                        if let whatsNew {
+                            SettingsRow("What's new", whatsNew)
+                        }
                         SettingsRow("Bundle", Bundle.main.bundleIdentifier ?? "—")
                         SettingsRow("System", ProcessInfo.processInfo.operatingSystemVersionString)
                         SettingsRow("Architecture", Self.architecture)

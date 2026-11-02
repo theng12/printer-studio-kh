@@ -85,6 +85,13 @@ fi
 cp "$ROOT/Resources/Read Me First.txt" "$APP/Contents/Resources/"
 chmod 644 "$APP/Contents/Resources/Read Me First.txt"
 
+# Extract What's New notes for this version from CHANGELOG.md. Refuse if missing or empty.
+VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
+CHANGELOG="$ROOT/../CHANGELOG.md"
+"$ROOT/release-notes.sh" "$VERSION" "$CHANGELOG" > "$APP/Contents/Resources/WhatsNew.txt"
+chmod 644 "$APP/Contents/Resources/WhatsNew.txt"
+echo "==> Bundled What's New for $VERSION"
+
 # The AirPrint advertisement script, installed by the app for iOS discovery.
 cp "$ROOT/Resources/airprint-bridge.sh" "$ROOT/Resources/keep-usb-printer-ready.sh" "$APP/Contents/Resources/"
 chmod 755 "$APP/Contents/Resources/airprint-bridge.sh"
