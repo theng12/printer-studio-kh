@@ -41,6 +41,10 @@ enum Screen: String, CaseIterable, Identifiable {
 struct MainWindow: View {
     @EnvironmentObject var state: AppState
 
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
     var body: some View {
         NavigationSplitView {
             List(selection: $state.screen) {
@@ -60,6 +64,15 @@ struct MainWindow: View {
                     Text(state.statusSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Version \(version)")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("What's new") { state.screen = .settings }
+                            .buttonStyle(.link)
+                            .help("Read what’s new in version \(version)")
+                    }
+                    .font(.caption)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)

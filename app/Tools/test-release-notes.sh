@@ -37,11 +37,11 @@ echo "==> Test 2: Controlled fixture exact match and next-version stop"
 cat << 'EOF' > "$FIXTURES_DIR/changelog_controlled.md"
 # Changelog
 
-## 2.3.4
+## 2.3.4 — 2026-11-02
 - Alpha note
 - Beta note
 
-## 2.3.3
+## 2.3.3 — 2026-11-01
 - Gamma note
 EOF
 

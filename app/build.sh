@@ -127,7 +127,8 @@ fi
 # Read Me, and an Applications shortcut. Build with --dmg.
 if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
   VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
-  DMG="$DIST/Printer-Studio-KH-$VERSION.dmg"
+  APP_NAME="$(basename "$APP" .app)"
+  DMG="$DIST/$APP_NAME-$VERSION.dmg"
   STAGE="$(mktemp -d)"
   echo "==> Building $DMG"
   cp -R "$APP" "$STAGE/"
@@ -140,6 +141,7 @@ if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
   /usr/bin/codesign --force --sign - "$DMG"
   /usr/bin/codesign --verify "$DMG"
   echo "==> Built: $DMG"
+  "$ROOT/retain-dmgs.sh" "$DIST" "$APP_NAME"
 fi
 
 echo "==> Built: $APP"

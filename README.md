@@ -141,7 +141,7 @@ notes and fails if they are missing or empty. Check extraction with
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer-Studio-KH-1.0.3.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer Studio KH-1.0.3.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own
@@ -280,3 +280,8 @@ feed the three small label formats. For that printer, use laser-compatible
 label sheets in a supported sheet size. A thermal label printer needs stock
 that matches its width, length and sensing mode; a valid driver size is not
 proof of a successful physical print.
+
+The sidebar footer shows the bundle version and a **What's new** link to the
+current release notes in Settings. DMG builds use `Printer Studio KH-<version>.dmg`;
+after successful signature verification, only the newest two release versions
+remain in `dist`. Superseded images are moved into `_trash` for recovery.
