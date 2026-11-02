@@ -68,6 +68,16 @@ struct Report {
             print(result.combined.isEmpty ? "Applied." : result.combined)
             exit(result.ok ? 0 : 1)
         }
+        if arguments.contains("--print-usb-service-install-script") {
+            guard let script = USBPrinterService.installScript else { exit(1) }
+            print(script)
+            exit(0)
+        }
+        if arguments.contains("--install-usb-service") {
+            let result = USBPrinterService.enable()
+            print(result.combined)
+            exit(result.ok ? 0 : 1)
+        }
         if arguments.contains("--enable-login-item") {
             let result = LoginItem.enable()
             print(result.combined.isEmpty ? "Login item enabled." : result.combined)
@@ -173,6 +183,7 @@ struct Report {
         }
 
         section("HP Laser 107a driver")
+        print("Automatic USB   installed=\(USBPrinterService.isInstalled) loaded=\(USBPrinterService.isLoaded)")
         print("Connected       \(Driver.connectedLaser107a != nil ? "yes" : "no")")
         print("Held by ippusbd \(Driver.ippusbdHoldingPrinter() ? "YES — queue will report offline and nothing will print" : "no")")
         print("CUPS filter     \(Driver.installedFilter ?? "NOT INSTALLED")")

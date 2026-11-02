@@ -100,13 +100,42 @@ on, open the **HP Laser 107a** tab, and press **Set up the printer**. macOS
 will ask for your password once, because installing a print driver needs
 administrator rights.
 
+## After a restart
+
+In **Settings**, turn on **Keep the USB printer ready after restarts** once.
+macOS asks for administrator approval to install a fixed-purpose background
+service. No password is saved. New driver setup installs this service using the
+same approval. Existing driver installations need this one-time switch.
+
+The service runs at boot and checks every 15 seconds, including after a USB
+replug. It releases only an HP Laser 107a whose serial matches an already
+configured USB queue. Other IPP-over-USB devices are left alone. The menu bar
+app starts at login by default; its Settings switch can turn that off without
+stopping the USB service. AirPrint advertisements and the shared-queue watcher
+still start when their user logs in, independently of the app.
+
+No auto-login, FileVault, or privacy setting is changed. Network AirPrint from
+this Mac still needs the sharing user to log in. Local CUPS and USB release do
+not need the menu bar app open.
+
+The USB switch can turn the service off with administrator approval; its
+LaunchDaemon is moved into `/Library/Application Support/PrinterStudio/_trash`.
+Errors are in `/var/log/printer-studio-usb.err.log`. A missing printer is not a
+successful paper test.
+
+For KH Updater: `./app/build.sh --dmg` builds the universal app, verifies its
+ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
+`com.theng12.printerstudio`. Version: **1.0.1**, build **2**. Requires macOS 13+
+(Apple Silicon or Intel). Old builds go into `_trash`; nothing is published by
+the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
+
 ## Sending it to another Mac
 
 ```bash
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer Studio KH.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer-Studio-KH-1.0.1.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own

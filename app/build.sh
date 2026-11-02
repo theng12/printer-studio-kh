@@ -37,14 +37,16 @@ if [ ${#SOURCES[@]} -eq 0 ]; then
   exit 1
 fi
 
-rm -rf "$APP"
+TRASH="$DIST/../_trash/build-$(date +%Y%m%d-%H%M%S)-$$"
+mkdir -p "$TRASH"
+[ ! -e "$APP" ] || mv "$APP" "$TRASH/"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # -parse-as-library is required for the @main attribute.
 # -swift-version 5 keeps us in the non-strict-concurrency language mode.
 echo "==> Compiling ${#SOURCES[@]} source files for arm64 and x86_64"
 SLICES="$(mktemp -d)"
-trap 'rm -rf "$SLICES"' EXIT
+trap 'mv "$SLICES" "$TRASH/slices"' EXIT
 
 for ARCH in arm64 x86_64; do
   /usr/bin/swiftc \
@@ -84,7 +86,7 @@ cp "$ROOT/Resources/Read Me First.txt" "$APP/Contents/Resources/"
 chmod 644 "$APP/Contents/Resources/Read Me First.txt"
 
 # The AirPrint advertisement script, installed by the app for iOS discovery.
-cp "$ROOT/Resources/airprint-bridge.sh" "$APP/Contents/Resources/"
+cp "$ROOT/Resources/airprint-bridge.sh" "$ROOT/Resources/keep-usb-printer-ready.sh" "$APP/Contents/Resources/"
 chmod 755 "$APP/Contents/Resources/airprint-bridge.sh"
 
 # The app icon. Regenerate with ./app/make-icon.sh.
@@ -117,16 +119,19 @@ fi
 # A .dmg is the one file to send by AirDrop or Telegram: it holds the app, the
 # Read Me, and an Applications shortcut. Build with --dmg.
 if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
-  DMG="$DIST/Printer Studio KH.dmg"
+  VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
+  DMG="$DIST/Printer-Studio-KH-$VERSION.dmg"
   STAGE="$(mktemp -d)"
   echo "==> Building $DMG"
   cp -R "$APP" "$STAGE/"
   cp "$ROOT/Resources/Read Me First.txt" "$STAGE/"
   ln -s /Applications "$STAGE/Applications"
-  rm -f "$DMG"
+  [ ! -e "$DMG" ] || mv "$DMG" "$TRASH/"
   /usr/bin/hdiutil create -quiet -volname "Printer Studio KH" -srcfolder "$STAGE" \
     -ov -format UDZO "$DMG"
-  rm -rf "$STAGE"
+  mv "$STAGE" "$TRASH/dmg-stage"
+  /usr/bin/codesign --force --sign - "$DMG"
+  /usr/bin/codesign --verify "$DMG"
   echo "==> Built: $DMG"
 fi
 

@@ -79,8 +79,11 @@ enum DriverInstaller {
         guard let filter = bundledFilter, let ppd = bundledPPD else {
             return .failure("The bundled splix driver is missing from this build.")
         }
+        guard let service = USBPrinterService.installScript else {
+            return .failure("The automatic USB printer service is missing from this build.")
+        }
         return Shell.runAsAdministrator(
-            installScript(deviceURI: deviceURI, queueName: queueName, filter: filter, ppd: ppd),
+            installScript(deviceURI: deviceURI, queueName: queueName, filter: filter, ppd: ppd) + "\n" + service,
             prompt: "Printer Studio KH needs to install the printer driver for the HP Laser 107a."
         )
     }
@@ -136,43 +139,23 @@ enum DriverInstaller {
             -o printer-is-shared=true \\
             -o printer-error-policy=retry-job
 
-        # macOS's IPP-over-USB daemon (ippusbd) claims this printer the moment it
-        # appears, because the device advertises an IPP-USB interface. That leaves
-        # CUPS's usb backend unable to open it, and the queue reports
-        # "The printer is offline" while jobs sit there and never print.
-        #
-        # Releasing the device is what makes the queue work at all. It is the
-        # macOS equivalent of the documented Linux fix, purging ipp-usb.
-        # ippusbd is launchd-managed, so it returns after a reboot or if the
-        # printer is unplugged and replugged; re-run setup if that happens.
-        /usr/bin/killall ippusbd 2>/dev/null || true
+        # The persistent USB service is installed with the same approval below.
 
         # Share it, and keep the queue open to the LAN from the start.
-        /usr/sbin/cupsctl --share_printers=1 --remote_any=1
+        /usr/sbin/cupsctl --share-printers
         /usr/sbin/lpadmin -p '\(queueName)' -u allow:all
 
         echo "Printer Studio KH: installed '\(queueName)' on \(deviceURI)"
         """
     }
 
-    /// Releases the printer from Apple's IPP-over-USB daemon.
-    ///
-    /// Needed again after a reboot or a replug: `ippusbd` is launchd-managed,
-    /// re-claims the device, and the queue then sits at "The printer is
-    /// offline" for ever without logging anything.
+    /// Existing installations migrate with one approval, then run at boot.
     static func releasePrinter() -> CommandResult {
-        Shell.runAsAdministrator(
-            """
-            /usr/bin/killall ippusbd 2>/dev/null || true
-            /bin/sleep 1
-            if /usr/bin/pgrep -q ippusbd; then
-                echo "ippusbd is still running — the printer may stay offline."
-            else
-                echo "Printer released from the IPP-over-USB service."
-            fi
-            """,
-            prompt: "Printer Studio KH needs to release the printer from macOS's IPP-over-USB service."
-        )
+        if USBPrinterService.isInstalled && USBPrinterService.isLoaded {
+            return CommandResult(status: 0,
+                stdout: "Automatic release is running; the USB printer is checked every 15 seconds.", stderr: "")
+        }
+        return USBPrinterService.enable()
     }
 
     // MARK: - AirPrint advertisement for iOS

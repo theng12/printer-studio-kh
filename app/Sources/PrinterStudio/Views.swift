@@ -595,7 +595,7 @@ struct SetupView: View {
                     number: 5,
                     title: "Release it from macOS's IPP-over-USB service",
                     detail: state.printerHeldByIPPUSB
-                        ? "The printer is being held by ippusbd, so the queue will report “offline” and nothing will print. Press Release below."
+                        ? "The printer is being held by ippusbd, so the queue will report “offline” and nothing will print. Turn on automatic release below."
                         : "Not held — CUPS has the device, so jobs can print.",
                     done: !state.printerHeldByIPPUSB)
 
@@ -603,8 +603,8 @@ struct SetupView: View {
                     Button("Set up the printer") { state.installDriver() }
                         .buttonStyle(.borderedProminent)
                         .disabled(state.busy || !DriverInstaller.hasPayload)
-                    Button("Release printer") { state.releasePrinter() }
-                        .disabled(state.busy || !state.printerHeldByIPPUSB)
+                    Button("Keep ready after restarts") { state.releasePrinter() }
+                        .disabled(state.busy || state.automaticUSBRelease)
                     Button("Remove driver") { state.uninstallDriver() }
                         .disabled(state.busy || !Driver.isFilterInstalled)
                     if state.busy {
@@ -837,6 +837,13 @@ struct SettingsView: View {
                                isOn: Binding(get: { state.startsAtLogin },
                                              set: { state.setStartAtLogin($0) }))
                             .toggleStyle(.switch)
+                        Toggle("Keep the USB printer ready after restarts",
+                               isOn: Binding(get: { state.automaticUSBRelease },
+                                             set: { state.setAutomaticUSBRelease($0) }))
+                            .toggleStyle(.switch)
+                            .disabled(state.busy)
+                        Text("Automatic USB release needs administrator approval once. It runs at boot and after a replug, without opening this app or saving a password.")
+                            .font(.caption).foregroundStyle(.secondary)
                         Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

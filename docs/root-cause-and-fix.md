@@ -205,7 +205,9 @@ So the custom IOKit backend that the sibling HP Laser 1003–1008 project needed
 was **not** required here. Apple's own `usb` backend switches to the classic
 interface correctly — it just has to be able to open the device first. The
 installer now runs the release as part of setup. `ippusbd` is launchd-managed,
-so it returns after a reboot or a replug; re-running setup clears it again.
+so it returns after a reboot or a replug. Version 1.0.1 installs a root-owned
+LaunchDaemon once to release the configured 107a automatically at boot and
+every 15 seconds. It matches the CUPS USB serial and leaves other devices alone.
 
 ## Result
 

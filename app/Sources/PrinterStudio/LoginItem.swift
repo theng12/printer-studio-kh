@@ -22,51 +22,35 @@ enum LoginItem {
         FileManager.default.fileExists(atPath: plistPath)
     }
 
-    /// The executable launchd should start. Captured when the toggle is
-    /// switched on, so moving the app afterwards leaves a stale path — the
-    /// toggle rewrites it.
-    ///
-    /// Inside a .app bundle this is simply our own executable. Run from the
-    /// standalone report tool there is no app to launch, so it falls back to
-    /// the standard install location rather than registering the CLI as a login
-    /// item, which is what a naive `Bundle.main` lookup produced.
-    private static var executablePath: String {
-        if Bundle.main.bundlePath.hasSuffix(".app"), let url = Bundle.main.executableURL {
-            return url.resolvingSymlinksInPath().path
+    /// Refresh on launch so moving the app repairs the next login's path.
+    private static var appPath: String {
+        if Bundle.main.bundlePath.hasSuffix(".app") {
+            return Bundle.main.bundleURL.resolvingSymlinksInPath().path
         }
-        return "/Applications/Printer Studio KH.app/Contents/MacOS/PrinterStudio"
+        return "/Applications/Printer Studio KH.app"
     }
 
     static func enable() -> CommandResult {
-        let plist = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(label)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>\(executablePath)</string>
-                <string>--background</string>
-            </array>
-            <key>RunAtLoad</key>
-            <true/>
-        </dict>
-        </plist>
-        """
+        let plist: [String: Any] = [
+            "Label": label,
+            "ProgramArguments": ["/usr/bin/open", "-g", "-a", appPath, "--args", "--background"],
+            "RunAtLoad": true,
+        ]
 
         do {
             try FileManager.default.createDirectory(
                 at: URL(fileURLWithPath: plistPath).deletingLastPathComponent(),
                 withIntermediateDirectories: true)
-            try plist.write(toFile: plistPath, atomically: true, encoding: .utf8)
+            let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            try data.write(to: URL(fileURLWithPath: plistPath), options: .atomic)
         } catch {
             return .failure("Could not enable start at login: \(error.localizedDescription)")
         }
 
         let uid = getuid()
-        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(label)"])
+        if Shell.run(Tool.launchctl, ["print", "gui/\(uid)/\(label)"]).ok {
+            return CommandResult(status: 0, stdout: "Printer Studio KH will open at login.", stderr: "")
+        }
         let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", plistPath])
         if !bootstrap.ok {
             let legacy = Shell.run(Tool.launchctl, ["load", "-w", plistPath])
@@ -80,7 +64,16 @@ enum LoginItem {
     static func disable() -> CommandResult {
         let uid = getuid()
         _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(label)"])
-        try? FileManager.default.removeItem(atPath: plistPath)
+        do {
+            let trash = ShareFix.supportDirectory.appendingPathComponent("_trash/\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: plistPath) {
+                try FileManager.default.moveItem(atPath: plistPath,
+                    toPath: trash.appendingPathComponent("\(label).plist").path)
+            }
+        } catch {
+            return .failure("Could not turn off start at login: \(error.localizedDescription)")
+        }
         return CommandResult(status: 0, stdout: "Printer Studio KH will no longer open at login.", stderr: "")
     }
 }

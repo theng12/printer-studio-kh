@@ -83,3 +83,16 @@ alongside this app in the project folder:
 
     ./app/report.sh && ./dist/printer-studio-report
 
+
+AFTER A RESTART (1.0.1)
+-----------------------
+Open Settings and turn on “Keep the USB printer ready after restarts” once.
+macOS asks for administrator permission to install a small background service.
+It saves no password. After that, it releases your configured HP Laser 107a
+automatically at boot and after a USB replug, checking every 15 seconds.
+New printer setup includes this service in its existing administrator approval.
+
+The menu bar icon starts at login by default. You can turn either feature off
+in Settings. The USB service works without opening the app. Network AirPrint
+advertising still starts when the sharing user logs in. This app does not
+change Mac login, FileVault, or privacy settings.

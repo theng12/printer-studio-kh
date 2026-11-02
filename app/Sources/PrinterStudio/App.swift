@@ -51,6 +51,7 @@ final class AppState: ObservableObject {
     @Published var airPrintInstalled = false
     /// True when the app is registered to open at login.
     @Published var startsAtLogin = false
+    @Published var automaticUSBRelease = false
 
     /// The user's sticker sizes, as last saved.
     @Published var stickerSizes: [StickerSize] = StickerSizeStore.load()
@@ -90,6 +91,13 @@ final class AppState: ObservableObject {
             }
         }
 
+        // Enable on first launch, then respect the Settings switch. Refresh an
+        // enabled item after an app move so launchd keeps the current path.
+        if !UserDefaults.standard.bool(forKey: "loginItemConfigured") || LoginItem.isEnabled {
+            let result = LoginItem.enable()
+            report(result, success: "Printer Studio KH will open at login.")
+            if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
+        }
         refresh()
     }
 
@@ -154,6 +162,7 @@ final class AppState: ObservableObject {
             let held = Driver.ippusbdHoldingPrinter()
             let airPrint = DriverInstaller.isAirPrintInstalled
             let login = LoginItem.isEnabled
+            let automaticUSB = USBPrinterService.isInstalled && USBPrinterService.isLoaded
             let labelQueues = PageSizeInstaller.queues()
             var offered: [String: [String]] = [:]
             for entry in labelQueues where entry.isLabel {
@@ -170,6 +179,7 @@ final class AppState: ObservableObject {
                 self.printerHeldByIPPUSB = held
                 self.airPrintInstalled = airPrint
                 self.startsAtLogin = login
+                self.automaticUSBRelease = automaticUSB
                 self.labelQueues = labelQueues
                 self.offeredSizes = offered
                 // Keep the detailed list in step for queues that no longer exist.
@@ -292,7 +302,7 @@ final class AppState: ObservableObject {
     func releasePrinter() {
         perform("Releasing the printer from macOS's IPP-over-USB service…",
                 { DriverInstaller.releasePrinter() },
-                success: "Printer released — it should come back online now.")
+                success: "Automatic USB release is running — the printer is checked every 15 seconds.")
     }
 
     func installAirPrint() {
@@ -341,8 +351,15 @@ final class AppState: ObservableObject {
                 success: "Done — your iPhone and iPad will now offer these sizes.")
     }
 
+    func setAutomaticUSBRelease(_ enabled: Bool) {
+        perform(enabled ? "Keeping the USB printer ready after restarts…" : "Turning off automatic USB release…",
+                { enabled ? USBPrinterService.enable() : USBPrinterService.disable() },
+                success: enabled ? "Automatic USB release is on." : "Automatic USB release is off.")
+    }
+
     func setStartAtLogin(_ enabled: Bool) {
         let result = enabled ? LoginItem.enable() : LoginItem.disable()
+        if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
         report(result, success: enabled
                ? "Printer Studio KH will open at login."
                : "Printer Studio KH will no longer open at login.")
