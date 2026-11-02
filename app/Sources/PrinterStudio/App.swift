@@ -348,8 +348,12 @@ final class AppState: ObservableObject {
         // rather than a reference to the published property.
         let sizes = stickerSizes
         perform("Adding your sizes to \(targets.count) printer\(targets.count == 1 ? "" : "s")…",
-                { PageSizeInstaller.apply(sizes: sizes, to: targets) },
-                success: "Done — your iPhone and iPad will now offer these sizes.")
+                {
+                    let result = PageSizeInstaller.apply(sizes: sizes, to: targets)
+                    if result.ok { self.log(result.combined) }
+                    return result
+                },
+                success: "Sizes checked and applied. See Activity for each printer’s results, then reopen your print dialog.")
     }
 
     func setAutomaticUSBRelease(_ enabled: Bool) {

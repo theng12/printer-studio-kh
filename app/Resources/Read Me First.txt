@@ -96,3 +96,24 @@ The menu bar icon starts at login by default. You can turn either feature off
 in Settings. The USB service works without opening the app. Network AirPrint
 advertising still starts when the sharing user logs in. This app does not
 change Mac login, FileVault, or privacy settings.
+
+
+PAPER AND STICKER SIZES (1.0.3)
+-------------------------------
+Open Paper & Sticker Sizes. The list includes 30 x 40, 50 x 70 and 70 x 100 mm,
+A5 (148 x 210 mm), A4 (210 x 297 mm), and common label sizes. You can edit or
+switch off any entry. Width and height follow the stock's feed orientation.
+
+For label printers, install the correct driver and add the printer on each
+Mac first. Check the limits shown, then press Apply to printers and approve
+the change. Only supported sizes are added. Reopen the phone's print dialog;
+its size choices depend on the app and iOS version as well as the printer.
+
+A4 and A5 already appear on the HP Laser queue. The HP Laser 107a cannot feed
+30 x 40, 50 x 70 or 70 x 100 mm loose labels: its minimum sheet is 76 x 127 mm.
+Use a compatible label printer for those, or laser-compatible labels on a
+supported sheet. A narrow thermal label printer cannot take A4 or A5 stock.
+Driver checks do not replace a real test with the correct stock loaded.
+
+If printing fails, use Settings > Copy Error Report and paste it when asking
+for help. No administrator password is needed to copy the report.

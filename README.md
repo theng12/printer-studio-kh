@@ -125,7 +125,7 @@ successful paper test.
 
 For KH Updater: `./app/build.sh --dmg` builds the universal app, verifies its
 ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
-`com.theng12.printerstudio`. Version: **1.0.2**, build **3**. Requires macOS 13+
+`com.theng12.printerstudio`. Version: **1.0.3**, build **4**. Requires macOS 13+
 (Apple Silicon or Intel). Old builds go into `_trash`; nothing is published by
 the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
 
@@ -141,7 +141,7 @@ notes and fails if they are missing or empty. Check extraction with
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer-Studio-KH-1.0.2.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer-Studio-KH-1.0.3.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own
@@ -256,3 +256,26 @@ It is kept for reference and is not on the print path. See
 This project is the user's own work. splix is GPLv2 and is used as a separate
 binary; its source is not included here. `vendor/splix/bin/rastertoqpdl` is a
 build of OpenPrinting/splix and carries that licence.
+
+## Paper and sticker sizes
+
+Version 1.0.3 includes editable 30 × 40, 50 × 70 and 70 × 100 mm presets,
+plus A5 (148 × 210 mm) and A4 (210 × 297 mm), alongside the existing label
+presets. Existing saved sizes and switches are kept when the new presets are
+added. Width and height describe the stock's feed orientation.
+
+On each Mac, install the label printer's driver and queue, open **Paper &
+Sticker Sizes**, review the enabled sizes and each queue's limits, then use
+**Apply to printers**. Administrator approval is needed to change the queue.
+The app only adds sizes that fit the driver’s declared bounds; native choices
+are kept without adding duplicates. Unknown limits need a suitable driver
+before custom sizes can be applied. Reopen the iPhone/iPad print dialog after
+applying; size choices can vary with the source app and iOS version.
+
+A4 and A5 are already advertised by the HP Laser queue. The HP Laser 107a's
+[manufacturer specifications](https://www.hp.com/ph-en/products/printers/product-details/product-specifications/24494357)
+allow custom loose sheets from 76 × 127 to 216 × 356 mm: it cannot directly
+feed the three small label formats. For that printer, use laser-compatible
+label sheets in a supported sheet size. A thermal label printer needs stock
+that matches its width, length and sensing mode; a valid driver size is not
+proof of a successful physical print.

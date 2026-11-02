@@ -18,7 +18,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .overview: return "Overview"
         case .printers: return "Printers"
         case .sharing: return "Sharing"
-        case .stickers: return "Sticker Sizes"
+        case .stickers: return "Paper & Sticker Sizes"
         case .setup: return "HP Laser 107a"
         case .activity: return "Activity"
         case .settings: return "Settings"
@@ -718,9 +718,9 @@ struct StickerSizesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Sticker sizes").font(.title2.weight(.semibold))
+                Text("Paper & sticker sizes").font(.title2.weight(.semibold))
 
-                Text("Label printers ship with three sizes — 2 x 4, 4 x 4 and 4 x 6 inches — and none of them match real sticker stock. Add the sizes you actually use, and they appear in the page-size menu when you print from an iPhone or iPad.\n\nAn iPhone cannot enter a custom size: it offers exactly what the printer advertises. So this is where sizes are set — once here, usable from every phone.")
+                Text("Set the sizes here for AirPrint to read from your shared printer. Width and height follow how the stock feeds into the printer. You can edit any size or turn it off.\n\nCustom sizes apply to label printers within their driver’s limits. A4 and A5 are already standard choices on the HP Laser queue; use that printer’s paper-size menu. A narrow label printer cannot print an A4 or A5 sheet.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -795,9 +795,15 @@ struct StickerSizesView: View {
                                         .font(.caption)
                                         .foregroundStyle(countOfOurs(queue) > 0 ? .green : .secondary)
                                         .padding(.leading, 24)
+                                    Text(PageSizeInstaller.queueSummary(queue: queue, sizes: state.stickerSizes))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .textSelection(.enabled)
+                                        .padding(.leading, 24)
                                 }
                             }
-                            Text("Applying rewrites each printer's PPD, so macOS will ask for your password once. Sizes already applied are replaced, never duplicated.")
+                            Text("Apply adds only sizes supported by each label printer’s driver. macOS asks for administrator approval. Reopen the iPhone or iPad print dialog afterward; the choices shown can vary by app and iOS version.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
