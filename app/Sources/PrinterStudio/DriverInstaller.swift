@@ -162,6 +162,15 @@ enum DriverInstaller {
 
     static let airPrintLabel = "com.theng12.printerstudio.airprint"
 
+    /// The test suite sets these so it works in a scratch directory and
+    /// never loads a launchd job.
+    ///
+    /// PRINTER_STUDIO_AIRPRINT_TEST=1 turns on test mode.
+    /// PRINTER_STUDIO_SUPPORT_DIR says where the scratch files live.
+    static var isTestMode: Bool {
+        ProcessInfo.processInfo.environment["PRINTER_STUDIO_AIRPRINT_TEST"] == "1"
+    }
+
     /// Installed per-user, not per-machine.
     ///
     /// `dns-sd` needs no privileges to publish a Bonjour service, so this needs
@@ -170,17 +179,36 @@ enum DriverInstaller {
     /// Mac that reboots to the login screen and stays there advertises nothing
     /// until someone logs in.
     static var airPrintAgentPath: String {
-        FileManager.default.homeDirectoryForCurrentUser
+        if isTestMode {
+            return airPrintSupportDirectory
+                .appendingPathComponent("LaunchAgents/\(airPrintLabel).plist").path
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/\(airPrintLabel).plist").path
     }
 
     static var airPrintScriptPath: String {
-        ShareFix.supportDirectory.appendingPathComponent("airprint-bridge.sh").path
+        airPrintSupportDirectory.appendingPathComponent("airprint-bridge.sh").path
+    }
+
+    /// Where the advertisement script and its LaunchAgent live.
+    ///
+    /// The environment override lets the test suite work in a scratch
+    /// directory instead of the user's own installation.
+    static var airPrintSupportDirectory: URL {
+        if let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SUPPORT_DIR"] {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return ShareFix.supportDirectory
     }
 
     /// The launcher script, shipped inside the app bundle, with a fallback to
     /// the checkout so the standalone report tool can install it too.
     static var bundledAirPrintScript: String? {
+        if let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_BUNDLED_SCRIPT"],
+           FileManager.default.fileExists(atPath: override) {
+            return override
+        }
         if let url = Bundle.main.url(forResource: "airprint-bridge", withExtension: "sh") {
             return url.path
         }
@@ -197,13 +225,81 @@ enum DriverInstaller {
         FileManager.default.fileExists(atPath: airPrintAgentPath)
     }
 
+    /// Where replaced and removed files are kept. Nothing is deleted: a
+    /// wrong script is still recoverable, and the old one stays readable next
+    /// to the new one.
+    private static var trashDirectory: URL {
+        airPrintSupportDirectory.appendingPathComponent("_trash", isDirectory: true)
+    }
+
+    /// Moves a file into `_trash` under a dated name and returns the new
+    /// path. A file that is not there is not an error.
+    @discardableResult
+    private static func moveToTrash(_ path: String) -> String? {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: path) else { return nil }
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let destination = trashDirectory
+            .appendingPathComponent("\(name).\(stamp)")
+        do {
+            try fileManager.createDirectory(at: trashDirectory, withIntermediateDirectories: true)
+            try fileManager.moveItem(atPath: path, toPath: destination.path)
+            return destination.path
+        } catch {
+            return nil
+        }
+    }
+
+    /// Exposes the trash rule to the test suite.
+    static func moveToTrashForTesting(_ path: String) -> String? {
+        moveToTrash(path)
+    }
+
+    /// Copies the bundled script into place, keeping the old one in `_trash`.
+    private static func installScriptFile(from source: String) -> Bool {
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(at: airPrintSupportDirectory,
+                                            withIntermediateDirectories: true)
+            _ = moveToTrash(airPrintScriptPath)
+            try fileManager.copyItem(atPath: source, toPath: airPrintScriptPath)
+            try fileManager.setAttributes([.posixPermissions: 0o755],
+                                          ofItemAtPath: airPrintScriptPath)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Replaces the installed script and restarts the agent.
+    private static func reloadAgent() -> CommandResult {
+        if isTestMode {
+            // No launchd job in the test suite.
+            return CommandResult(status: 0, stdout: "AirPrint advertisement started.", stderr: "")
+        }
+        let uid = getuid()
+        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
+        let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", airPrintAgentPath])
+        if !bootstrap.ok {
+            let legacy = Shell.run(Tool.launchctl, ["load", "-w", airPrintAgentPath])
+            if !legacy.ok {
+                return .failure(
+                    "The advertisement was written but could not be started: \(bootstrap.combined)")
+            }
+        }
+        _ = Shell.run(Tool.launchctl, ["kickstart", "-k", "gui/\(uid)/\(airPrintLabel)"])
+        return CommandResult(status: 0, stdout: "AirPrint advertisement started.", stderr: "")
+    }
+
     /// Publishes an AirPrint advertisement for every shared queue.
     ///
     /// macOS Printer Sharing does not publish the `_universal` subtype or a
     /// `URF=` TXT key, and iOS ignores a printer without them — which is why a
     /// Mac-shared printer never appears on an iPhone even though it works from
-    /// other Macs. This adds a second Bonjour record per shared queue pointing
-    /// at the same CUPS queue. Nothing is proxied; jobs take the same path.
+    /// other Macs. This adds a Bonjour record per shared queue pointing at
+    /// the same CUPS queue. Nothing is proxied; jobs take the same path.
     static func installAirPrintBridge() -> CommandResult {
         guard let source = bundledAirPrintScript else {
             return .failure("The AirPrint advertisement script is missing from this build.")
@@ -211,46 +307,67 @@ enum DriverInstaller {
 
         let fileManager = FileManager.default
         do {
-            try fileManager.createDirectory(at: ShareFix.supportDirectory,
-                                            withIntermediateDirectories: true)
             try fileManager.createDirectory(
                 at: URL(fileURLWithPath: airPrintAgentPath).deletingLastPathComponent(),
                 withIntermediateDirectories: true)
+        } catch {
+            return .failure("Could not install the AirPrint advertisement: \(error.localizedDescription)")
+        }
 
-            if fileManager.fileExists(atPath: airPrintScriptPath) {
-                try fileManager.removeItem(atPath: airPrintScriptPath)
-            }
-            try fileManager.copyItem(atPath: source, toPath: airPrintScriptPath)
-            try fileManager.setAttributes([.posixPermissions: 0o755],
-                                          ofItemAtPath: airPrintScriptPath)
+        guard installScriptFile(from: source) else {
+            return .failure("Could not install the AirPrint advertisement script.")
+        }
+
+        do {
             try agentPlist.write(toFile: airPrintAgentPath, atomically: true, encoding: .utf8)
         } catch {
             return .failure("Could not install the AirPrint advertisement: \(error.localizedDescription)")
         }
 
-        let uid = getuid()
-        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
-        let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", airPrintAgentPath])
-        if !bootstrap.ok {
-            let legacy = Shell.run(Tool.launchctl, ["load", "-w", airPrintAgentPath])
-            if !legacy.ok {
-                return .failure("The advertisement was written but could not be started: \(bootstrap.combined)")
-            }
-        }
-        _ = Shell.run(Tool.launchctl, ["kickstart", "-k", "gui/\(uid)/\(airPrintLabel)"])
-
+        let started = reloadAgent()
+        guard started.ok else { return started }
         return CommandResult(status: 0, stdout: "AirPrint advertisement installed.", stderr: "")
+    }
+
+    /// Updates an installed advertisement script when the app ships a newer
+    /// one, so a fix reaches a Mac that already has the advertisement on.
+    ///
+    /// Does nothing when the advertisement is off, and nothing when the
+    /// installed script already matches the bundled one. The LaunchAgent is
+    /// left alone: its contents do not change with the script.
+    @discardableResult
+    static func refreshAirPrintBridgeIfOutdated() -> CommandResult {
+        guard isAirPrintInstalled else {
+            return CommandResult(status: 0, stdout: "AirPrint advertisement is off.", stderr: "")
+        }
+        guard let source = bundledAirPrintScript,
+              let bundled = try? Data(contentsOf: URL(fileURLWithPath: source)) else {
+            return .failure("The AirPrint advertisement script is missing from this build.")
+        }
+        let installedPath = URL(fileURLWithPath: airPrintScriptPath)
+        if let installed = try? Data(contentsOf: installedPath), installed == bundled {
+            return CommandResult(status: 0, stdout: "AirPrint advertisement is up to date.", stderr: "")
+        }
+        guard installScriptFile(from: source) else {
+            return .failure("Could not update the AirPrint advertisement script.")
+        }
+        let started = reloadAgent()
+        guard started.ok else { return started }
+        return CommandResult(status: 0, stdout: "AirPrint advertisement updated.", stderr: "")
     }
 
     static func removeAirPrintBridge() -> CommandResult {
         let uid = getuid()
         _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
 
-        let fileManager = FileManager.default
-        try? fileManager.removeItem(atPath: airPrintAgentPath)
-        try? fileManager.removeItem(atPath: airPrintScriptPath)
+        _ = moveToTrash(airPrintAgentPath)
+        _ = moveToTrash(airPrintScriptPath)
 
-        return CommandResult(status: 0, stdout: "AirPrint advertisement removed.", stderr: "")
+        return CommandResult(
+            status: 0,
+            stdout: "AirPrint advertisement removed. The old files are kept in "
+                + trashDirectory.path + ".",
+            stderr: "")
     }
 
     private static var agentPlist: String {
