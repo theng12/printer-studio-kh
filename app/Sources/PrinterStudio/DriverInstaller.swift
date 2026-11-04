@@ -242,7 +242,7 @@ enum DriverInstaller {
         let stamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
         let destination = trashDirectory
-            .appendingPathComponent("\(name).\(stamp)")
+            .appendingPathComponent("\(name).\(stamp).\(UUID().uuidString)")
         do {
             try fileManager.createDirectory(at: trashDirectory, withIntermediateDirectories: true)
             try fileManager.moveItem(atPath: path, toPath: destination.path)
@@ -360,8 +360,11 @@ enum DriverInstaller {
         let uid = getuid()
         _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
 
-        _ = moveToTrash(airPrintAgentPath)
-        _ = moveToTrash(airPrintScriptPath)
+        for path in [airPrintAgentPath, airPrintScriptPath] {
+            if FileManager.default.fileExists(atPath: path), moveToTrash(path) == nil {
+                return .failure("Could not move the AirPrint files to _trash. The service was stopped; check file permissions and try again.")
+            }
+        }
 
         return CommandResult(
             status: 0,

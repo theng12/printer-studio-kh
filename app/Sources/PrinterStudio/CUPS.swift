@@ -13,14 +13,21 @@ enum CUPS {
     static func listPrinters() -> [Printer] {
         var found: [String: Printer] = [:]
 
-        let state = Shell.run(Tool.lpstat, ["-p"])
+        let state = Shell.run(Tool.lpstat, ["-l", "-p"])
+        var currentName: String?
         for raw in state.stdout.split(separator: "\n") {
             let line = String(raw)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("Description:"), let name = currentName {
+                found[name]?.description = String(trimmed.dropFirst("Description:".count))
+                    .trimmingCharacters(in: .whitespaces)
+            }
             guard line.hasPrefix("printer ") else { continue }
             let body = String(line.dropFirst("printer ".count))
             guard let space = body.firstIndex(of: " ") else { continue }
 
             let name = String(body[body.startIndex..<space])
+            currentName = name
             let tail = String(body[body.index(after: space)...])
 
             var printer = Printer(name: name)
@@ -90,6 +97,9 @@ enum CUPS {
         listPrinters().map { printer in
             var enriched = printer
             let attributes = attributes(of: printer.name)
+            if let description = attributes["printer-info"], !description.isEmpty {
+                enriched.description = description
+            }
 
             if let shared = attributes["printer-is-shared"] {
                 enriched.isShared = (shared == "true")
@@ -148,6 +158,15 @@ enum CUPS {
         Shell.run(Tool.lpadmin, ["-p", name, "-u", "allow:@_lpadmin"])
     }
 
+    static func rename(_ name: String, to description: String) -> CommandResult {
+        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.utf8.count <= 63,
+              !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            return .failure("Enter a printer name of 1–63 bytes without line breaks or control characters.")
+        }
+        return Shell.run(Tool.lpadmin, ["-p", name, "-D", trimmed])
+    }
+
     static func setShared(_ name: String, _ shared: Bool) -> CommandResult {
         Shell.run(Tool.lpadmin, ["-p", name, "-o", "printer-is-shared=\(shared)"])
     }
@@ -160,20 +179,21 @@ enum CUPS {
 
     /// Sends a real one-page test job to the queue.
     static func printTestPage(_ name: String) -> CommandResult {
-        let sample = "/usr/share/cups/ipptool/document-letter.pdf"
-        if FileManager.default.fileExists(atPath: sample) {
-            return Shell.run(Tool.lp, ["-d", name, sample])
+        let key = PageSizeInstaller.defaultKey(queue: name)
+        guard let paper = PageSizeInstaller.choices(queue: name).first(where: { $0.key == key }),
+              let data = TestPage.pdf(widthMM: paper.widthMM, heightMM: paper.heightMM) else {
+            return .failure("Choose a supported paper size for this printer before sending a test page.")
         }
-        // Fall back to a plain-text page.
-        let text = """
-        Printer Studio KH test page
-        Queue: \(name)
-        Sent: \(Date())
-        """
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("printer-studio-test.txt")
-        try? text.write(to: url, atomically: true, encoding: .utf8)
-        return Shell.run(Tool.lp, ["-d", name, url.path])
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/PrinterStudio/_trash/test-pages", isDirectory: true)
+        let url = directory.appendingPathComponent("printer-studio-test-\(UUID().uuidString).pdf")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: url)
+        } catch { return .failure("Could not create the test page: \(error.localizedDescription)") }
+        return Shell.run(Tool.lp, ["-d", name, "-n", "1", "-o", "PageSize=\(key)",
+                                  "-o", "fit-to-page", "-o", "sides=one-sided",
+                                  "-o", "job-sheets=none,none", url.path])
     }
 
     // MARK: - Jobs

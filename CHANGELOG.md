@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 — 2026-11-04
+- Lets you save printer names for the app and AirPrint
+- Shows each printer’s paper size and saves the selected size for Mac and iPhone printing
+- Prints one short test page sized to the paper or label you selected
+- Avoids adding another AirPrint entry when a printer is already available
+- Updates AirPrint names and sizes automatically, and stops offering unsupported image formats
+- Applies paper sizes without interrupting every printer on the Mac
+
 ## 1.0.4 — 2026-11-03
 - Shows the version and a What’s new link at the bottom of the sidebar
 

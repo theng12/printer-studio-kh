@@ -5,6 +5,8 @@ import Foundation
 struct Printer: Identifiable, Hashable {
     var id: String { name }
     let name: String
+    var description: String = ""
+    var displayName: String { description.isEmpty ? name : description }
     var state: String = "unknown"        // idle | printing | stopped
     var enabled: Bool = true
     var accepting: Bool = true

@@ -61,6 +61,9 @@ final class AppState: ObservableObject {
     /// the same list an iPhone reads. Lets the screen answer "did it work?"
     /// without needing the phone.
     @Published var offeredSizes: [String: [String]] = [:]
+    @Published var printerNameDrafts: [String: String] = [:]
+    @Published var paperChoices: [String: [PageSizeInstaller.PaperChoice]] = [:]
+    @Published var selectedPaper: [String: String] = [:]
     @Published var unfinishedJobs: [String] = []
     @Published var activity: [LogEntry] = []
 
@@ -98,6 +101,10 @@ final class AppState: ObservableObject {
             let result = LoginItem.enable()
             report(result, success: "Printer Studio KH will open at login.")
             if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
+        }
+        work.async {
+            let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
+            if !result.ok { self.report(result, success: "") }
         }
         refresh()
     }
@@ -166,6 +173,12 @@ final class AppState: ObservableObject {
             let automaticUSB = USBPrinterService.isInstalled && USBPrinterService.isLoaded
             let labelQueues = PageSizeInstaller.queues()
             var offered: [String: [String]] = [:]
+            var choices: [String: [PageSizeInstaller.PaperChoice]] = [:]
+            var selected: [String: String] = [:]
+            for printer in printers {
+                choices[printer.name] = PageSizeInstaller.choices(queue: printer.name)
+                selected[printer.name] = PageSizeInstaller.defaultKey(queue: printer.name)
+            }
             for entry in labelQueues where entry.isLabel {
                 offered[entry.queue] = PageSizeInstaller.currentSizes(queue: entry.queue)
             }
@@ -183,6 +196,8 @@ final class AppState: ObservableObject {
                 self.automaticUSBRelease = automaticUSB
                 self.labelQueues = labelQueues
                 self.offeredSizes = offered
+                self.paperChoices = choices
+                self.selectedPaper = selected
                 // Keep the detailed list in step for queues that no longer exist.
                 let names = Set(printers.map(\.name))
                 self.detailedPrinters.removeAll { !names.contains($0.name) }
@@ -266,8 +281,20 @@ final class AppState: ObservableObject {
                 success: target ? "\(printer.name) is enabled." : "\(printer.name) is paused.")
     }
 
+    func renamePrinter(_ printer: Printer) {
+        let name = printerNameDrafts[printer.name] ?? printer.displayName
+        perform("Saving printer name…", { CUPS.rename(printer.name, to: name) },
+                success: "Printer name saved. Reopen the print dialog to see it.")
+    }
+
+    func selectPaper(_ key: String, for printer: Printer) {
+        perform("Setting paper size for \(printer.displayName)…",
+                { PageSizeInstaller.setDefault(queue: printer.name, key: key) },
+                success: "Paper size saved for Mac and AirPrint. Reopen the print dialog and select this size.")
+    }
+
     func testPrint(_ printer: Printer) {
-        perform("Sending a test page to \(printer.name)…",
+        perform("Sending one test page to \(printer.displayName)…",
                 { CUPS.printTestPage(printer.name) },
                 success: "Test page sent to \(printer.name).")
     }

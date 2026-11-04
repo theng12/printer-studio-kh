@@ -54,22 +54,16 @@ who may submit jobs, and `cupsd.conf` still limits that to the local network.
 
 ### 3. AirPrint for iPhone and iPad
 
-macOS Printer Sharing publishes shared queues over Bonjour, but it does **not**
-publish the two things iOS AirPrint discovery actually requires:
+Some legacy CUPS queues need an extra Bonjour advertisement with the
+`_universal` service subtype before iOS can find them. The app checks for a
+native AirPrint record first and adds its own only when needed. It publishes
+only while macOS Printer Sharing is on; CUPS continues to own port 631.
 
-- the `_universal` service subtype, and
-- a `URF=` key in the TXT record.
-
-Without them an iPhone or iPad ignores the printer completely. That is why a
-Mac-shared printer never appears in the iOS print dialog — even a printer that
-is natively AirPrint-capable, and even though it works perfectly from other
-Macs on the same network.
-
-The app publishes a second Bonjour record per shared printer, carrying those
-markers and pointing at the same CUPS queue. **Nothing is proxied:** jobs still
-travel CUPS → the queue's own driver → the printer. It re-scans every minute, so
-printers shared later are picked up without a restart, and it skips queues that
-are already AirPrint-capable.
+**Nothing is proxied:** jobs travel CUPS → the queue’s own driver → the printer.
+The bridge offers PDF and JPEG, not unsupported URF input. It preserves the
+queue’s UUID and uses its saved description as the displayed name. It rescans
+names and paper choices as well as the queue list, and an enabled bridge is
+refreshed automatically when a newer app supplies a changed script.
 
 It installs as a per-user LaunchAgent, so it needs **no administrator
 password** — publishing a Bonjour service requires no privileges. The trade-off
@@ -125,7 +119,7 @@ successful paper test.
 
 For KH Updater: `./app/build.sh --dmg` builds the universal app, verifies its
 ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
-`com.theng12.printerstudio`. Version: **1.0.4**, build **5**. Requires macOS 13+
+`com.theng12.printerstudio`. Version: **1.0.5**, build **6**. Requires macOS 13+
 (Apple Silicon or Intel). Old builds go into `_trash`; nothing is published by
 the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
 
@@ -141,7 +135,7 @@ notes and fails if they are missing or empty. Check extraction with
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer Studio KH-1.0.4.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer Studio KH-1.0.5.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own

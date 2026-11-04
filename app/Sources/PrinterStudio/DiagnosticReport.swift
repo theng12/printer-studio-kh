@@ -311,6 +311,23 @@ enum DiagnosticReport {
         \(activityLines.joined(separator: "\n"))
         """)
 
+        // Capture the failing label queue's negotiated format and geometry, not just HP USB status.
+        for printer in CUPS.listPrinters() {
+            let attributes = CUPS.attributes(of: printer.name)
+            let keys = ["printer-info", "printer-make-and-model", "printer-is-shared",
+                        "printer-state-reasons", "document-format-supported", "media-default",
+                        "media-supported", "print-scaling-default"]
+            var details = keys.map { "\($0): \(attributes[$0] ?? "not reported")" }
+            if let ppd = PageSizeInstaller.readPPD(queue: printer.name) {
+                details += ppd.components(separatedBy: .newlines).filter {
+                    $0.hasPrefix("*cupsFilter") || $0.hasPrefix("*DefaultPageSize:") ||
+                    $0.hasPrefix("*DefaultResolution:") || $0.hasPrefix("*cupsModelNumber:")
+                }
+            } else {
+                details.append("Driver PPD: unavailable")
+            }
+            sections.append("=== Print path: \(printer.displayName) ===\n" + details.joined(separator: "\n"))
+        }
         sections.append(divider)
 
         let fullRawReport = sections.joined(separator: "\n\n")

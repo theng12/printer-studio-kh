@@ -30,6 +30,15 @@ enum PageSizeInstaller {
         "\(queuePPDDirectory)/\(queue).ppd"
     }
 
+    static func readPPD(queue: String) -> String? {
+        if let text = try? String(contentsOfFile: ppdPath(for: queue), encoding: .utf8) { return text }
+        // Older installs made the file root-only; CUPS can still serve its public driver description locally.
+        guard let encoded = queue.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+        let result = Shell.run(Tool.path("curl"), ["--fail", "--silent", "--show-error", "--max-time", "3",
+                                                "http://localhost:631/printers/\(encoded).ppd"])
+        return result.ok && result.stdout.hasPrefix("*PPD-Adobe:") ? result.stdout : nil
+    }
+
     // MARK: - The transformation
 
     /// Returns `ppd` with the given sizes present and any previous set of ours
@@ -92,12 +101,11 @@ enum PageSizeInstaller {
 
             // 4. If a default no longer names a size that exists, point it at
             //    one that does, or CUPS rejects the PPD.
-            lines = repairDefault("PageSize", in: lines)
-            lines = repairDefault("PageRegion", in: lines)
-            lines = repairDefault("ImageableArea", in: lines)
-            lines = repairDefault("PaperDimension", in: lines)
         }
-
+        lines = repairDefault("PageSize", in: lines)
+        lines = repairDefault("PageRegion", in: lines)
+        lines = repairDefault("ImageableArea", in: lines)
+        lines = repairDefault("PaperDimension", in: lines)
         return lines.joined(separator: "\n")
     }
 
@@ -191,8 +199,8 @@ enum PageSizeInstaller {
             .filter { $0.hasPrefix(choicePrefix) }
             .compactMap { line -> String? in
                 let rest = line.dropFirst(choicePrefix.count)
-                guard let slash = rest.firstIndex(of: "/") else { return nil }
-                return String(rest[rest.startIndex..<slash])
+                guard let end = rest.firstIndex(where: { $0 == "/" || $0 == ":" }) else { return nil }
+                return String(rest[rest.startIndex..<end])
             }
 
         guard !current.isEmpty, !available.contains(current), let fallback = available.first
@@ -200,6 +208,54 @@ enum PageSizeInstaller {
 
         lines[defaultIndex] = "\(defaultPrefix): \(fallback)"
         return lines
+    }
+
+    struct PaperChoice: Equatable {
+        let key: String
+        let label: String
+        let widthMM: Double
+        let heightMM: Double
+    }
+
+    static func choices(ppd: String) -> [PaperChoice] {
+        var labels: [String: String] = [:]
+        for line in ppd.components(separatedBy: .newlines) where line.hasPrefix("*PageSize ") {
+            let rest = line.dropFirst("*PageSize ".count)
+            guard let colon = rest.firstIndex(of: ":") else { continue }
+            let parts = rest[..<colon].split(separator: "/", maxSplits: 1).map(String.init)
+            if parts.count == 2 { labels[parts[0]] = parts[1] }
+        }
+        return parseNativeSizes(ppd: ppd, includingCustom: true).map {
+            let dimensions = String(format: "%.1f × %.1f mm", $0.widthMM, $0.heightMM)
+            return PaperChoice(key: $0.name, label: "\(labels[$0.name] ?? $0.name) — \(dimensions)",
+                               widthMM: $0.widthMM, heightMM: $0.heightMM)
+        }
+    }
+
+    static func choices(queue: String) -> [PaperChoice] {
+        guard let ppd = readPPD(queue: queue) else { return [] }
+        return choices(ppd: ppd)
+    }
+
+    static func defaultKey(ppd: String) -> String {
+        guard let line = ppd.components(separatedBy: .newlines).first(where: { $0.hasPrefix("*DefaultPageSize:") }) else { return "" }
+        let key = line.dropFirst("*DefaultPageSize:".count).trimmingCharacters(in: .whitespaces)
+        return choices(ppd: ppd).contains(where: { $0.key == key }) ? key : ""
+    }
+
+    static func defaultKey(queue: String) -> String {
+        guard let ppd = readPPD(queue: queue) else { return "" }
+        return defaultKey(ppd: ppd)
+    }
+
+    static func setDefault(queue: String, key: String) -> CommandResult {
+        guard choices(queue: queue).contains(where: { $0.key == key }) else {
+            return .failure("This paper size is no longer available. Refresh the printer and choose a supported size.")
+        }
+        // lpadmin updates the server's PPD default, which AirPrint reads; lpoptions only changes this user's jobs.
+        return Shell.run(Tool.lpadmin, ["-p", queue, "-o", "PageSize=\(key)", "-o", "PageRegion=\(key)",
+                                      "-o", "print-scaling-default=fit", "-o", "fit-to-page-default=true",
+                                      "-o", "number-up-default=1", "-o", "job-sheets-default=none,none"])
     }
 
     // MARK: - Which queues are label printers
@@ -406,13 +462,13 @@ enum PageSizeInstaller {
     }
 
     /// Extracts vendor-declared native page sizes from the PPD (excluding our `psz` sizes).
-    static func parseNativeSizes(ppd: String) -> [NativeSize] {
+    static func parseNativeSizes(ppd: String, includingCustom: Bool = false) -> [NativeSize] {
         var results: [NativeSize] = []
         var seenNames = Set<String>()
 
         for line in ppd.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("*PaperDimension ") && !isOurs(trimmed) else { continue }
+            guard trimmed.hasPrefix("*PaperDimension ") && (includingCustom || !isOurs(trimmed)) else { continue }
 
             let rest = trimmed.dropFirst("*PaperDimension ".count)
             guard let colon = rest.firstIndex(of: ":") else { continue }
@@ -434,7 +490,7 @@ enum PageSizeInstaller {
         if results.isEmpty {
             for line in ppd.components(separatedBy: "\n") {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard trimmed.hasPrefix("*PageSize ") && !isOurs(trimmed) else { continue }
+                guard trimmed.hasPrefix("*PageSize ") && (includingCustom || !isOurs(trimmed)) else { continue }
                 let rest = trimmed.dropFirst("*PageSize ".count)
                 guard let colon = rest.firstIndex(of: ":") else { continue }
                 let namePart = rest[..<colon].trimmingCharacters(in: .whitespaces)
@@ -516,7 +572,7 @@ enum PageSizeInstaller {
 
     /// Pure plan helper for a specific named queue.
     static func plan(queue: String, sizes: [StickerSize]) -> SizePlan {
-        guard let ppd = try? String(contentsOfFile: ppdPath(for: queue), encoding: .utf8) else {
+        guard let ppd = readPPD(queue: queue) else {
             return SizePlan(
                 limits: nil,
                 nativeSizes: [],
@@ -541,7 +597,7 @@ enum PageSizeInstaller {
     /// The widest label a queue's PPD will accept, so the interface can say
     /// when a size the user typed is physically impossible.
     static func maxWidthMM(queue: String) -> Double? {
-        guard let ppd = try? String(contentsOfFile: ppdPath(for: queue), encoding: .utf8) else {
+        guard let ppd = readPPD(queue: queue) else {
             return nil
         }
         return parseLimits(ppd: ppd)?.maxWidthMM
@@ -557,19 +613,23 @@ enum PageSizeInstaller {
             return .failure("No printers were selected.")
         }
 
-        var payloads: [(queue: String, contents: String, plan: SizePlan)] = []
+        var payloads: [(queue: String, original: String, contents: String, plan: SizePlan)] = []
         var queueReports: [String] = []
 
         for queue in queues {
             let path = ppdPath(for: queue)
-            guard let original = try? String(contentsOfFile: path, encoding: .utf8) else {
+            guard let original = readPPD(queue: queue) else {
                 return .failure("Could not read \(path). Is the printer installed?")
             }
             let queuePlan = plan(ppd: original, sizes: sizes)
             guard let limits = queuePlan.limits else {
                 return .failure("Cannot apply sizes to \(queue): printer PPD does not declare custom page size limits (ParamCustomPageSize).")
             }
-            guard !queuePlan.adding.isEmpty else {
+            let alreadyPresent = queuePlan.skipped.contains {
+                if case .duplicateOfNative = $0.reason { return true }
+                return false
+            }
+            guard !queuePlan.adding.isEmpty || alreadyPresent else {
                 return .failure("Cannot apply sizes to \(queue): none of the enabled sizes fit this printer's declared limits "
                                 + "(\(String(format: "%.1f", limits.minWidthMM))–\(String(format: "%.1f", limits.maxWidthMM)) mm wide, "
                                 + "\(String(format: "%.1f", limits.minHeightMM))–\(String(format: "%.1f", limits.maxHeightMM)) mm high) "
@@ -577,7 +637,7 @@ enum PageSizeInstaller {
             }
 
             let transformed = transform(ppd: original, adding: queuePlan.adding)
-            payloads.append((queue, transformed, queuePlan))
+            payloads.append((queue, original, transformed, queuePlan))
 
             let addedNames = queuePlan.adding.map(\.name).joined(separator: ", ")
             let skipped = queuePlan.skipped.map { "\($0.size.name): \($0.reason)" }.joined(separator: "; ")
@@ -586,15 +646,20 @@ enum PageSizeInstaller {
 
         // Validate before installing anything, so a bad entry cannot leave a
         // printer unusable.
-        let staging = NSTemporaryDirectory() + "printer-studio-ppd-\(UUID().uuidString)"
-        try? FileManager.default.createDirectory(atPath: staging, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(atPath: staging) }
+        let staging = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/PrinterStudio/_trash/paper-sizes-\(UUID().uuidString)").path
+        do { try FileManager.default.createDirectory(atPath: staging, withIntermediateDirectories: true) }
+        catch { return .failure("Could not stage paper sizes: \(error.localizedDescription)") }
 
         for payload in payloads {
             let staged = "\(staging)/\(payload.queue).ppd"
-            try? payload.contents.write(toFile: staged, atomically: true, encoding: .utf8)
+            let baseline = "\(staging)/\(payload.queue).original.ppd"
+            do {
+                try payload.contents.write(toFile: staged, atomically: true, encoding: .utf8)
+                try payload.original.write(toFile: baseline, atomically: true, encoding: .utf8)
+            } catch { return .failure("Could not stage the driver for \(payload.queue): \(error.localizedDescription)") }
 
-            let before = validationComplaints(of: ppdPath(for: payload.queue))
+            let before = validationComplaints(of: baseline)
             let after = validationComplaints(of: staged)
             let introduced = after.subtracting(before)
             if !introduced.isEmpty {
@@ -609,21 +674,16 @@ enum PageSizeInstaller {
         for payload in payloads {
             let staged = "\(staging)/\(payload.queue).ppd"
             script += """
-            /bin/cp /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd \
-            /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd.printerstudio-backup 2>/dev/null || true
-            /bin/cp '\(staged)' /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd
-            /usr/sbin/chown root:_lp /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd
-            /bin/chmod 600 /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd
+            if [ ! -e /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd.printerstudio-backup ]; then
+                /bin/cp /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd /etc/cups/ppd/\(shellQuoted(payload.queue)).ppd.printerstudio-backup
+            fi
+            \(shellQuoted(Tool.lpadmin)) -p \(shellQuoted(payload.queue)) -P \(shellQuoted(staged))
 
             """
         }
-        // CUPS caches PPDs, so it has to be told to look again.
+        // lpadmin reloads only the changed queue; restarting cupsd interrupts every printer.
         let summaryText = queueReports.joined(separator: "\n")
-        script += """
-        /bin/launchctl kickstart -k system/org.cups.cupsd 2>/dev/null || /usr/bin/killall -HUP cupsd 2>/dev/null || true
-        /bin/sleep 2
-        printf '%s\\n' \(shellQuoted(summaryText))
-        """
+        script += "printf '%s\\n' \(shellQuoted(summaryText))\n"
 
         return Shell.runAsAdministrator(
             script,
@@ -658,23 +718,16 @@ enum PageSizeInstaller {
 
         var script = "set -e\n"
         for queue in queues {
-            let path = ppdPath(for: queue)
-            guard let original = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+            guard let original = readPPD(queue: queue) else { return .failure("Could not read the driver for \(queue).") }
             let stripped = transform(ppd: original, adding: [])
             let staged = NSTemporaryDirectory() + "printer-studio-reset-\(queue).ppd"
             try? stripped.write(toFile: staged, atomically: true, encoding: .utf8)
             script += """
-            /bin/cp '\(staged)' \(shellQuoted(path))
-            /usr/sbin/chown root:_lp \(shellQuoted(path))
-            /bin/chmod 600 \(shellQuoted(path))
+            \(shellQuoted(Tool.lpadmin)) -p \(shellQuoted(queue)) -P \(shellQuoted(staged))
 
             """
         }
-        script += """
-        /bin/launchctl kickstart -k system/org.cups.cupsd 2>/dev/null || /usr/bin/killall -HUP cupsd 2>/dev/null || true
-        /bin/sleep 2
-        echo "Removed the custom sizes."
-        """
+        script += "echo 'Removed the custom sizes.'\n"
         return Shell.runAsAdministrator(
             script,
             prompt: "Printer Studio KH needs to reset these printers to their default sizes.")

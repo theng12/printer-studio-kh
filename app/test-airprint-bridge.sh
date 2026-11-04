@@ -292,13 +292,18 @@ cat > "$FIX/browse-_ipps__tcp" <<'EOF'
 Timestamp     A/R    Flags  if Domain               Service Type         Instance Name
 13:42:04.400  Add        2  19 local.               _ipps._tcp.          Brother HL-L2370DN series @ kt-pdt-imac-m1-8-256
 EOF
-printf 'Timestamp     A/R    Flags  if Domain               Service Type         Instance Name\n' > "$FIX/browse-_ipps__tcp__universal"
+cp "$FIX/browse-_ipps__tcp" "$FIX/browse-_ipps__tcp__universal"
 cat > "$FIX/resolve-Brother_HL-L2370DN_series_@_kt-pdt-imac-m1-8-256" <<'EOF'
 Brother\032HL-L2370DN\032series\032@\032kt-pdt-imac-m1-8-256._ipps._tcp.local. can be reached at kt-pdt-imac-m1-8-256.local.:631 (interface 19)
  txtvers=1 qtotal=1 rp=printers/Brother_HL_L2370DN_series ty=Brother\ HL-L2370DN\ series UUID=2125f6b7-0bec-3f89-4729-754cefa2ab25 pdl=application/octet-stream,application/pdf,image/pwg-raster URF=none Color=F Duplex=T
 EOF
 OUT="$(run_list "$FIX" "$MOCKS")"
-check "a queue macOS already advertises is skipped" "Brother_HL_L2370DN_series skip      Brother HL-L2370DN series" "$OUT"
+check "a same-named queue on another Mac does not suppress ours" "Brother_HL_L2370DN_series advertise Brother HL-L2370DN series" "$OUT"
+sed 's/kt-pdt-imac-m1-8-256.local/Test-Local-Host.local/g' \
+  "$FIX/resolve-Brother_HL-L2370DN_series_@_kt-pdt-imac-m1-8-256" > "$FIX/local-record"
+mv "$FIX/local-record" "$FIX/resolve-Brother_HL-L2370DN_series_@_kt-pdt-imac-m1-8-256"
+OUT="$(run_list "$FIX" "$MOCKS")"
+check "a queue this Mac already advertises is skipped" "Brother_HL_L2370DN_series skip      Brother HL-L2370DN series" "$OUT"
 check "the USB queue is still advertised" "HPLaser107a advertise" "$OUT"
 
 echo "==> The fingerprint changes when the colour flag changes"

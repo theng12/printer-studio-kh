@@ -4,15 +4,9 @@
 #
 # WHY THIS EXISTS
 #
-# macOS Printer Sharing publishes every shared queue over Bonjour, but it does
-# not publish the two things iOS AirPrint discovery actually requires:
-#
-#   * the "_universal" service subtype
-#   * a "URF=" key in the TXT record
-#
-# Without them an iPhone or iPad ignores the printer completely — which is why
-# a Mac-shared printer never appears in the iOS print dialog, even though it
-# works perfectly from other Macs on the same network.
+# Some legacy CUPS queues lack the _universal Bonjour subtype needed by iOS.
+# Add a PDF-capable advertisement only when a native AirPrint record does not
+# already cover this queue. CUPS owns port 631 and the actual print pipeline.
 #
 # This publishes a Bonjour record per shared queue, pointing at the same CUPS
 # queue and carrying the AirPrint markers. Nothing is converted, proxied or
@@ -87,7 +81,7 @@ stop_all() {
 
 cleanup() {
   stop_all
-  if [ -n "$TMP" ] && [ -d "$TMP" ]; then rm -rf "$TMP"; fi
+  # Scan evidence remains under Application Support/_trash for recovery.
 }
 
 trap 'cleanup; exit 0' EXIT INT TERM
@@ -98,7 +92,7 @@ trap 'cleanup; exit 0' EXIT INT TERM
 dnssd_capture() {
   local seconds="$1"; shift
   [ "$seconds" -lt 1 ] && seconds=1
-  local out="$TMP/dnssd.$RANDOM"
+  local out="$TMP/dnssd.capture"
   "$DNSSD" "$@" >"$out" 2>&1 &
   local pid=$!
   ( /bin/sleep "$seconds"; /bin/kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
@@ -107,7 +101,6 @@ dnssd_capture() {
   /bin/kill "$killer" 2>/dev/null
   wait "$killer" 2>/dev/null
   cat "$out"
-  rm -f "$out"
 }
 
 # Printer Sharing has to be on, or cupsd does not serve the LAN and a
@@ -286,13 +279,14 @@ covered_natively() {
   while IFS='|' read -r host rp uuid universal pdl; do
     [ -n "$host" ] || continue
     # The printer itself advertises, under its own UUID.
+    [ "$universal" = "yes" ] || continue
     if [ -n "$dev_uuid" ] && [ -n "$uuid" ] && [ "$uuid" = "$dev_uuid" ]; then
       return 0
     fi
-    if [ "$rp" = "printers/$queue" ]; then
-      if [ "$universal" = "yes" ] || [ -n "$uuid" ] || case "$pdl" in *image/pwg-raster*) true;; *) false;; esac; then
-        return 0
-      fi
+    # Queue identifiers repeat across Macs; only this Mac's queue is ours.
+    if [ "$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$LOCAL_HOST" | tr '[:upper:]' '[:lower:]')" ] &&
+       [ "$rp" = "printers/$queue" ]; then
+      return 0
     fi
   done < "$NATIVE"
   return 1
@@ -307,7 +301,7 @@ build_plan() {
   : > "$PLAN"
   while IFS= read -r queue; do
     [ -n "$queue" ] || continue
-    name="$(printer_model "$queue")"
+    name="$(printer_model "$queue" | /usr/bin/base64 | tr -d '\n')"
     flags="$(queue_flags "$queue")"
     color="${flags%%|*}"
     flags="${flags#*|}"
@@ -367,6 +361,7 @@ advertise_one() {
 advertise_plan() {
   local queue decision name color duplex uuid media
   while IFS='|' read -r queue decision name color duplex uuid media; do
+    name="$(printf '%s' "$name" | /usr/bin/base64 -D)"
     [ "$decision" = "adv" ] || continue
     advertise_one "$queue" "$name" "$color" "$duplex" "$uuid"
   done < "$PLAN"
@@ -376,6 +371,7 @@ list_printers() {
   local queue decision name color duplex uuid media args
   echo "Shared queues:"
   while IFS='|' read -r queue decision name color duplex uuid media; do
+    name="$(printf '%s' "$name" | /usr/bin/base64 -D)"
     if [ "$decision" = "adv" ]; then
       args=""
       while IFS= read -r line; do
@@ -390,7 +386,9 @@ list_printers() {
   echo "Fingerprint: $(plan_fingerprint)"
 }
 
-TMP="$(/usr/bin/mktemp -d)"
+SCAN_TRASH="$HOME/Library/Application Support/PrinterStudio/_trash"
+mkdir -p "$SCAN_TRASH" || exit 1
+TMP="$(/usr/bin/mktemp -d "$SCAN_TRASH/airprint-scan-XXXXXX")" || exit 1
 PLAN="$TMP/plan"
 LOCAL_HOST="$("$SCUTIL" --get LocalHostName 2>/dev/null)"
 LOCAL_SHORT="$("$HOSTNAME" -s 2>/dev/null)"

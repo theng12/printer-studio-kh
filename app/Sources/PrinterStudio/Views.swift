@@ -272,7 +272,7 @@ struct OverviewView: View {
         }
 
         if !state.queuesHeldShut.isEmpty {
-            let names = state.queuesHeldShut.map(\.name).joined(separator: ", ")
+            let names = state.queuesHeldShut.map(\.displayName).joined(separator: ", ")
             items.append(Advice(
                 symbol: "lock.fill", tint: .red,
                 text: "\(names) \(state.queuesHeldShut.count == 1 ? "is" : "are") shared but locked to specific users. Other Macs will report “Job held for authentication”.",
@@ -340,9 +340,43 @@ struct PrinterCard: View {
             HStack(spacing: 8) {
                 Image(systemName: printer.isStopped ? "printer.fill" : "printer")
                     .foregroundStyle(printer.isStopped ? .orange : .accentColor)
-                Text(printer.name).font(.headline)
+                Text(printer.displayName).font(.headline)
                 Spacer()
                 StateBadge(printer: printer)
+            }
+
+            HStack {
+                TextField("Printer name", text: Binding(
+                    get: { state.printerNameDrafts[printer.name] ?? printer.displayName },
+                    set: { state.printerNameDrafts[printer.name] = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Printer name")
+                Button("Save name") { state.renamePrinter(printer) }
+                    .disabled(state.busy || (state.printerNameDrafts[printer.name] ?? printer.displayName) == printer.displayName)
+            }
+
+            if printer.transport != .usb {
+                Text("This name is for Mac sharing. A network printer’s own AirPrint name is set on the printer.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            if let choices = state.paperChoices[printer.name], !choices.isEmpty {
+                Picker("Paper size", selection: Binding(
+                    get: { state.selectedPaper[printer.name] ?? "" },
+                    set: { state.selectPaper($0, for: printer) }
+                )) {
+                    if !(choices.contains { $0.key == state.selectedPaper[printer.name] }) {
+                        Text("Choose a size").tag("")
+                    }
+                    ForEach(choices, id: \.key) { paper in
+                        Text(paper.label).tag(paper.key)
+                    }
+                }
+                .disabled(state.busy)
+                Text("Use the stock loaded in the printer. Reopen the phone or Mac print dialog after changing it; choose the same size there. Test page uses this size and prints one page.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
@@ -504,7 +538,7 @@ struct SharingView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: printer.hasUserACL ? "lock.fill" : "lock.open.fill")
                                     .foregroundStyle(printer.hasUserACL ? .red : .green)
-                                Text(printer.name)
+                                Text(printer.displayName)
                                 Spacer()
                                 if printer.hasUserACL {
                                     Text("Blocked").font(.caption).foregroundStyle(.red)
@@ -807,7 +841,7 @@ struct StickerSizesView: View {
                                     HStack(spacing: 8) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundStyle(.green)
-                                        Text(queue).font(.callout)
+                                        Text(state.printers.first { $0.name == queue }?.displayName ?? queue).font(.callout)
                                     }
                                     Text(summary(for: queue))
                                         .font(.caption)

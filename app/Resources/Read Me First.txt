@@ -116,5 +116,13 @@ Use a compatible label printer for those, or laser-compatible labels on a
 supported sheet. A narrow thermal label printer cannot take A4 or A5 stock.
 Driver checks do not replace a real test with the correct stock loaded.
 
+On Printers, save the name you want and select the exact paper or label size
+loaded in each printer. Applying custom sizes adds choices; selecting a size
+sets that printer’s default. Reopen the Mac or iPhone print dialog and choose
+the same size there. A job can override the default, so check it before printing.
+Print test page sends one short PDF page at the selected size, one copy, with
+no banner sheets. For labels, test with one label and stop on a mismatch.
+
 If printing fails, use Settings > Copy Error Report and paste it when asking
-for help. No administrator password is needed to copy the report.
+for help. It includes each queue’s accepted formats, driver filter, default
+size, and advertised sizes. No administrator password is needed to copy it.
