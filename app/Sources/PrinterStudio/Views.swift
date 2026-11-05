@@ -462,18 +462,20 @@ struct SharingView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
-                            Image(systemName: state.airPrintInstalled ? "checkmark.circle.fill" : "circle.dashed")
-                                .foregroundStyle(state.airPrintInstalled ? .green : .secondary)
+                            Image(systemName: state.airPrintInstalled && state.sharingEnabled ? "checkmark.circle.fill" : "circle.dashed")
+                                .foregroundStyle(state.airPrintInstalled && state.sharingEnabled ? .green : .secondary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Print from iPhone and iPad").font(.callout.weight(.medium))
-                                Text(state.airPrintInstalled
-                                     ? "On — every shared printer is advertised to iOS, and new ones are picked up automatically."
-                                     : "Off. macOS shares printers with other Macs, but iOS ignores them: it needs the “_universal” subtype and a URF marker that Printer Sharing never publishes.")
+                                Text(!state.sharingEnabled
+                                     ? "Printer Sharing is off. Turn on AirPrint to enable sharing and make shared printers available on your network."
+                                     : state.airPrintInstalled
+                                     ? "Enabled — shared printers use their existing AirPrint service where available, or this Mac's advertisement."
+                                     : "Off. Turn on to advertise shared printers that do not already support AirPrint.")
                                     .font(.caption).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
-                            if state.airPrintInstalled {
+                            if state.airPrintInstalled && state.sharingEnabled {
                                 Button("Turn off") { state.removeAirPrint() }
                             } else {
                                 Button("Turn on") { state.installAirPrint() }
@@ -481,7 +483,7 @@ struct SharingView: View {
                             }
                         }
                         if state.airPrintInstalled {
-                            Text("Nothing is proxied — jobs still go through CUPS and the queue's own driver. No administrator password is needed, because publishing a Bonjour service requires no privileges.")
+                            Text("Jobs go through this Mac's print service and the printer's driver. Turning on Printer Sharing may ask for administrator approval.")
                                 .font(.caption2).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

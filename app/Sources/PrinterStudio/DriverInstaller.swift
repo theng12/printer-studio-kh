@@ -295,15 +295,16 @@ enum DriverInstaller {
 
     /// Publishes an AirPrint advertisement for every shared queue.
     ///
-    /// macOS Printer Sharing does not publish the `_universal` subtype or a
-    /// `URF=` TXT key, and iOS ignores a printer without them — which is why a
-    /// Mac-shared printer never appears on an iPhone even though it works from
-    /// other Macs. This adds a Bonjour record per shared queue pointing at
-    /// the same CUPS queue. Nothing is proxied; jobs take the same path.
-    static func installAirPrintBridge() -> CommandResult {
+    /// Enables Printer Sharing before advertising legacy queues that lack a
+    /// native AirPrint service. Nothing is proxied; CUPS still handles jobs.
+    static func installAirPrintBridge(
+        prepareSharing: () -> CommandResult = CUPS.prepareAirPrintSharing
+    ) -> CommandResult {
         guard let source = bundledAirPrintScript else {
             return .failure("The AirPrint advertisement script is missing from this build.")
         }
+        let sharing = prepareSharing()
+        guard sharing.ok else { return sharing }
 
         let fileManager = FileManager.default
         do {
@@ -357,8 +358,10 @@ enum DriverInstaller {
     }
 
     static func removeAirPrintBridge() -> CommandResult {
-        let uid = getuid()
-        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
+        if !isTestMode {
+            let uid = getuid()
+            _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
+        }
 
         for path in [airPrintAgentPath, airPrintScriptPath] {
             if FileManager.default.fileExists(atPath: path), moveToTrash(path) == nil {

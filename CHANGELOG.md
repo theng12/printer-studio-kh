@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6 — 2026-11-05
+- Turns on Printer Sharing when you enable AirPrint, so shared printers can accept jobs from your network
+- Shows when Printer Sharing is off instead of saying AirPrint is ready
+- Explains a failed or cancelled sharing setup before starting AirPrint
+
 ## 1.0.5 — 2026-11-04
 - Lets you save printer names for the app and AirPrint
 - Shows each printer’s paper size and saves the selected size for Mac and iPhone printing

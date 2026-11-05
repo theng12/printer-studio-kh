@@ -334,9 +334,9 @@ final class AppState: ObservableObject {
     }
 
     func installAirPrint() {
-        perform("Publishing your shared printers to AirPrint…",
+        perform("Turning on Printer Sharing and AirPrint…",
                 { DriverInstaller.installAirPrintBridge() },
-                success: "Done — your shared printers are now visible to iPhone and iPad.")
+                success: "Printer Sharing and AirPrint are enabled. Reopen the print dialog on your iPhone or iPad.")
     }
 
     func removeAirPrint() {

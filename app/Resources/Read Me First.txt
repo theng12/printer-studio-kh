@@ -98,6 +98,14 @@ advertising still starts when the sharing user logs in. This app does not
 change Mac login, FileVault, or privacy settings.
 
 
+AIRPRINT SETUP (1.0.6)
+----------------------
+In Sharing, turn on Print from iPhone and iPad. This also enables Printer
+Sharing if it is off; macOS may ask for administrator approval. If approval
+fails or is cancelled, setup stops and Activity explains why. Share at least
+one printer, then reopen your phone's print dialog on the same network.
+An installed advertisement alone cannot accept jobs while sharing is off.
+
 PAPER AND STICKER SIZES (1.0.3)
 -------------------------------
 Open Paper & Sticker Sizes. The list includes 30 x 40, 50 x 70 and 70 x 100 mm,

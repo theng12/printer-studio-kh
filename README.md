@@ -65,9 +65,9 @@ queue’s UUID and uses its saved description as the displayed name. It rescans
 names and paper choices as well as the queue list, and an enabled bridge is
 refreshed automatically when a newer app supplies a changed script.
 
-It installs as a per-user LaunchAgent, so it needs **no administrator
-password** — publishing a Bonjour service requires no privileges. The trade-off
-is that it starts at login rather than at boot.
+Turning on AirPrint also turns on Printer Sharing if needed, using macOS's
+administrator approval. A failed or cancelled approval stops setup and explains
+why. The advertisement runs as a per-user LaunchAgent at login rather than boot.
 
 Two things worth knowing:
 
@@ -119,7 +119,7 @@ successful paper test.
 
 For KH Updater: `./app/build.sh --dmg` builds the universal app, verifies its
 ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
-`com.theng12.printerstudio`. Version: **1.0.5**, build **6**. Requires macOS 13+
+`com.theng12.printerstudio`. Version: **1.0.6**, build **7**. Requires macOS 13+
 (Apple Silicon or Intel). Old builds go into `_trash`; nothing is published by
 the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
 
@@ -135,7 +135,7 @@ notes and fails if they are missing or empty. Check extraction with
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer Studio KH-1.0.5.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer Studio KH-1.0.6.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own

@@ -146,6 +146,18 @@ enum CUPS {
         )
     }
 
+    static func prepareAirPrintSharing() -> CommandResult {
+        if isSharingEnabled() {
+            return CommandResult(status: 0, stdout: "Printer Sharing is on.", stderr: "")
+        }
+        let result = setSharingEnabled(true)
+        guard result.ok else { return result }
+        guard isSharingEnabled() else {
+            return .failure("Printer Sharing is still off. Turn it on before enabling AirPrint.")
+        }
+        return result
+    }
+
     // MARK: - Per-queue actions
 
     /// The core of the "held for authentication" fix: open the queue to all

@@ -31,6 +31,8 @@ struct TestAirPrintInstaller {
         setenv("PRINTER_STUDIO_SUPPORT_DIR", root.path, 1)
         setenv("PRINTER_STUDIO_BUNDLED_SCRIPT", bundledScriptPath, 1)
 
+        testSharingFailureDoesNotInstall()
+        testSharingPreparedBeforeInstall()
         testTrashKeepsOldScript()
         testTrashKeepsOldAgent()
         testRefreshDoesNothingWhenOff()
@@ -69,6 +71,26 @@ struct TestAirPrintInstaller {
     }
 
     // MARK: - Tests
+
+    static func testSharingFailureDoesNotInstall() {
+        let result = DriverInstaller.installAirPrintBridge(prepareSharing: {
+            .failure("Printer Sharing permission was cancelled.")
+        })
+        assertTest(!result.ok, "sharing failure cannot report AirPrint success")
+        assertTest(result.combined.contains("cancelled"), "sharing failure explains the cause")
+        assertTest(!DriverInstaller.isAirPrintInstalled, "sharing failure leaves no installed agent")
+    }
+
+    static func testSharingPreparedBeforeInstall() {
+        var prepared = false
+        let result = DriverInstaller.installAirPrintBridge(prepareSharing: {
+            assertTest(!DriverInstaller.isAirPrintInstalled, "sharing is prepared before installing the agent")
+            prepared = true
+            return CommandResult(status: 0, stdout: "Printer Sharing is on.", stderr: "")
+        })
+        assertTest(prepared && result.ok, "successful sharing preparation permits installation")
+        _ = DriverInstaller.removeAirPrintBridge()
+    }
 
     static func testTrashKeepsOldScript() {
         let root = makeRoot()
@@ -118,7 +140,9 @@ struct TestAirPrintInstaller {
             return
         }
         // Put the advertisement in place, as the toggle would.
-        let installed_ = DriverInstaller.installAirPrintBridge()
+        let installed_ = DriverInstaller.installAirPrintBridge(prepareSharing: {
+            CommandResult(status: 0, stdout: "Printer Sharing is on.", stderr: "")
+        })
         assertTest(installed_.ok, "the advertisement installs into the scratch directory")
         assertTest(FileManager.default.fileExists(atPath: installed.path),
                    "the installed script is there")

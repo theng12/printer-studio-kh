@@ -12,9 +12,11 @@ OUT="$ROOT/../_trash/test-airprint-installer-$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$OUT"
 
 echo "==> Compiling TestAirPrintInstaller ($ARCH)"
-# Only the files the AirPrint installer needs. CUPS.swift is not among them:
-# the installer works on files and launchd jobs, not on print queues.
+# The sharing dependency is injected so tests never change live queues.
 SOURCES=(
+  "$ROOT/Sources/PrinterStudio/CUPS.swift"
+  "$ROOT/Sources/PrinterStudio/PageSizeInstaller.swift"
+  "$ROOT/Sources/PrinterStudio/TestPage.swift"
   "$ROOT/Sources/PrinterStudio/DriverInstaller.swift"
   "$ROOT/Sources/PrinterStudio/ShareFix.swift"
   "$ROOT/Sources/PrinterStudio/Shell.swift"
