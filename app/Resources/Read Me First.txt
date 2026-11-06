@@ -106,6 +106,26 @@ fails or is cancelled, setup stops and Activity explains why. Share at least
 one printer, then reopen your phone's print dialog on the same network.
 An installed advertisement alone cannot accept jobs while sharing is off.
 
+IPHONE LABEL PRINTING (1.0.9)
+-----------------------------
+For a TSC TTP-244 Pro or Xprinter XP-D463B with its vendor driver installed,
+open Sharing and choose Set up label printing once. Approve the administrator
+request. Updating the app alone does not perform this setup. Wait until the
+label printers have finished any current jobs before starting.
+
+The setup adds iPhone raster conversion and passes the requested label size to
+the existing driver for both PDF and iPhone raster jobs. Other printer drivers
+keep their existing routes. Previous label PPDs and conversion files are kept
+for recovery. Failed setup explains the problem in Activity.
+
+After setup, load the correct stock and print one label from your iPhone.
+iPhone output is NOT CHECKED until you have done this. Stop on a size mismatch.
+Offline tests check conversion up to the vendor driver's input, not paper output.
+
+Unsupported or damaged raster input fails with an explanation. The decoder
+accepts supported 1/8-bit grayscale and 8-bit RGB layouts and limits each decoded
+page to 1 GiB. A valid driver size still needs the matching physical stock.
+
 PAPER AND STICKER SIZES (1.0.3)
 -------------------------------
 Open Paper & Sticker Sizes. The list includes 30 x 40, 50 x 70 and 70 x 100 mm,

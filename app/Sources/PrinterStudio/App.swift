@@ -49,6 +49,7 @@ final class AppState: ObservableObject {
     @Published var printerHeldByIPPUSB = false
     /// True when the AirPrint advertisement for iOS is installed.
     @Published var airPrintInstalled = false
+    @Published var labelPrintingNeedsSetup = false
     /// True when the app is registered to open at login.
     @Published var startsAtLogin = false
     @Published var automaticUSBRelease = false
@@ -169,6 +170,7 @@ final class AppState: ObservableObject {
             let loaded = ShareFix.isWatcherLoaded
             let held = Driver.ippusbdHoldingPrinter()
             let airPrint = DriverInstaller.isAirPrintInstalled
+            let labelSetup = LabelPrintFilter.needsSetup(printers: printers)
             let login = LoginItem.isEnabled
             let automaticUSB = USBPrinterService.isInstalled && USBPrinterService.isLoaded
             let labelQueues = PageSizeInstaller.queues()
@@ -192,6 +194,7 @@ final class AppState: ObservableObject {
                 self.watcherLoaded = loaded
                 self.printerHeldByIPPUSB = held
                 self.airPrintInstalled = airPrint
+                self.labelPrintingNeedsSetup = labelSetup
                 self.startsAtLogin = login
                 self.automaticUSBRelease = automaticUSB
                 self.labelQueues = labelQueues
@@ -331,6 +334,14 @@ final class AppState: ObservableObject {
         perform("Releasing the printer from macOS's IPP-over-USB service…",
                 { DriverInstaller.releasePrinter() },
                 success: "Automatic USB release is running — the printer is checked every 15 seconds.")
+    }
+
+    func setupLabelPrinting() {
+        perform("Setting up iPhone label printing…", {
+            let result = LabelPrintFilter.installIfNeeded()
+            guard result.ok else { return result }
+            return DriverInstaller.installAirPrintBridge()
+        }, success: "Label printing setup is complete. iPhone output is not checked — test one label from your phone.")
     }
 
     func installAirPrint() {

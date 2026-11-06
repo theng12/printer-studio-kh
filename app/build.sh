@@ -96,6 +96,22 @@ echo "==> Bundled What's New for $VERSION"
 cp "$ROOT/Resources/airprint-bridge.sh" "$ROOT/Resources/keep-usb-printer-ready.sh" "$APP/Contents/Resources/"
 chmod 755 "$APP/Contents/Resources/airprint-bridge.sh"
 
+# Label-only CUPS filters: use system libcups and CoreGraphics, no new runtime.
+LABEL_FILTERS="$APP/Contents/Resources/label-filters"
+mkdir -p "$LABEL_FILTERS"
+for FILTER in urftopdf label-options; do
+  for ARCH in arm64 x86_64; do
+    /usr/bin/clang -O2 -Wno-deprecated-declarations -target "${ARCH}-apple-macos${MIN_MACOS}" \
+      "$ROOT/Filters/$FILTER.c" -lcups -framework CoreGraphics -framework CoreFoundation -o "$SLICES/$FILTER.$ARCH"
+  done
+  /usr/bin/lipo -create "$SLICES/$FILTER.arm64" "$SLICES/$FILTER.x86_64" -output "$LABEL_FILTERS/$FILTER"
+  /usr/bin/codesign --force --sign - "$LABEL_FILTERS/$FILTER"
+  /usr/bin/codesign --verify --strict "$LABEL_FILTERS/$FILTER"
+done
+cp "$ROOT/Filters/label-filter" "$LABEL_FILTERS/label-filter"
+chmod 755 "$LABEL_FILTERS/"*
+echo "==> Bundled universal label conversion filters"
+
 # The app icon. Regenerate with ./app/make-icon.sh.
 if [ -f "$ROOT/Resources/PrinterStudio.icns" ]; then
   cp "$ROOT/Resources/PrinterStudio.icns" "$APP/Contents/Resources/"
