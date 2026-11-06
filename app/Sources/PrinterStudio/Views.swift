@@ -40,6 +40,7 @@ enum Screen: String, CaseIterable, Identifiable {
 
 struct MainWindow: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
@@ -68,7 +69,7 @@ struct MainWindow: View {
                         Text("Version \(version)")
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("What's new") { state.screen = .settings }
+                        Button("What's New") { openWindow(id: "whats-new") }
                             .buttonStyle(.link)
                             .help("Read what’s new in version \(version)")
                     }
@@ -889,6 +890,46 @@ struct StickerSizesView: View {
     }
 }
 
+// MARK: - What's New
+
+struct WhatsNewView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
+    private var notes: String {
+        guard let url = Bundle.main.url(forResource: "WhatsNew", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Release notes could not be loaded for this version."
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("What's New").font(.title2.weight(.semibold))
+                Text("Printer Studio KH \(version)").foregroundStyle(.secondary)
+            }
+            ScrollView {
+                Text(notes)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 420, minHeight: 240)
+    }
+}
+
 // MARK: - Settings
 
 struct SettingsView: View {
@@ -899,15 +940,6 @@ struct SettingsView: View {
         let short = info?["CFBundleShortVersionString"] as? String ?? "—"
         let build = info?["CFBundleVersion"] as? String ?? "—"
         return "\(short) (build \(build))"
-    }
-
-    private var whatsNew: String? {
-        guard let url = Bundle.main.url(forResource: "WhatsNew", withExtension: "txt"),
-              let text = try? String(contentsOf: url, encoding: .utf8) else {
-            return nil
-        }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     var body: some View {
@@ -939,9 +971,6 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("About").font(.headline)
                         SettingsRow("Printer Studio KH", version)
-                        if let whatsNew {
-                            SettingsRow("What's new", whatsNew)
-                        }
                         SettingsRow("Bundle", Bundle.main.bundleIdentifier ?? "—")
                         SettingsRow("System", ProcessInfo.processInfo.operatingSystemVersionString)
                         SettingsRow("Architecture", Self.architecture)

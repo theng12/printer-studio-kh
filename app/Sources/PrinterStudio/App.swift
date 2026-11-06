@@ -30,6 +30,12 @@ struct PrinterStudioApp: App {
                 .environmentObject(state)
                 .frame(minWidth: 860, minHeight: 580)
         }
+
+        Window("What's New", id: "whats-new") {
+            WhatsNewView()
+        }
+        .defaultSize(width: 520, height: 300)
+        .windowResizability(.contentMinSize)
     }
 }
 

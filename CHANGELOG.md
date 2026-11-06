@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.11 — 2026-11-06
+- What's New now opens in its own window.
+
 ## 1.0.10 — 2026-11-06
 - Adds a one-time setup for iPhone raster printing on the TSC TTP-244 Pro and Xprinter XP-D463B
 - Passes the requested label size to the driver before rendering PDF and iPhone raster jobs

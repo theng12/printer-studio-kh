@@ -6,6 +6,14 @@ OUT="$ROOT/../_trash/test-airprint-discovery-$(/bin/date +%Y%m%d-%H%M%S)-$$"
 /bin/mkdir -p "$OUT/tools" "$OUT/home"
 export PRINTER_STUDIO_TOOL_DIR="$OUT/tools" PRINTER_STUDIO_FIXTURES="$OUT"
 export PRINTER_STUDIO_RESCAN_SECONDS=1 HOME="$OUT/home"
+/usr/bin/mkfifo "$OUT/ready"
+exec 3<> "$OUT/ready"
+await_registrations() {
+  local queue
+  for queue in 1 2 3; do
+    read -r -t 15 -u 3 queue || { printf 'FAIL: timed out waiting for mock registration\n' >&2; exit 1; }
+  done
+}
 cat > "$OUT/tools/lpstat" <<'MOCK'
 #!/bin/bash
 case "$1" in
@@ -49,6 +57,7 @@ case "$1" in
   queue=''
   for arg in "$@"; do case "$arg" in rp=printers/*) queue="${arg#rp=printers/}" ;; esac; done
   printf '%s\n' "$@" > "$PRINTER_STUDIO_FIXTURES/registered-$queue"
+  printf '%s\n' "$queue" > "$PRINTER_STUDIO_FIXTURES/ready"
   exec /bin/sleep 30 ;;
 -B)
   printf '%s\n' '15:00:00 Add 2 12 local. _ipp._tcp. TSC TTP-244 Pro @ kt-pdt-imac-m1-8-256' '15:00:00 Add 2 12 local. _ipp._tcp. Xprinter XP-D463B @ kt-pdt-imac-m1-8-256' ;;
@@ -64,7 +73,7 @@ bridge_pid=''
 trap '[ -z "$bridge_pid" ] || /bin/kill "$bridge_pid" 2>/dev/null || true' EXIT
 /bin/bash "$ROOT/Resources/airprint-bridge.sh" run > "$OUT/bridge.log" 2>&1 &
 bridge_pid=$!
-/bin/sleep 2
+await_registrations
 for queue in TSC_TTP_244_Pro Xprinter_XP_D463B; do
   /usr/bin/diff -u "$ROOT/Tools/Fixtures/airprint-1.0.4-$queue.txt" "$OUT/registered-$queue"
 done
@@ -73,7 +82,7 @@ printf 'PASS: exact 1.0.4 label registration argv, names, subtype, port and all 
 printf 'PASS: every shared queue is advertised; existing LAN records do not suppress labels or Brother\n'
 # A rename must update the same registration without LAN scans or temporary plans.
 printf 'TSC label desk\n' > "$OUT/tsc-name"
-/bin/sleep 2
+await_registrations
 /usr/bin/grep -qxF 'TSC label desk (AirPrint)' "$OUT/registered-TSC_TTP_244_Pro"
 printf 'PASS: registration follows a saved printer name\n'
 /bin/kill "$bridge_pid"
