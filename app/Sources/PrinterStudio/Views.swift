@@ -482,6 +482,21 @@ struct SharingView: View {
                                     .buttonStyle(.borderedProminent)
                             }
                         }
+                        if state.labelPrintingNeedsSetup {
+                            HStack {
+                                Text("Label printing needs a one-time driver update. After setup, test one label from your iPhone.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer()
+                                Button("Set up label printing") { state.setupLabelPrinting() }
+                                    .disabled(state.busy)
+                            }
+                        }
+                        if state.labelQueues.contains(where: { $0.isLabel }) {
+                            Text("iPhone output is not checked by this app. Test one label from your iPhone after setup.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if state.airPrintInstalled {
                             Text("Jobs go through this Mac's print service and the printer's driver. Turning on Printer Sharing may ask for administrator approval.")
                                 .font(.caption2).foregroundStyle(.secondary)
