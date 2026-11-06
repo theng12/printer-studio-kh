@@ -70,12 +70,17 @@ MOCK
 
   cat > "$dir/lpoptions" <<'MOCK'
 #!/bin/bash
-# lpoptions -p <queue> | lpoptions -l -p <queue>
+# Real lpoptions processes -l immediately: a later -p cannot select the queue.
 F="$PRINTER_STUDIO_FIXTURES"
-case "$1" in
-  -l) cat "$F/options-$3" ;;
-  -p) cat "$F/shared-$2" ;;
-esac
+queue=default
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -p) queue="$2"; shift 2 ;;
+    -l) cat "$F/options-$queue"; exit ;;
+    *) shift ;;
+  esac
+done
+cat "$F/shared-$queue"
 MOCK
 
   cat > "$dir/ipptool" <<'MOCK'
@@ -168,6 +173,11 @@ Duplex/Duplex: DuplexTumble
 PageSize/PageSize: A4 *A4 A5 Letter
 EOF
   printf 'printer-uuid (uri) = urn:uuid:515c05c3-af01-3c02-6d90-b60b097194e3\n' > "$dir/uuid-HPLaser107a"
+  cat > "$dir/options-default" <<'EOF'
+ColorModel/Color Mode: *Gray
+Duplex/2-Sided Printing: None *DuplexNoTumble DuplexTumble
+PageSize/Media Size: *A4 A5 Letter
+EOF
   printf '_share_printers=1\n_remote_any=0\n' > "$dir/cupsctl"
   : > "$dir/published"
 }
@@ -229,10 +239,26 @@ echo "==> A monochrome printer is not advertised as colour"
 check "a Gray-only queue is not colour" "Color=F" "$OUT"
 check_absent "a Gray-only queue does not claim colour" "Color=T" "$OUT"
 
-echo "==> No URF is claimed"
-check "URF is none" "URF=none" "$OUT"
-check_absent "URF is not offered as a format" "image/urf" "$OUT"
-check "PDF is offered" "pdl=application/pdf,image/jpeg" "$OUT"
+echo "==> The working 1.0.4 discovery contract is preserved"
+LEGACY_PDL="$(sed -n '/^pdl=/p' "$ROOT/Tools/Fixtures/airprint-1.0.4-discovery.txt")"
+check "the 1.0.4 PDL list is preserved for iPhone discovery" "$LEGACY_PDL" "$OUT"
+check "the legacy URF discovery marker is retained" "URF=none" "$OUT"
+check "the same universal registration and port are used" "_ipp._tcp,_universal local 631" "$OUT"
+
+echo "==> A label uses its own capabilities, not the duplex default printer"
+FIX="$TRASH/label-capabilities"
+fixture_usb "$FIX"
+FIRST="$(run_list "$FIX" "$MOCKS" | grep '^Fingerprint:')"
+printf 'ColorModel/Color Mode: *Gray\nPageSize/PageSize: *50x70mm 30x40mm\n' > "$FIX/options-HPLaser107a"
+OUT="$(run_list "$FIX" "$MOCKS")"
+check "the one-sided target is advertised as one-sided" "Duplex=F" "$OUT"
+check_absent "the default printer duplex flag is not copied" "Duplex=T" "$OUT"
+SECOND="$(printf '%s\n' "$OUT" | grep '^Fingerprint:')"
+if [ "$FIRST" != "$SECOND" ]; then
+  PASSED=$((PASSED + 1)); echo "  ✓ the target capabilities change the fingerprint"
+else
+  FAILED=$((FAILED + 1)); echo "  ✗ FAIL: target capability change lost"
+fi
 
 echo "==> A network printer that advertises itself is skipped"
 FIX="$TRASH/native"

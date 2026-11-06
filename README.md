@@ -60,8 +60,10 @@ native AirPrint record first and adds its own only when needed. It publishes
 only while macOS Printer Sharing is on; CUPS continues to own port 631.
 
 **Nothing is proxied:** jobs travel CUPS → the queue’s own driver → the printer.
-The bridge offers PDF and JPEG, not unsupported URF input. It preserves the
-queue’s UUID and uses its saved description as the displayed name. It rescans
+The bridge retains 1.0.4’s PDF/JPEG/URF discovery list: removing URF made the
+owner’s iPhone stop finding printers. This restores discovery metadata; it does
+not repair URF conversion or the separate zero-size PDF job failure. It preserves
+the queue’s UUID and uses its saved description as the displayed name. It rescans
 names and paper choices as well as the queue list, and an enabled bridge is
 refreshed automatically when a newer app supplies a changed script.
 
@@ -119,7 +121,7 @@ successful paper test.
 
 For KH Updater: `./app/build.sh --dmg` builds the universal app, verifies its
 ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
-`com.theng12.printerstudio`. Version: **1.0.7**, build **8**. Requires macOS 13+
+`com.theng12.printerstudio`. Version: **1.0.8**, build **9**. Requires macOS 13+
 (Apple Silicon or Intel). Old builds go into `_trash`; nothing is published by
 the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
 
@@ -135,7 +137,7 @@ notes and fails if they are missing or empty. Check extraction with
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer Studio KH-1.0.7.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer Studio KH-1.0.8.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own

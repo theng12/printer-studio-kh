@@ -1,0 +1,6 @@
+# Discovery contract from released 1.0.4 (9d263a1).
+# These are advertisement fields, not proof of successful URF conversion.
+service=_ipp._tcp,_universal
+port=631
+pdl=application/pdf,image/jpeg,image/urf
+URF=none

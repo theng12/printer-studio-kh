@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8 — 2026-11-06
+- Restores the printer announcement used in 1.0.4 for iPhone printing
+- Uses each printer’s own paper and two-sided printing options in its announcement
+
 ## 1.0.7 — 2026-11-06
 - Shows the app version in the menu bar, just above Quit
 

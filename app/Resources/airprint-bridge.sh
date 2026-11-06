@@ -178,7 +178,7 @@ queue_uuid() {
 # "ColorModel/Color Mode: *Gray" is monochrome, and a label-matching regex
 # reads it as colour and advertises Color=T for a black-and-white printer.
 queue_flags() {
-  "$LPOPTIONS" -l -p "$1" 2>/dev/null | /usr/bin/awk '
+  "$LPOPTIONS" -p "$1" -l 2>/dev/null | /usr/bin/awk '
     {
       pos = index($0, ": ")
       if (pos == 0) next
@@ -329,6 +329,8 @@ plan_fingerprint() {
 #
 # Both the advertisement and the "list" report come from here, so what the
 # report shows is exactly what is published.
+# Keep 1.0.4's URF discovery token; removing it hid printers on the owner's iPhone.
+# This does not repair the separate CUPS URF conversion path.
 advertisement_args() {
   local queue="$1" name="$2" color="$3" duplex="$4" uuid="$5"
   printf '%s\n' "-R" "$name" "$SERVICE" "local" "$PORT" \
@@ -338,7 +340,7 @@ advertisement_args() {
     "ty=$name" \
     "product=($name)" \
     "note=$name on $LOCAL_SHORT" \
-    "pdl=application/pdf,image/jpeg" \
+    "pdl=application/pdf,image/jpeg,image/urf" \
     "URF=none" \
     "$MARK_KEY=1" \
     "Color=$color" \
