@@ -470,6 +470,10 @@ struct MenuBarContent: View {
 
         Divider()
 
+        Text("Printer Studio KH \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")")
+            .foregroundStyle(.secondary)
+            .disabled(true)
+
         Button("Quit Printer Studio KH") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
