@@ -469,8 +469,8 @@ struct SharingView: View {
                                 Text(!state.sharingEnabled
                                      ? "Printer Sharing is off. Turn on AirPrint to enable sharing and make shared printers available on your network."
                                      : state.airPrintInstalled
-                                     ? "Enabled — shared printers use their existing AirPrint service where available, or this Mac's advertisement."
-                                     : "Off. Turn on to advertise shared printers that do not already support AirPrint.")
+                                     ? "Enabled — every shared printer is announced as its name followed by (AirPrint). iPhone visibility is not checked until you see the printers on your phone."
+                                     : "Off. Turn on to announce every shared printer to iPhone and iPad.")
                                     .font(.caption).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -481,21 +481,6 @@ struct SharingView: View {
                                 Button("Turn on") { state.installAirPrint() }
                                     .buttonStyle(.borderedProminent)
                             }
-                        }
-                        if state.labelPrintingNeedsSetup {
-                            HStack {
-                                Text("Label printing needs a one-time driver update. After setup, test one label from your iPhone.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer()
-                                Button("Set up label printing") { state.setupLabelPrinting() }
-                                    .disabled(state.busy)
-                            }
-                        }
-                        if state.labelQueues.contains(where: { $0.isLabel }) {
-                            Text("iPhone output is not checked by this app. Test one label from your iPhone after setup.")
-                                .font(.caption2).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
                         }
                         if state.airPrintInstalled {
                             Text("Jobs go through this Mac's print service and the printer's driver. Turning on Printer Sharing may ask for administrator approval.")

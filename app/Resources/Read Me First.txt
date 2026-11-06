@@ -106,25 +106,21 @@ fails or is cancelled, setup stops and Activity explains why. Share at least
 one printer, then reopen your phone's print dialog on the same network.
 An installed advertisement alone cannot accept jobs while sharing is off.
 
-IPHONE LABEL PRINTING (1.0.9)
------------------------------
-For a TSC TTP-244 Pro or Xprinter XP-D463B with its vendor driver installed,
-open Sharing and choose Set up label printing once. Approve the administrator
-request. Updating the app alone does not perform this setup. Wait until the
-label printers have finished any current jobs before starting.
+IPHONE DISCOVERY (1.0.9)
+-------------------------
+Every shared printer is announced using the names and announcement format from
+1.0.4: look for the printer name followed by (AirPrint). Another Bonjour record
+will not hide a shared queue. A network printer such as the Brother may appear
+twice. Previously enabled AirPrint updates its bridge when the new app starts.
 
-The setup adds iPhone raster conversion and passes the requested label size to
-the existing driver for both PDF and iPhone raster jobs. Other printer drivers
-keep their existing routes. Previous label PPDs and conversion files are kept
-for recovery. Failed setup explains the problem in Activity.
+iPhone discovery is NOT CHECKED until you can see the printers on your phone.
+This release does not install the separate label raster converter or repair the
+old PDF label job; those changes are held for 1.0.10. Once the printers appear,
+printing still needs a real test with the correct paper or label stock.
 
-After setup, load the correct stock and print one label from your iPhone.
-iPhone output is NOT CHECKED until you have done this. Stop on a size mismatch.
-Offline tests check conversion up to the vendor driver's input, not paper output.
-
-Unsupported or damaged raster input fails with an explanation. The decoder
-accepts supported 1/8-bit grayscale and 8-bit RGB layouts and limits each decoded
-page to 1 GiB. A valid driver size still needs the matching physical stock.
+Developer can provide Run on iMac.command to collect the actual Bonjour TXT
+replies, check the installed bridge against the app bundle, and show the agent's
+process start time. It changes no printer or system setting and sends no job.
 
 PAPER AND STICKER SIZES (1.0.3)
 -------------------------------

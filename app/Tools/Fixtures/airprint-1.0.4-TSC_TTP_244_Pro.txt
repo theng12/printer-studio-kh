@@ -1,0 +1,15 @@
+-R
+TSC TTP-244 Pro (AirPrint)
+_ipp._tcp,_universal
+local
+631
+txtvers=1
+qtotal=1
+rp=printers/TSC_TTP_244_Pro
+ty=TSC TTP-244 Pro
+product=(TSC TTP-244 Pro)
+note=TSC_TTP_244_Pro on kt-pdt-imac-m1-8-256
+pdl=application/pdf,image/jpeg,image/urf
+URF=none
+Color=F
+Duplex=F

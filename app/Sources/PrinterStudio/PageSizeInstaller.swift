@@ -702,8 +702,8 @@ enum PageSizeInstaller {
     /// NOTE: no `-q` here. With `-q`, cupstestppd prints nothing at all, so an
     /// earlier version of this compared two empty sets and passed everything —
     /// a gate that could never fail, which is worse than no gate.
-    static func validationComplaints(of path: String, ignoreFilterFiles: Bool = false) -> Set<String> {
-        let result = Shell.run(Tool.cupstestppd, ignoreFilterFiles ? ["-I", "filters", path] : [path])
+    private static func validationComplaints(of path: String) -> Set<String> {
+        let result = Shell.run(Tool.cupstestppd, [path])
         return Set(
             result.combined
                 .split(separator: "\n")

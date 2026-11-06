@@ -1,0 +1,15 @@
+-R
+Xprinter XP-D463B (AirPrint)
+_ipp._tcp,_universal
+local
+631
+txtvers=1
+qtotal=1
+rp=printers/Xprinter_XP_D463B
+ty=Xprinter XP-D463B
+product=(Xprinter XP-D463B)
+note=Xprinter_XP_D463B on kt-pdt-imac-m1-8-256
+pdl=application/pdf,image/jpeg,image/urf
+URF=none
+Color=F
+Duplex=F

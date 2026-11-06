@@ -295,8 +295,8 @@ enum DriverInstaller {
 
     /// Publishes an AirPrint advertisement for every shared queue.
     ///
-    /// Enables Printer Sharing before advertising legacy queues that lack a
-    /// native AirPrint service. Nothing is proxied; CUPS still handles jobs.
+    /// Enables Printer Sharing before advertising every shared queue with the
+    /// working 1.0.4 registration. CUPS still handles the print jobs.
     static func installAirPrintBridge(
         prepareSharing: () -> CommandResult = CUPS.prepareAirPrintSharing
     ) -> CommandResult {
