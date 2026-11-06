@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.7 — 2026-11-06
+- Shows the app version in the menu bar, just above Quit
+
 ## 1.0.6 — 2026-11-05
 - Turns on Printer Sharing when you enable AirPrint, so shared printers can accept jobs from your network
 - Shows when Printer Sharing is off instead of saying AirPrint is ready
