@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Gives AirPrint announcements the shared queue’s stable identity and withdraws old announcements before replacing them.
+
 ## 1.0.11 — 2026-11-06
 - What's New now opens in its own window.
 

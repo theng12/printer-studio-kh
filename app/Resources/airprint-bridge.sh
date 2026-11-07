@@ -1,7 +1,7 @@
 #!/bin/bash
 # Advertise every shared CUPS queue using the working 1.0.4 registration.
 # A macOS Printer Sharing record is not proof that an iPhone can see a queue.
-# Duplicate network-printer entries are preferable to suppressing a printer.
+# Keep the CUPS queue identity across advertisements without suppressing labels.
 set -u
 
 SERVICE="_ipp._tcp,_universal"
@@ -12,6 +12,7 @@ LPSTAT="${TOOL_DIR:-/usr/bin}/lpstat"
 LPOPTIONS="${TOOL_DIR:-/usr/bin}/lpoptions"
 DNSSD="${TOOL_DIR:-/usr/bin}/dns-sd"
 CUPSCTL="${TOOL_DIR:-/usr/sbin}/cupsctl"
+IPPTOOL="${TOOL_DIR:-/usr/bin}/ipptool"
 HOSTNAME="${TOOL_DIR:-/bin}/hostname"
 PIDS=()
 CURRENT=""
@@ -20,6 +21,10 @@ stop_all() {
   local pid
   for pid in "${PIDS[@]:-}"; do
     [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  done
+  # Wait for DNSServiceRegister connections to close before replacing their records.
+  for pid in "${PIDS[@]:-}"; do
+    [ -n "$pid" ] && wait "$pid" 2>/dev/null
   done
   PIDS=()
 }
@@ -65,8 +70,22 @@ queue_flags() {
     END { printf "%s|%s", color ~ /RGB|CMYK/ ? "T" : "F", duplex ~ /DuplexTumble|DuplexNoTumble/ ? "T" : "F" }'
 }
 
+queue_uuid() {
+  local attributes uuid
+  if attributes=$("$IPPTOOL" -tv "ipp://localhost/printers/$1" get-printer-attributes.test 2>/dev/null); then
+    uuid=$(printf '%s\n' "$attributes" | /usr/bin/awk '$1 == "printer-uuid" && $3 == "=" {print $4; exit}')
+    uuid="${uuid#urn:uuid:}"
+    if [[ "$uuid" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
+      printf '%s' "$uuid" | /usr/bin/tr '[:upper:]' '[:lower:]'
+      return 0
+    fi
+  fi
+  printf 'AirPrint: no valid CUPS printer-uuid for %s; keeping its legacy advertisement.\n' "$1" >&2
+  return 1
+}
+
 advertisement_args() {
-  local printer="$1" model flags
+  local printer="$1" model flags uuid
   model=$(printer_model "$printer")
   flags=$(queue_flags "$printer")
   # Keep the legacy instance suffix, TXT keys, note, format list and URF marker.
@@ -75,6 +94,10 @@ advertisement_args() {
     "product=($model)" "note=$printer on $("$HOSTNAME" -s)" \
     'pdl=application/pdf,image/jpeg,image/urf' 'URF=none' \
     "Color=${flags%%|*}" "Duplex=${flags#*|}"
+  # Match CUPS Printer Sharing and every interface using the queue's actual UUID.
+  if uuid=$(queue_uuid "$printer"); then
+    printf '%s\n' "UUID=$uuid"
+  fi
 }
 
 advertise_one() {

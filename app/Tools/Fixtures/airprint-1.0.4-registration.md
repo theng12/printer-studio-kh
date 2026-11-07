@@ -2,7 +2,7 @@
 
 The registration layout comes from `9d263a1`, the released 1.0.4 bridge. The TSC and Xprinter queue identifiers, descriptions and host name come from the owner's 2026-11-06 iMac report. Each `.txt` fixture is the exact argument vector, one argument per line, expected at `dns-sd -R`.
 
-The legacy instance suffix, service/subtype, domain, port, TXT keys/order, queue-based note, PDL and URF marker are restored. Later UUID and psbridge additions are absent.
+The legacy instance suffix, service/subtype, domain, port, TXT keys/order, queue-based note, PDL and URF marker are restored. The base fixtures omit UUID to pin the fallback when CUPS cannot provide a valid identity. The duplicate regression also checks the actual registration with a valid CUPS printer-uuid: the base payload remains intact and one normalized UUID is appended, shared with macOS Printer Sharing. No psbridge key or native-service suppression is used.
 
 One capability correction is deliberately retained: `lpoptions -p <queue> -l` selects the target before listing options, and capability values are parsed separately from UI labels. Therefore both label queues correctly use Color=F and Duplex=F even when the Mac's default Brother queue offers duplex. This is the documented difference from 1.0.4's option-query bug; these fixtures do not claim to reproduce that bug.
 
