@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.13 — 2026-11-08
+- Keeps a stable local signing identity across updates.
+
 ## 1.0.12 — 2026-11-08
 - Gives AirPrint announcements the shared queue’s stable identity and withdraws old announcements before replacing them.
 

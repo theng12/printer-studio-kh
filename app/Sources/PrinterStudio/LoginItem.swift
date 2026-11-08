@@ -6,8 +6,8 @@ import Foundation
 /// the AirPrint advertisement are LaunchAgents of their own and already run at
 /// login whether or not the app does. This is only about the menu bar icon.
 ///
-/// A LaunchAgent rather than `SMAppService.mainApp`: the app is ad-hoc signed
-/// (there is no Developer ID), and a plist in ~/Library/LaunchAgents has no
+/// A LaunchAgent rather than `SMAppService.mainApp`: the app is locally signed
+/// without a Developer ID, and a plist in ~/Library/LaunchAgents has no
 /// signing requirements and behaves the same on every supported version.
 enum LoginItem {
 

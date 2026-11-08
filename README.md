@@ -136,17 +136,30 @@ LaunchDaemon is moved into `/Library/Application Support/PrinterStudio/_trash`.
 Errors are in `/var/log/printer-studio-usb.err.log`. A missing printer is not a
 successful paper test.
 
-For KH Updater: `./app/build.sh --dmg` builds the universal app, verifies its
-ad-hoc signature, then builds and signs the DMG. Stable bundle ID:
-`com.theng12.printerstudio`. Prepared version: **1.0.10**, build **11** (not published). Requires macOS 13+
-(Apple Silicon or Intel). Old builds go into `_trash`; nothing is published by
-the build. The signature is ad-hoc, not an Apple Developer ID or notarization.
+For KH Updater: `./app/build.sh --dmg` builds the universal app, signs nested
+binaries and then the app, verifies each signature, and builds the signed DMG.
+Stable bundle ID: `com.theng12.printerstudio`. Prepared version: **1.0.13**, build
+**14** (not published). Requires macOS 13+ (Apple Silicon or Intel). Old builds
+go into `_trash`; nothing is published by the build.
+
+Packaging defaults to the existing `KH Studio Local Signing` identity in this
+Mac's Keychain. `PRINTER_STUDIO_SIGNING_IDENTITY` selects a different certificate
+name when needed; an existing certificate identity on the installed app or prior
+build is preserved. Missing keys and signing failures stop packaging. No keys
+are created, exported or copied, and no trust settings are changed. This local
+signature is not an Apple Developer ID or notarization.
+
+After a normal build, `bash app/test-signing.sh` builds a private second version,
+checks that the app and bundled binaries keep the same certificate-based designated
+requirements, and launches both packaged apps in isolated launchd jobs. It needs
+the assigned heavy-job slot. The launch fixture skips preferences, login items,
+printer-service setup and print jobs, and removes only its own test jobs.
 
 For every release, bump the version and build in `app/Resources/Info.plist`
-and add a matching `## <version> — <date>` section to the root `CHANGELOG.md`. Settings
-shows that version and its What's New notes. The build bundles the matching
-notes and fails if they are missing or empty. Check extraction with
-`bash app/Tools/test-release-notes.sh`.
+and add a matching `## <version> — <date>` section to the root `CHANGELOG.md`.
+The sidebar shows the version and opens What's New in its own window. The build
+bundles matching notes and fails if they are missing or empty. Check extraction
+with `bash app/Tools/test-release-notes.sh`.
 
 ## Sending it to another Mac
 
@@ -154,7 +167,7 @@ notes and fails if they are missing or empty. Check extraction with
 ./app/build.sh --dmg
 ```
 
-produces `dist/Printer Studio KH-1.0.10.dmg` — a single file to AirDrop or Telegram. It
+produces `dist/Printer Studio KH-<version>.dmg` — a single file to AirDrop or Telegram. It
 holds the app, an Applications shortcut, and the Read Me.
 
 The app also carries the Read Me inside itself, so sending the app on its own

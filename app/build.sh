@@ -22,6 +22,7 @@ DIST="$ROOT/../dist"
 APP="$DIST/Printer Studio KH.app"
 BIN_NAME="PrinterStudio"
 MIN_MACOS="13.0"
+source "$ROOT/signing.sh"
 
 echo "==> Building $BIN_NAME"
 
@@ -74,6 +75,7 @@ SPLIX="$ROOT/../vendor/splix"
 if [ -x "$SPLIX/bin/rastertoqpdl" ] && [ -f "$SPLIX/ppd/laser10x.ppd" ]; then
   mkdir -p "$APP/Contents/Resources/splix/bin" "$APP/Contents/Resources/splix/ppd"
   cp "$SPLIX/bin/rastertoqpdl" "$APP/Contents/Resources/splix/bin/"
+  sign_code "$APP/Contents/Resources/splix/bin/rastertoqpdl" 'com.theng12.printerstudio.rastertoqpdl'
   cp "$SPLIX/ppd/laser10x.ppd" "$APP/Contents/Resources/splix/ppd/"
   echo "==> Bundled splix driver payload"
 else
@@ -105,8 +107,7 @@ for FILTER in urftopdf label-options; do
       "$ROOT/Filters/$FILTER.c" -lcups -framework CoreGraphics -framework CoreFoundation -o "$SLICES/$FILTER.$ARCH"
   done
   /usr/bin/lipo -create "$SLICES/$FILTER.arm64" "$SLICES/$FILTER.x86_64" -output "$LABEL_FILTERS/$FILTER"
-  /usr/bin/codesign --force --sign - "$LABEL_FILTERS/$FILTER"
-  /usr/bin/codesign --verify --strict "$LABEL_FILTERS/$FILTER"
+  sign_code "$LABEL_FILTERS/$FILTER" "com.theng12.printerstudio.$FILTER"
 done
 cp "$ROOT/Filters/label-filter" "$LABEL_FILTERS/label-filter"
 chmod 755 "$LABEL_FILTERS/"*
@@ -120,24 +121,9 @@ else
   echo "!! warning: Resources/PrinterStudio.icns missing — run ./app/make-icon.sh" >&2
 fi
 
-# Ad-hoc signature: enough for local use, no developer account needed.
-#
-# This MUST happen before the disk image is built. It used to come after, so
-# every .dmg packed an unsigned app — and macOS does not merely call an
-# unsigned app "unidentified", it calls it "damaged and can't be opened" and
-# offers no way past it, not even by right-clicking. That is the difference
-# between one right-click and needing xattr -cr in a terminal.
-if /usr/bin/codesign --force --sign - "$APP" 2>/dev/null; then
-  echo "==> Ad-hoc signed"
-else
-  echo "==> warning: ad-hoc signing failed (the app will still run locally)"
-fi
-
-# Verify what we are about to ship, rather than assuming the signature took.
-if ! /usr/bin/codesign --verify --deep --strict "$APP" 2>/dev/null; then
-  echo "!! error: the app did not verify after signing; not packaging it" >&2
-  exit 1
-fi
+# Nested code has already been signed; seal the app before creating its installer.
+sign_code "$APP" 'com.theng12.printerstudio'
+echo "==> Signed with $SIGNING_IDENTITY"
 
 # A .dmg is the one file to send by AirDrop or Telegram: it holds the app, the
 # Read Me, and an Applications shortcut. Build with --dmg.
@@ -154,8 +140,7 @@ if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
   /usr/bin/hdiutil create -quiet -volname "Printer Studio KH" -srcfolder "$STAGE" \
     -ov -format UDZO "$DMG"
   mv "$STAGE" "$TRASH/dmg-stage"
-  /usr/bin/codesign --force --sign - "$DMG"
-  /usr/bin/codesign --verify "$DMG"
+  sign_code "$DMG" 'com.theng12.printerstudio.installer'
   echo "==> Built: $DMG"
   "$ROOT/retain-dmgs.sh" "$DIST" "$APP_NAME"
 fi

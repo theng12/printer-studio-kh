@@ -61,7 +61,7 @@ final class AppState: ObservableObject {
     @Published var automaticUSBRelease = false
 
     /// The user's sticker sizes, as last saved.
-    @Published var stickerSizes: [StickerSize] = StickerSizeStore.load()
+    @Published var stickerSizes: [StickerSize] = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SIGNING_SMOKE"] == nil ? StickerSizeStore.load() : []
     /// Every CUPS queue, flagged where it looks like a label printer.
     @Published var labelQueues: [(queue: String, isLabel: Bool)] = []
     /// What each label queue currently advertises, straight from the PPD —
@@ -87,6 +87,24 @@ final class AppState: ObservableObject {
     private let work = DispatchQueue(label: "com.theng12.printerstudio.work", qos: .userInitiated)
 
     init() {
+        // Packaged launch tests must not touch login items, preferences or printer services.
+        if let receipt = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SIGNING_SMOKE"] {
+            DispatchQueue.main.async {
+                do {
+                    let data = try JSONSerialization.data(withJSONObject: [
+                        "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+                        "bundleID": Bundle.main.bundleIdentifier ?? "unknown",
+                        "pid": ProcessInfo.processInfo.processIdentifier,
+                        "ready": true,
+                    ])
+                    try data.write(to: URL(fileURLWithPath: receipt), options: .atomic)
+                } catch {
+                    fputs("Signing launch test could not write its receipt: \(error)\n", stderr)
+                    exit(1)
+                }
+            }
+            return
+        }
         log("Printer Studio KH started.")
 
         // When launchd starts us at login we should leave only the menu bar
