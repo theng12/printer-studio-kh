@@ -54,11 +54,16 @@ who may submit jobs, and `cupsd.conf` still limits that to the local network.
 
 ### 3. AirPrint for iPhone and iPad
 
-Every shared queue receives the working 1.0.4-style Bonjour registration:
-`<description> (AirPrint)`, `_ipp._tcp,_universal`, port 631, and the original
-PDF/JPEG/URF TXT format list and `URF=none` marker. The original queue-based note
-is restored, and the added UUID and psbridge keys are removed. LAN records never
-suppress a shared queue; a network printer may appear twice.
+Shared queues use the working 1.0.4-style Bonjour registration:
+`<description> (AirPrint)`, `_ipp._tcp,_universal`, port 631, the original
+PDF/JPEG/URF format list and `URF=none` marker, plus the queue's stable CUPS UUID.
+The bridge omits its copy only when the native service named by CUPS resolves
+locally on port 631 with the exact queue and UUID, a usable format and URF field,
+and appears in the AirPrint subtype. A plain IPP record, a remote service or an
+unconfirmed lookup never hides a legacy label printer. Local DNS-SD lookups have
+a two-second limit (`PRINTER_STUDIO_DNSSD_SECONDS` can adjust it); an unavailable
+native proof keeps the bridge. A printer advertised by a different Mac or through
+multiple independently configured queues can still need separate diagnosis.
 
 The bridge publishes only while macOS Printer Sharing is on. It refreshes when
 a saved name or advertised capability changes, reads each queue's own options,
@@ -138,8 +143,8 @@ successful paper test.
 
 For KH Updater: `./app/build.sh --dmg` builds the universal app, signs nested
 binaries and then the app, verifies each signature, and builds the signed DMG.
-Stable bundle ID: `com.theng12.printerstudio`. Prepared version: **1.0.13**, build
-**14** (not published). Requires macOS 13+ (Apple Silicon or Intel). Old builds
+Stable bundle ID: `com.theng12.printerstudio`. Prepared version: **1.0.14**, build
+**15** (not published). Requires macOS 13+ (Apple Silicon or Intel). Old builds
 go into `_trash`; nothing is published by the build.
 
 Packaging defaults to the existing `KH Studio Local Signing` identity in this

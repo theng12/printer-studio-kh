@@ -60,6 +60,15 @@ fi
 MOCK
 cat > "$OUT/tools/dns-sd" <<'MOCK'
 #!/bin/bash
+local_only=0
+while [ "${1:-}" = '-lo' ] || [ "${1:-}" = '-m' ]; do
+  [ "$1" != '-lo' ] || local_only=1
+  shift
+done
+if [ "$1" = '-L' ] || [ "$1" = '-B' ]; then
+  [ "$local_only" = 1 ] || { printf 'FAIL: query escaped local-only scope\n' >&2; exit 1; }
+  [ ! -e "$PRINTER_STUDIO_FIXTURES/native-query-failure" ] || exit 1
+fi
 case "$1" in
 -R)
   queue=''
@@ -79,8 +88,16 @@ case "$1" in
   trap withdraw TERM INT
   wait "$sleeper" ;;
 -B)
+  if [ -f "$PRINTER_STUDIO_FIXTURES/native-browse" ]; then
+    cat "$PRINTER_STUDIO_FIXTURES/native-browse"
+    exit
+  fi
   printf '%s\n' '15:00:00 Add 2 12 local. _ipp._tcp. TSC TTP-244 Pro @ kt-pdt-imac-m1-8-256' '15:00:00 Add 2 12 local. _ipp._tcp. Xprinter XP-D463B @ kt-pdt-imac-m1-8-256' ;;
 -L)
+  if [ -f "$PRINTER_STUDIO_FIXTURES/native-$2" ]; then
+    cat "$PRINTER_STUDIO_FIXTURES/native-$2"
+    exit
+  fi
   case "$2" in TSC*) queue=TSC_TTP_244_Pro ;; *) queue=Xprinter_XP_D463B ;; esac
   printf '%s\n' "$2._ipp._tcp.local. can be reached at kt-pdt-imac-m1-8-256.local.:631 (interface 12)" "txtvers=1 rp=printers/$queue UUID=test-queue pdl=application/pdf" ;;
 esac
@@ -149,4 +166,46 @@ bridge_pid=$!
 wait "$bridge_pid" || true
 bridge_pid=''
 printf 'PASS: sharing-off guard prevents advertisements pointing at a closed service\n'
+
+# One known native AirPrint publisher per physical printer must not gain a bridge twin.
+printf '_share_printers=1\n' > "$OUT/sharing"
+printf 'printer-uuid (uri) = urn:uuid:99999999-2222-3333-4444-555555555555\n' > "$OUT/uuid-Brother_HL_L2370DN_series"
+for queue in TSC_TTP_244_Pro Xprinter_XP_D463B Brother_HL_L2370DN_series; do
+  printf 'printer-dns-sd-name (nameWithoutLanguage) = %s native\n' "$queue" >> "$OUT/uuid-$queue"
+  uuid=$(/usr/bin/awk '$1 == "printer-uuid" {print $4}' "$OUT/uuid-$queue")
+  uuid=$(printf '%s' "${uuid#urn:uuid:}" | /usr/bin/tr '[:upper:]' '[:lower:]')
+  printf '%s\n' "$queue native._ipp._tcp.local. can be reached at fixture.local.:631 (interface 0)" \
+    " txtvers=1 rp=printers/$queue UUID=$uuid pdl=application/pdf,image/urf URF=W8,RS300" > "$OUT/native-$queue native"
+  printf '15:00:00 Add 2 0 local. _ipp._tcp. %s native\n' "$queue" >> "$OUT/native-browse"
+done
+check_native_plan() {
+  local expected="$1" count
+  /bin/bash "$BRIDGE" list > "$OUT/native-plan" 2> "$OUT/native-plan.err"
+  count=$(/usr/bin/grep -c '^-R$' "$OUT/native-plan" || true)
+  [ "$count" = "$expected" ] || { printf 'FAIL: expected %s bridge entries beside native printers, found %s\n' "$expected" "$count" >&2; exit 1; }
+}
+check_native_plan 0
+printf 'PASS: one native entry per physical USB/network printer, no second bridge entry\n'
+# A plain CUPS record or an unrelated/malformed record must never hide a label printer.
+/bin/cp "$OUT/native-TSC_TTP_244_Pro native" "$OUT/native-tsc-original"
+/usr/bin/sed 's/ URF=W8,RS300//' "$OUT/native-tsc-original" > "$OUT/native-TSC_TTP_244_Pro native"
+check_native_plan 1
+/usr/bin/grep -qx 'rp=printers/TSC_TTP_244_Pro' "$OUT/native-plan"
+printf 'PASS: plain native IPP without URF keeps legacy label discovery\n'
+for replacement in 's/UUID=[^ ]*/UUID=99999999-2222-3333-4444-555555555555/' 's@rp=printers/TSC_TTP_244_Pro@rp=printers/unrelated@' 's/:631 /:8631 /' 's@pdl=application/pdf,image/urf@pdl=application/postscript@'; do
+  /usr/bin/sed "$replacement" "$OUT/native-tsc-original" > "$OUT/native-TSC_TTP_244_Pro native"
+  check_native_plan 1
+done
+printf 'PASS: foreign UUID, different queue/port and unusable format cannot suppress a printer\n'
+/bin/cp "$OUT/native-tsc-original" "$OUT/native-TSC_TTP_244_Pro native"
+printf 'failure\n' > "$OUT/native-query-failure"
+check_native_plan 3
+/bin/mv "$OUT/native-query-failure" "$OUT/native-query-failure.used"
+printf 'PASS: failed native lookup keeps every bridge entry\n'
+/bin/mv "$OUT/native-browse" "$OUT/native-browse.saved"
+check_native_plan 3
+printf 'PASS: missing confirmed AirPrint subtype keeps every bridge entry\n'
+/usr/bin/sed 's/ native$/ (AirPrint)/' "$OUT/native-browse.saved" > "$OUT/native-browse"
+check_native_plan 3
+printf 'PASS: bridge copies alone never count as native coverage\n'
 printf 'Artifacts retained: %s\n' "$OUT"

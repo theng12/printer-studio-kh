@@ -1,6 +1,6 @@
 #!/bin/bash
-# Advertise every shared CUPS queue using the working 1.0.4 registration.
-# A macOS Printer Sharing record is not proof that an iPhone can see a queue.
+# Bridge shared queues unless the same local queue already publishes AirPrint.
+# Plain Printer Sharing records still need the working 1.0.4 registration.
 # Keep the CUPS queue identity across advertisements without suppressing labels.
 set -u
 
@@ -39,7 +39,11 @@ shared_printers() {
   "$LPSTAT" -p 2>/dev/null | /usr/bin/awk '/^printer /{print $2}' | while IFS= read -r printer; do
     [ -n "$printer" ] || continue
     if "$LPOPTIONS" -p "$printer" 2>/dev/null | /usr/bin/grep -q 'printer-is-shared=true'; then
-      printf '%s\n' "$printer"
+      if native_airprint "$printer"; then
+        printf 'AirPrint: %s already has a matching local AirPrint service; no bridge twin.\n' "$printer" >&2
+      else
+        printf '%s\n' "$printer"
+      fi
     fi
   done | /usr/bin/sort
 }
@@ -70,15 +74,60 @@ queue_flags() {
     END { printf "%s|%s", color ~ /RGB|CMYK/ ? "T" : "F", duplex ~ /DuplexTumble|DuplexNoTumble/ ? "T" : "F" }'
 }
 
+# Bound cache misses; never wait indefinitely for a native DNS-SD service.
+query_dnssd() {
+  local query_pid timer_pid result
+  "$DNSSD" -lo -m "$@" 2>/dev/null &
+  query_pid=$!
+  ( /bin/sleep "${PRINTER_STUDIO_DNSSD_SECONDS:-2}"; kill "$query_pid" 2>/dev/null ) >/dev/null 2>&1 &
+  timer_pid=$!
+  wait "$query_pid"; result=$?
+  kill "$timer_pid" 2>/dev/null || true
+  wait "$timer_pid" 2>/dev/null || true
+  return "$result"
+}
+
+native_airprint() {
+  local printer="$1" attributes name uuid native services
+  attributes=$("$IPPTOOL" -tv "ipp://localhost/printers/$printer" get-printer-attributes.test 2>/dev/null) || return 1
+  uuid=$(attribute_uuid "$attributes") || return 1
+  name=$(printf '%s\n' "$attributes" | /usr/bin/awk '/^[[:space:]]*printer-dns-sd-name .* = / {sub(/^.* = /, ""); print; exit}')
+  [ -n "$name" ] || return 1
+  native=$(query_dnssd -L "$name" _ipp._tcp local.) || return 1
+  # Local-only resolve plus exact queue/UUID avoids name-based or LAN heuristics.
+  printf '%s\n' "$native" | /usr/bin/awk -v queue="$printer" -v uuid="$uuid" '
+    /can be reached at .*:631 \(interface / {endpoint=1}
+    { for (i=1; i<=NF; i++) {
+        if ($i == "rp=printers/" queue) route=1
+        if (tolower($i) == "uuid=" uuid) identity=1
+        if ($i ~ /^URF=./) urf=1
+        if ($i ~ /^pdl=/) { n=split(substr($i,5), formats, ","); for(j=1;j<=n;j++)
+          if(formats[j] == "application/pdf" || formats[j] == "image/urf") pdl=1 }
+    }}
+    END {exit !(endpoint && route && identity && urf && pdl)}' || return 1
+  services=$(query_dnssd -B _ipp._tcp,_universal local.) || return 1
+  printf '%s\n' "$services" | /usr/bin/awk -v name="$name" '
+    $2 == "Add" && /_ipp\._tcp\.[[:space:]]/ {
+      sub(/^.*_ipp\._tcp\.[[:space:]]+/, ""); if ($0 == name) found=1
+    }
+    END {exit !found}'
+}
+
+attribute_uuid() {
+  local uuid
+  uuid=$(printf '%s\n' "$1" | /usr/bin/awk '$1 == "printer-uuid" && $3 == "=" {print $4; exit}')
+  uuid="${uuid#urn:uuid:}"
+  if [[ "$uuid" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
+    printf '%s' "$uuid" | /usr/bin/tr '[:upper:]' '[:lower:]'
+    return 0
+  fi
+  return 1
+}
+
 queue_uuid() {
-  local attributes uuid
-  if attributes=$("$IPPTOOL" -tv "ipp://localhost/printers/$1" get-printer-attributes.test 2>/dev/null); then
-    uuid=$(printf '%s\n' "$attributes" | /usr/bin/awk '$1 == "printer-uuid" && $3 == "=" {print $4; exit}')
-    uuid="${uuid#urn:uuid:}"
-    if [[ "$uuid" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
-      printf '%s' "$uuid" | /usr/bin/tr '[:upper:]' '[:lower:]'
-      return 0
-    fi
+  local attributes
+  if attributes=$("$IPPTOOL" -tv "ipp://localhost/printers/$1" get-printer-attributes.test 2>/dev/null) && attribute_uuid "$attributes"; then
+    return 0
   fi
   printf 'AirPrint: no valid CUPS printer-uuid for %s; keeping its legacy advertisement.\n' "$1" >&2
   return 1

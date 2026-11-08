@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.14 — 2026-11-08
+- Avoids adding a second AirPrint entry when this Mac already advertises the same queue as AirPrint.
+
 ## 1.0.13 — 2026-11-08
 - Keeps a stable local signing identity across updates.
 
