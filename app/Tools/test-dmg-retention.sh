@@ -1,200 +1,117 @@
 #!/bin/bash
-#
-# Tests for app/retain-dmgs.sh:
-# 1. Retains only the latest 2 versions, moves older versions and legacy aliases to _trash.
-# 2. Renames retained legacy DMGs to canonical format with contents/hash unchanged.
-# 3. Moves unversioned DMGs to _trash.
-# 4. Handles semantic versions correctly (e.g. 1.0.10 > 1.0.9).
-# 5. Never touches other files or other apps' DMGs.
-# 6. Requires only 2 args (dist dir and app name).
-#
+# Focused installed-acceptance integration; mock DMG bytes, real shared helper.
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-RETAIN_SCRIPT="$ROOT/app/retain-dmgs.sh"
+/usr/bin/python3 -I -B - "$ROOT" <<'PY'
+from pathlib import Path
+import hashlib
+import json
+import os
+import plistlib
+import shutil
+import subprocess
+import sys
+import tempfile
 
-if [ ! -x "$RETAIN_SCRIPT" ]; then
-  echo "FAIL: retain-dmgs.sh not executable at $RETAIN_SCRIPT" >&2
-  exit 1
-fi
+root = Path(sys.argv[1])
+helper = Path(os.environ.get('PRINTER_STUDIO_RELEASE_DIST_HELPER',
+    str(Path.home() / 'Developer/Shared Tools/portfolio/tools/release-dist.py')))
+assert helper.is_file(), f'shared helper unavailable: {helper}'
+(root / '_trash').mkdir(exist_ok=True)
+work = Path(tempfile.mkdtemp(prefix='test-installed-dist-', dir=root / '_trash'))
+project = work / 'project'
+(project / 'app/Resources').mkdir(parents=True)
+dist = project / 'dist'
+dist.mkdir()
+entry = project / 'app/retain-dmgs.sh'
+shutil.copy2(root / 'app/retain-dmgs.sh', entry)
+env = {**os.environ, 'PRINTER_STUDIO_RELEASE_DIST_HELPER': str(helper)}
+files, receipts = {}, {}
+for n in (1, 2, 3, 4):
+    files[n] = work / f'build-{n}.dmg'
+    files[n].write_bytes(f'verified mock installer {n}'.encode())
+    receipts[n] = work / f'installed-{n}.json'
+    receipts[n].write_text(json.dumps({'version': f'1.0.{n}',
+        'launchHealthVerified': True, 'exactMainBuiltHashes': True}))
 
-# Fixtures directory stored under _trash; no rm or trap deletion
-mkdir -p "$ROOT/_trash"
-FIXTURES_DIR=$(mktemp -d "$ROOT/_trash/test-dmg-retention-XXXXXX")
-TRASH_PARENT="$FIXTURES_DIR/_trash"
+def pins(versions):
+    return {'schema': 1, 'apps': [{'app': 'Printer Studio KH',
+        'project': str(project), 'releases': [{'version': f'1.0.{n}',
+            'source': str(files[n]), 'sha256': hashlib.sha256(files[n].read_bytes()).hexdigest(),
+            'bytes': files[n].stat().st_size, 'evidence': str(receipts[n])} for n in versions]}]}
 
-run_retention() {
-  local target="$1"
-  "$RETAIN_SCRIPT" "$target" "Printer Studio KH"
-}
+pinfile = work / 'pins.json'
+calls = 0
 
-verify_trash() {
-  local expected_in_trash="$1"
-  if [ -z "$(find "$TRASH_PARENT" -type f -name "$expected_in_trash" -print)" ]; then
-    echo "FAIL: Expected $expected_in_trash in _trash but not found!" >&2
-    exit 1
-  fi
-}
+def run(receipt, document, succeeds):
+    global calls
+    calls += 1
+    pinfile.write_text(json.dumps(document))
+    result = subprocess.run([str(entry), str(receipt), str(pinfile)], env=env,
+        capture_output=True, text=True)
+    (work / f'call-{calls}.txt').write_text(result.stdout + result.stderr)
+    assert (result.returncode == 0) == succeeds, result.stdout + result.stderr
+    return result
 
-echo "==> Test 1: Retains only latest 2 release DMGs, moves older versions to _trash"
-FIX1=$(mktemp -d "$FIXTURES_DIR/fix1-XXXXXX")
-touch "$FIX1/Printer-Studio-KH-1.0.1.dmg"
-touch "$FIX1/Printer-Studio-KH-1.0.2.dmg"
-touch "$FIX1/Printer-Studio-KH-1.0.3.dmg"
-touch "$FIX1/Printer Studio KH-1.0.3.dmg"
-run_retention "$FIX1"
+def snapshot():
+    return {str(p.relative_to(dist)): p.read_bytes() for p in dist.rglob('*') if p.is_file()}
 
-if [ ! -f "$FIX1/Printer Studio KH-1.0.3.dmg" ]; then
-  echo "FAIL: Expected canonical 1.0.3 DMG retained" >&2
-  exit 1
-fi
-if [ ! -f "$FIX1/Printer Studio KH-1.0.2.dmg" ]; then
-  echo "FAIL: Expected 1.0.2 renamed to canonical and retained" >&2
-  exit 1
-fi
-if [ -f "$FIX1/Printer-Studio-KH-1.0.1.dmg" ]; then
-  echo "FAIL: Older 1.0.1 should not be in dist" >&2
-  exit 1
-fi
-if [ -f "$FIX1/Printer-Studio-KH-1.0.3.dmg" ]; then
-  echo "FAIL: Legacy 1.0.3 should not be in dist when canonical exists" >&2
-  exit 1
-fi
-verify_trash "Printer-Studio-KH-1.0.1.dmg"
-verify_trash "Printer-Studio-KH-1.0.3.dmg"
-echo "PASS: Latest 2 retained, older and duplicate legacy DMGs moved to _trash"
+run(receipts[2], pins([2, 1]), True)
+assert (dist / 'Printer Studio KH-1.0.1.dmg').read_bytes() == files[1].read_bytes()
+assert (dist / 'Printer Studio KH-1.0.2.dmg').read_bytes() == files[2].read_bytes()
+# A new build candidate and unrelated/unmanaged images cannot retire the accepted pair.
+shutil.copy2(files[3], dist / 'Printer Studio KH-1.0.3.dmg')
+(dist / 'Other App-9.0.0.dmg').write_bytes(b'other app')
+(dist / 'Printer Studio KH-0.9.0.dmg').write_bytes(b'unknown provenance')
+before = snapshot()
+failed = work / 'failed-install.json'
+failed.write_text(json.dumps({'version': '1.0.3', 'launchHealthVerified': False,
+    'exactMainBuiltHashes': True}))
+assert 'launch health' in run(failed, pins([3, 2]), False).stderr
+assert snapshot() == before
+run(work / 'missing.json', pins([3, 2]), False)
+assert snapshot() == before
+run(receipts[2], pins([3, 2]), False)
+assert snapshot() == before
+mismatch = pins([3, 2])
+mismatch['apps'][0]['releases'][0]['evidence'] = str(receipts[2])
+run(receipts[3], mismatch, False)
+assert snapshot() == before
+bad_hash = pins([3, 2])
+bad_hash['apps'][0]['releases'][0]['sha256'] = '0' * 64
+run(receipts[3], bad_hash, False)
+assert snapshot() == before
+print('PASS: failed/missing/wrong receipt and hash mismatch preserve accepted pair and ledger')
 
-echo "==> Test 2: Semantic version ordering (1.0.10 > 1.0.9)"
-FIX2=$(mktemp -d "$FIXTURES_DIR/fix2-XXXXXX")
-touch "$FIX2/Printer-Studio-KH-1.0.8.dmg"
-touch "$FIX2/Printer-Studio-KH-1.0.9.dmg"
-touch "$FIX2/Printer-Studio-KH-1.0.10.dmg"
-touch "$FIX2/Printer Studio KH-1.0.9.dmg"
-touch "$FIX2/Printer Studio KH-1.0.10.dmg"
-run_retention "$FIX2"
+run(receipts[3], pins([3, 2]), True)
+assert not (dist / 'Printer Studio KH-1.0.1.dmg').exists()
+assert (dist / 'Printer Studio KH-1.0.2.dmg').read_bytes() == files[2].read_bytes()
+assert (dist / 'Printer Studio KH-1.0.3.dmg').read_bytes() == files[3].read_bytes()
+assert (dist / 'Other App-9.0.0.dmg').read_bytes() == b'other app'
+assert (dist / 'Printer Studio KH-0.9.0.dmg').read_bytes() == b'unknown provenance'
+assert any(p.read_bytes() == files[1].read_bytes() for p in (project / '_trash/dist').rglob('*.dmg'))
+accepted = snapshot()
+run(receipts[3], pins([3, 2]), True)
+assert snapshot() == accepted
+bad_next = pins([4, 3])
+bad_next['apps'][0]['releases'][0]['sha256'] = '0' * 64
+run(receipts[4], bad_next, False)
+assert snapshot() == accepted
+print('PASS: shared helper keeps accepted pair, recoverable previous image and unmanaged files; repeat is unchanged')
 
-if [ ! -f "$FIX2/Printer Studio KH-1.0.10.dmg" ]; then
-  echo "FAIL: Expected canonical 1.0.10 DMG retained" >&2
-  exit 1
-fi
-if [ ! -f "$FIX2/Printer Studio KH-1.0.9.dmg" ]; then
-  echo "FAIL: Expected canonical 1.0.9 DMG retained" >&2
-  exit 1
-fi
-if [ -f "$FIX2/Printer-Studio-KH-1.0.10.dmg" ]; then
-  echo "FAIL: Legacy 1.0.10 should not be in dist" >&2
-  exit 1
-fi
-if [ -f "$FIX2/Printer-Studio-KH-1.0.9.dmg" ]; then
-  echo "FAIL: Legacy 1.0.9 should not be in dist" >&2
-  exit 1
-fi
-if [ -e "$FIX2/Printer-Studio-KH-1.0.8.dmg" ]; then
-  echo "FAIL: 1.0.8 should be retired before 1.0.9 or 1.0.10" >&2
-  exit 1
-fi
-verify_trash "Printer-Studio-KH-1.0.8.dmg"
-verify_trash "Printer-Studio-KH-1.0.9.dmg"
-verify_trash "Printer-Studio-KH-1.0.10.dmg"
-echo "PASS: 1.0.10 correctly identified as newer than 1.0.9 and retained"
-
-echo "==> Test 3: Moves unversioned DMG to _trash"
-FIX3=$(mktemp -d "$FIXTURES_DIR/fix3-XXXXXX")
-touch "$FIX3/Printer Studio KH.dmg"
-touch "$FIX3/Printer Studio KH-1.0.1.dmg"
-touch "$FIX3/Printer Studio KH-1.0.2.dmg"
-touch "$FIX3/printer-studio-report"
-touch "$FIX3/.DS_Store"
-run_retention "$FIX3"
-
-if [ -f "$FIX3/Printer Studio KH.dmg" ]; then
-  echo "FAIL: Unversioned DMG should not be in dist" >&2
-  exit 1
-fi
-if [ ! -f "$FIX3/Printer Studio KH-1.0.2.dmg" ]; then
-  echo "FAIL: Expected 1.0.2 retained" >&2
-  exit 1
-fi
-if [ ! -f "$FIX3/printer-studio-report" ]; then
-  echo "FAIL: Other file (printer-studio-report) should remain untouched" >&2
-  exit 1
-fi
-if [ ! -f "$FIX3/.DS_Store" ]; then
-  echo "FAIL: Other file (.DS_Store) should remain untouched" >&2
-  exit 1
-fi
-verify_trash "Printer Studio KH.dmg"
-echo "PASS: Unversioned DMG moved to _trash, other files untouched"
-
-echo "==> Test 4: Hash unchanged when renaming legacy DMG to canonical"
-FIX4=$(mktemp -d "$FIXTURES_DIR/fix4-XXXXXX")
-echo "Legacy 1.0.2 content hash test" > "$FIX4/Printer-Studio-KH-1.0.2.dmg"
-touch "$FIX4/Printer-Studio-KH-1.0.3.dmg"
-H_BEFORE=$(shasum -a 256 "$FIX4/Printer-Studio-KH-1.0.2.dmg" | cut -d" " -f1)
-run_retention "$FIX4"
-
-if [ ! -f "$FIX4/Printer Studio KH-1.0.2.dmg" ]; then
-  echo "FAIL: Expected 1.0.2 renamed to canonical" >&2
-  exit 1
-fi
-H_AFTER=$(shasum -a 256 "$FIX4/Printer Studio KH-1.0.2.dmg" | cut -d" " -f1)
-if [ "$H_BEFORE" != "$H_AFTER" ]; then
-  echo "FAIL: Hash changed when renaming legacy DMG!" >&2
-  exit 1
-fi
-echo "PASS: Hash and contents identical after rename"
-
-echo "==> Test 5: Retains only 2 versions even with 5 versions and legacy aliases"
-FIX5=$(mktemp -d "$FIXTURES_DIR/fix5-XXXXXX")
-touch "$FIX5/Printer-Studio-KH-1.0.1.dmg"
-touch "$FIX5/Printer-Studio-KH-1.0.2.dmg"
-touch "$FIX5/Printer-Studio-KH-1.0.3.dmg"
-touch "$FIX5/Printer-Studio-KH-1.0.4.dmg"
-touch "$FIX5/Printer-Studio-KH-1.0.5.dmg"
-touch "$FIX5/Printer Studio KH-1.0.5.dmg"
-run_retention "$FIX5"
-
-if [ ! -f "$FIX5/Printer Studio KH-1.0.5.dmg" ]; then
-  echo "FAIL: Expected canonical 1.0.5 retained" >&2
-  exit 1
-fi
-if [ ! -f "$FIX5/Printer Studio KH-1.0.4.dmg" ]; then
-  echo "FAIL: Expected 1.0.4 renamed to canonical and retained" >&2
-  exit 1
-fi
-if [ -f "$FIX5/Printer-Studio-KH-1.0.5.dmg" ]; then
-  echo "FAIL: Legacy 1.0.5 should not be in dist when canonical exists" >&2
-  exit 1
-fi
-for older in 1.0.1 1.0.2 1.0.3; do
-  if [ -f "$FIX5/Printer-Studio-KH-$older.dmg" ] || [ -f "$FIX5/Printer Studio KH-$older.dmg" ]; then
-    echo "FAIL: Older version $older should not be in dist" >&2
-    exit 1
-  fi
-done
-echo "PASS: With 5 versions and aliases, only latest 2 kept in dist"
-
-echo "==> Test 6: Other apps and malformed filenames remain untouched"
-FIX6=$(mktemp -d "$FIXTURES_DIR/fix6-XXXXXX")
-touch "$FIX6/Other App-1.0.0.dmg" "$FIX6/Printer Studio KH-not-a-version.dmg" "$FIX6/notes.txt"
-run_retention "$FIX6"
-for unrelated in "Other App-1.0.0.dmg" "Printer Studio KH-not-a-version.dmg" "notes.txt"; do
-  test -f "$FIX6/$unrelated"
-done
-echo "PASS: Unrelated and malformed files untouched"
-
-echo "==> Test 7: Retiring the same filename twice never overwrites a backup"
-for value in first second; do
-  FIX7=$(mktemp -d "$FIXTURES_DIR/fix7-XXXXXX")
-  printf '%s' "$value" > "$FIX7/Printer Studio KH.dmg"
-  run_retention "$FIX7"
-done
-for value in first second; do
-  found=0
-  while IFS= read -r backup; do
-    if [ "$(cat "$backup")" = "$value" ]; then found=1; fi
-  done < <(find "$TRASH_PARENT" -type f -name 'Printer Studio KH.dmg')
-  test "$found" -eq 1
-done
-echo "PASS: Both retired files preserved in distinct backup folders"
-echo "==> All seven DMG retention tests passed."
+# Existing installer collision must stop before signing or moving the app bundle.
+shutil.copy2(root / 'app/build.sh', project / 'app/build.sh')
+(project / 'app/Resources/Info.plist').write_bytes(plistlib.dumps({'CFBundleShortVersionString': '1.0.3'}))
+app = dist / 'Printer Studio KH.app'
+app.mkdir()
+(app / 'marker').write_text('working app')
+result = subprocess.run(['/bin/bash', str(project / 'app/build.sh'), '--dmg'], capture_output=True, text=True)
+assert result.returncode != 0 and 'Installer already exists' in result.stderr, result.stderr
+assert snapshot() == {**accepted, 'Printer Studio KH.app/marker': b'working app'}
+build_source = (root / 'app/build.sh').read_text()
+assert 'retain-dmgs.sh' not in build_source
+assert '-ov -format' not in build_source
+assert 'mv "$DMG"' not in build_source
+print('PASS: build cannot replace an existing installer and has no retention call')
+print(f'Fixtures retained: {work}')
+PY

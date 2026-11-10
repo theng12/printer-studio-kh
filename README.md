@@ -312,7 +312,32 @@ label sheets in a supported sheet size. A thermal label printer needs stock
 that matches its width, length and sensing mode; a valid driver size is not
 proof of a successful physical print.
 
-The sidebar footer shows the bundle version and a **What's new** link to the
-current release notes in Settings. DMG builds use `Printer Studio KH-<version>.dmg`;
-after successful signature verification, only the newest two release versions
-remain in `dist`. Superseded images are moved into `_trash` for recovery.
+The sidebar footer shows the bundle version and a **What's new** link to its own
+window. DMG builds use `Printer Studio KH-<version>.dmg`. Building never retires
+rollback images, and a build refuses to replace an existing image of that version.
+
+After the normal release has been installed, launched and verified, finalize its
+canonical `dist/` with the installed readback and a trusted shared-helper pin file:
+
+```bash
+./app/retain-dmgs.sh /absolute/path/installed-readback.json /absolute/path/accepted-dist-pins.json
+```
+
+The receipt must report `launchHealthVerified: true`, `exactMainBuiltHashes: true`
+and the installed `version`. Pins follow the shared portfolio `release-dist.py`
+README contract: schema1, this checkout's absolute `project`, app `Printer Studio KH`,
+and the current plus previous accepted releases (one only for the first release).
+Each release names its exact version, absolute DMG source, SHA256, bytes and evidence.
+The current release is first and its evidence names that installed receipt. The
+release operator verifies artifact provenance and the previous release's acceptance,
+dependencies and quiet point before calling this entrypoint; publication alone is
+insufficient. An intended-device or physical-print check remains open independently.
+
+The entrypoint delegates all copying, locking, provenance and retirement to
+`~/Developer/Shared Tools/portfolio/tools/release-dist.py`; no local retention
+algorithm remains. `PRINTER_STUDIO_RELEASE_DIST_HELPER` can select another installed
+copy for isolated checks. Missing/failed installed proof or helper errors stop
+finalization. Only ledger-managed images can be retired, recoverably under
+`_trash/dist/`; unknown images and source artifacts remain untouched. Never adopt
+an unknown existing DMG by version name alone. Staged candidates may remain in
+`dist/` until accepted; they never displace the accepted rollback pair at build time.

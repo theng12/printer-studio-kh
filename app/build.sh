@@ -22,6 +22,14 @@ DIST="$ROOT/../dist"
 APP="$DIST/Printer Studio KH.app"
 BIN_NAME="PrinterStudio"
 MIN_MACOS="13.0"
+# Published and accepted installers are immutable, even when rebuilding this version.
+if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
+  VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/Resources/Info.plist")
+  if [ -e "$DIST/$(basename "$APP" .app)-$VERSION.dmg" ]; then
+    printf 'Installer already exists for %s; preserve it and use a new release version.\n' "$VERSION" >&2
+    exit 1
+  fi
+fi
 source "$ROOT/signing.sh"
 
 echo "==> Building $BIN_NAME"
@@ -136,13 +144,12 @@ if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
   cp -R "$APP" "$STAGE/"
   cp "$ROOT/Resources/Read Me First.txt" "$STAGE/"
   ln -s /Applications "$STAGE/Applications"
-  [ ! -e "$DMG" ] || mv "$DMG" "$TRASH/"
   /usr/bin/hdiutil create -quiet -volname "Printer Studio KH" -srcfolder "$STAGE" \
-    -ov -format UDZO "$DMG"
+    -format UDZO "$DMG"
   mv "$STAGE" "$TRASH/dmg-stage"
   sign_code "$DMG" 'com.theng12.printerstudio.installer'
   echo "==> Built: $DMG"
-  "$ROOT/retain-dmgs.sh" "$DIST" "$APP_NAME"
+  echo "==> Installer retained; accepted rollback DMGs stay until installed verification."
 fi
 
 echo "==> Built: $APP"
