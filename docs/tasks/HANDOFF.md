@@ -1,6 +1,6 @@
 # Printer Studio KH handoff
 
-## Background helper naming — 2026-11-11 (unreleased 1.0.15)
+## Background helper naming — 2026-11-12 (unreleased 1.0.16)
 
 Every installed background job now runs from a named `.app` bundle. The launchd labels are unchanged, so migration only replaces each job's program.
 
@@ -12,7 +12,7 @@ Every installed background job now runs from a named `.app` bundle. The launchd 
 | launchd label | `com.theng12.printerstudio.airprint`, `.sharefix`, `.usb` | unchanged |
 | Login item | `com.theng12.printerstudio.app` → `/usr/bin/open` | unchanged |
 
-Migration: AirPrint and ShareFix rewrite their agents at app launch (no admin prompt), copy the user helper into `~/Library/Application Support/PrinterStudio/` and retire the old shell scripts to `_trash/`. The USB daemon needs the existing one-time admin prompt, so its old-style install reports as needing setup and migrates on the next enable. The native Bonjour API replaces the persistent `dns-sd -R` children; transient lookups still use `dns-sd`.
+Migration: AirPrint and ShareFix rewrite their agents at app launch (no admin prompt), copy the user helper into `~/Library/Application Support/PrinterStudio/` and retire the old shell scripts to `_trash/`. A booted-out job is given time to unload before it is restarted, so an upgrade never leaves the AirPrint helper off. The USB daemon needs the existing one-time admin prompt, so its old-style install reports as needing setup and migrates on the next enable. The native Bonjour API replaces the persistent `dns-sd -R` children; transient lookups still use `dns-sd`.
 
 ## Release state — 2026-11-09
 

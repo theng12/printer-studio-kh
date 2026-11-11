@@ -1,7 +1,8 @@
 # Changelog
 
-## 1.0.15 — 2026-11-11
+## 1.0.16 — 2026-11-12
 - Background helpers now run as Printer Studio KH Helper instead of invisible shell scripts.
+- Keeps the AirPrint helper running after an upgrade instead of stopping it.
 
 ## 1.0.14 — 2026-11-08
 - Avoids adding a second AirPrint entry when this Mac already advertises the same queue as AirPrint.
