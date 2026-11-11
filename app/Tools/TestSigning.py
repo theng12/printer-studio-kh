@@ -88,8 +88,12 @@ def launch(app, expected_version, work):
             run(['/bin/launchctl', 'bootout', job])
         queue.close()
         os.close(fd)
-    absent = subprocess.run(['/bin/launchctl', 'print', job], capture_output=True).returncode
-    assert absent == 113, 'Owned test launchd job remains loaded'
+    # launchd unloads a booted-out job asynchronously (measured ~0.2 s here);
+    # poll instead of racing it, or the smoke fails at random.
+    deadline = time.monotonic() + 5
+    while subprocess.run(['/bin/launchctl', 'print', job], capture_output=True).returncode != 113:
+        assert time.monotonic() < deadline, 'Owned test launchd job remains loaded'
+        time.sleep(0.1)
     return dict(health=health, survivedStartup=True, ownedJobRemoved=True)
 
 
