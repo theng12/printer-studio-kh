@@ -204,17 +204,42 @@ enum ShareFix {
     }
 
     private static func reloadAgent(failure: String) -> CommandResult {
+        reloadJob(label: label, plistPath: launchAgent.path,
+                  started: "Background watcher installed and started.", failure: failure)
+    }
+
+    /// Boots a job out and back in.
+    ///
+    /// launchd finishes unloading a booted-out job asynchronously (about 0.2 s
+    /// here), so bootstrapping straight away can fail with an I/O error and
+    /// leave the job off. Wait for the old job to go, then retry.
+    static func reloadJob(label: String, plistPath: String,
+                          started: String, failure: String) -> CommandResult {
         let uid = getuid()
         _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(label)"])
-        let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", launchAgent.path])
-        if !bootstrap.ok {
-            let legacy = Shell.run(Tool.launchctl, ["load", "-w", launchAgent.path])
-            if !legacy.ok {
-                return .failure("\(failure): \(bootstrap.combined)")
+        let gone = Date().addingTimeInterval(5)
+        while jobLoaded(label) && Date() < gone { Thread.sleep(forTimeInterval: 0.1) }
+        var lastFailure = ""
+        for attempt in 0..<3 {
+            let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", plistPath])
+            if bootstrap.ok {
+                _ = Shell.run(Tool.launchctl, ["kickstart", "-k", "gui/\(uid)/\(label)"])
+                let ready = Date().addingTimeInterval(3)
+                while !jobLoaded(label) && Date() < ready { Thread.sleep(forTimeInterval: 0.1) }
+                if jobLoaded(label) { return CommandResult(status: 0, stdout: started, stderr: "") }
             }
+            lastFailure = bootstrap.combined
+            if attempt < 2 { Thread.sleep(forTimeInterval: 0.4) }
         }
-        _ = Shell.run(Tool.launchctl, ["kickstart", "-k", "gui/\(uid)/\(label)"])
-        return CommandResult(status: 0, stdout: "Background watcher installed and started.", stderr: "")
+        let legacy = Shell.run(Tool.launchctl, ["load", "-w", plistPath])
+        if legacy.ok, jobLoaded(label) {
+            return CommandResult(status: 0, stdout: started, stderr: "")
+        }
+        return .failure("\(failure): \(lastFailure)")
+    }
+
+    private static func jobLoaded(_ label: String) -> Bool {
+        Shell.run(Tool.launchctl, ["print", "gui/\(getuid())/\(label)"]).ok
     }
 
     static func uninstallWatcher() -> CommandResult {

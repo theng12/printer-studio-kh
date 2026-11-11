@@ -237,18 +237,10 @@ enum DriverInstaller {
             // No launchd job in the test suite.
             return CommandResult(status: 0, stdout: "AirPrint advertisement started.", stderr: "")
         }
-        let uid = getuid()
-        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
-        let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", airPrintAgentPath])
-        if !bootstrap.ok {
-            let legacy = Shell.run(Tool.launchctl, ["load", "-w", airPrintAgentPath])
-            if !legacy.ok {
-                return .failure(
-                    "The advertisement was written but could not be started: \(bootstrap.combined)")
-            }
-        }
-        _ = Shell.run(Tool.launchctl, ["kickstart", "-k", "gui/\(uid)/\(airPrintLabel)"])
-        return CommandResult(status: 0, stdout: "AirPrint advertisement started.", stderr: "")
+        return ShareFix.reloadJob(
+            label: airPrintLabel, plistPath: airPrintAgentPath,
+            started: "AirPrint advertisement started.",
+            failure: "The advertisement was written but could not be started")
     }
 
     /// Publishes an AirPrint advertisement for every shared queue.
