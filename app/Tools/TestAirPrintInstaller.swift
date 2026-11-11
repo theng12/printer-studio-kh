@@ -4,8 +4,8 @@ import Foundation
 ///
 /// Everything runs in a temporary directory. No print queue is touched, no
 /// Bonjour service is published and no launchd job is loaded — the tests
-/// only exercise the file handling, which is where the "keep the old copy"
-/// rule lives.
+/// only exercise the file handling, which is where the helper migration and
+/// the "keep the old copy" rule live.
 @main
 struct TestAirPrintInstaller {
     static var passed = 0
@@ -29,15 +29,18 @@ struct TestAirPrintInstaller {
         let root = makeRoot()
         setenv("PRINTER_STUDIO_AIRPRINT_TEST", "1", 1)
         setenv("PRINTER_STUDIO_SUPPORT_DIR", root.path, 1)
-        setenv("PRINTER_STUDIO_BUNDLED_SCRIPT", bundledScriptPath, 1)
+        if let helper = bundledHelperPath {
+            setenv("PRINTER_STUDIO_BUNDLED_HELPER", helper, 1)
+        }
 
         testSharingFailureDoesNotInstall()
         testSharingPreparedBeforeInstall()
+        testInstallCopiesHelperAndAgent()
         testTrashKeepsOldScript()
         testTrashKeepsOldAgent()
         testRefreshDoesNothingWhenOff()
-        testRefreshReplacesOutdatedScript()
-        testRefreshLeavesMatchingScriptAlone()
+        testRefreshMigratesOldStyleAgent()
+        testRefreshLeavesNewStyleAlone()
 
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
@@ -53,13 +56,18 @@ struct TestAirPrintInstaller {
         return url
     }
 
-    /// The script the app would ship, taken from the checkout.
-    static var bundledScriptPath: String {
-        if CommandLine.arguments.count > 1 {
-            return CommandLine.arguments[1]
-        }
-        return ""
+    /// The helper bundle the app would ship, supplied by the test runner.
+    static var bundledHelperPath: String? {
+        CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : nil
     }
+
+    static var installedHelperExecutable: URL {
+        DriverInstaller.airPrintSupportDirectory
+            .appendingPathComponent("Printer Studio KH Helper.app")
+            .appendingPathComponent("Contents/MacOS/Printer Studio KH Helper")
+    }
+
+    static var agentPlist: URL { URL(fileURLWithPath: DriverInstaller.airPrintAgentPath) }
 
     static func write(_ text: String, to url: URL) {
         try? text.write(to: url, atomically: true, encoding: .utf8)
@@ -68,6 +76,29 @@ struct TestAirPrintInstaller {
     static func files(in directory: URL) -> [String] {
         ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
             .sorted()
+    }
+
+    static func agentArguments() -> [String]? {
+        guard let data = try? Data(contentsOf: agentPlist),
+              let plist = try? PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? [String: Any] else { return nil }
+        return plist["ProgramArguments"] as? [String]
+    }
+
+    static func agentBundleIdentifiers() -> [String]? {
+        guard let data = try? Data(contentsOf: agentPlist),
+              let plist = try? PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? [String: Any] else { return nil }
+        return plist["AssociatedBundleIdentifiers"] as? [String]
+    }
+
+    static func trashFiles() -> [String] {
+        let trash = DriverInstaller.airPrintSupportDirectory.appendingPathComponent("_trash")
+        return files(in: trash)
+    }
+
+    static let sharingOK = {
+        CommandResult(status: 0, stdout: "Printer Sharing is on.", stderr: "")
     }
 
     // MARK: - Tests
@@ -90,6 +121,33 @@ struct TestAirPrintInstaller {
         })
         assertTest(prepared && result.ok, "successful sharing preparation permits installation")
         _ = DriverInstaller.removeAirPrintBridge()
+    }
+
+    static func testInstallCopiesHelperAndAgent() {
+        // An old installation left its shell worker behind.
+        write("#!/bin/bash\n", to: URL(fileURLWithPath: DriverInstaller.airPrintScriptPath))
+
+        let result = DriverInstaller.installAirPrintBridge(prepareSharing: sharingOK)
+        assertTest(result.ok, "the advertisement installs into the scratch directory")
+        assertTest(FileManager.default.fileExists(atPath: installedHelperExecutable.path),
+                   "Printer Studio KH Helper.app is copied into the support directory")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
+                   "the agent runs the helper with bridge")
+        assertTest(agentBundleIdentifiers() == ["com.theng12.printerstudio.helper"],
+                   "the agent is attributed to the helper bundle")
+        assertTest(!FileManager.default.fileExists(
+            atPath: DriverInstaller.airPrintScriptPath),
+                   "the old shell advertisement is no longer installed")
+        assertTest(trashFiles().contains { $0.hasPrefix("airprint-bridge.sh") },
+                   "the old shell advertisement is kept in _trash")
+
+        // A second run must not break the installed helper or agent.
+        let second = DriverInstaller.installAirPrintBridge(prepareSharing: sharingOK)
+        assertTest(second.ok, "a second install succeeds")
+        assertTest(FileManager.default.fileExists(atPath: installedHelperExecutable.path),
+                   "a second install keeps the helper")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
+                   "a second install keeps the same agent program")
     }
 
     static func testTrashKeepsOldScript() {
@@ -123,59 +181,58 @@ struct TestAirPrintInstaller {
     }
 
     static func testRefreshDoesNothingWhenOff() {
-        // The advertisement is off on this Mac, so a refresh must do nothing.
+        _ = DriverInstaller.removeAirPrintBridge()
+        assertTest(!DriverInstaller.isAirPrintInstalled, "the advertisement is off before the refresh")
+
         let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
         assertTest(result.ok, "a refresh with the advertisement off succeeds")
         assertTest(result.stdout.contains("is off"),
                    "a refresh with the advertisement off says so")
     }
 
-    static func testRefreshReplacesOutdatedScript() {
-        // The installed script differs from the bundled one, so the refresh
-        // has to put the bundled one in place.
-        let installed = URL(fileURLWithPath: DriverInstaller.airPrintScriptPath)
-        guard let bundledPath = DriverInstaller.bundledAirPrintScript,
-              let bundled = try? Data(contentsOf: URL(fileURLWithPath: bundledPath)) else {
-            print("  - no bundled script, so the replace path is not exercised")
-            return
-        }
-        // Put the advertisement in place, as the toggle would.
-        let installed_ = DriverInstaller.installAirPrintBridge(prepareSharing: {
-            CommandResult(status: 0, stdout: "Printer Sharing is on.", stderr: "")
-        })
-        assertTest(installed_.ok, "the advertisement installs into the scratch directory")
-        assertTest(FileManager.default.fileExists(atPath: installed.path),
-                   "the installed script is there")
+    static func testRefreshMigratesOldStyleAgent() {
+        let installed = DriverInstaller.installAirPrintBridge(prepareSharing: sharingOK)
+        assertTest(installed.ok, "the helper installs before migration")
+        assertTest(FileManager.default.fileExists(atPath: installedHelperExecutable.path),
+                   "the helper is present before migration")
 
-        write("stale contents", to: installed)
+        // Recreate the 1.0.14 shape: bash, the old script, no attribution.
+        write("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key>
+            <string>com.theng12.printerstudio.airprint</string>
+            <key>ProgramArguments</key>
+            <array>
+                <string>/bin/bash</string>
+                <string>\(DriverInstaller.airPrintScriptPath)</string>
+                <string>run</string>
+            </array>
+        </dict>
+        </plist>
+        """, to: agentPlist)
+        write("#!/bin/bash\n", to: URL(fileURLWithPath: DriverInstaller.airPrintScriptPath))
+
         let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
-        let after = (try? Data(contentsOf: installed)) ?? Data()
-        assertTest(result.ok, "a refresh of an outdated script succeeds")
-        assertTest(after == bundled, "the outdated script is replaced with the bundled one")
-        assertTest(result.stdout.contains("updated"),
-                   "a refresh of an outdated script says it updated")
-
-        // The old script is kept, not deleted.
-        let trash = URL(fileURLWithPath: DriverInstaller.airPrintScriptPath)
-            .deletingLastPathComponent().appendingPathComponent("_trash")
-        let kept = ((try? FileManager.default.contentsOfDirectory(atPath: trash.path)) ?? [])
-            .filter { $0.hasPrefix("airprint-bridge.sh") }
-        assertTest(!kept.isEmpty, "the replaced script is kept in _trash")
+        assertTest(result.ok, "a refresh of an old-style agent succeeds")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
+                   "the old-style agent is rewritten to run the helper")
+        assertTest(agentBundleIdentifiers() == ["com.theng12.printerstudio.helper"],
+                   "the migrated agent is attributed to the helper bundle")
+        assertTest(!FileManager.default.fileExists(
+            atPath: DriverInstaller.airPrintScriptPath),
+                   "migration retires the old shell advertisement")
+        assertTest(result.stdout.contains("updated"), "the migration says it updated the agent")
     }
 
-    static func testRefreshLeavesMatchingScriptAlone() {
-        let installed = URL(fileURLWithPath: DriverInstaller.airPrintScriptPath)
-        guard let bundledPath = DriverInstaller.bundledAirPrintScript,
-              let bundled = try? Data(contentsOf: URL(fileURLWithPath: bundledPath)) else {
-            print("  - no bundled script, so the up-to-date path is not exercised")
-            return
-        }
-        try? bundled.write(to: installed)
+    static func testRefreshLeavesNewStyleAlone() {
         let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
-        let after = (try? Data(contentsOf: installed)) ?? Data()
-        assertTest(result.ok, "a refresh of an up-to-date script succeeds")
-        assertTest(after == bundled, "an up-to-date script is left alone")
+        assertTest(result.ok, "a refresh of a helper installation succeeds")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
+                   "the helper agent is left alone")
         assertTest(result.stdout.contains("up to date"),
-                   "a refresh of an up-to-date script says it is up to date")
+                   "an up-to-date advertisement says it is up to date")
     }
 }

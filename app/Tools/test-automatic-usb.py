@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
-"""Exercise the exact worker with stand-in system tools; never touch a real printer."""
+"""Exercise the helper's usb mode with stand-in system tools; never touch a real printer."""
 import json
 import os
 from pathlib import Path
+import platform
 import subprocess
 import tempfile
-import shlex
 
 root = Path(__file__).resolve().parents[2]
-source = (root / "app/Resources/keep-usb-printer-ready.sh").read_text()
 trash = root / "_trash"
 trash.mkdir(exist_ok=True)
 work = Path(tempfile.mkdtemp(dir=trash))
+
+helper = work / "helper"
+subprocess.run(
+    ["/usr/bin/swiftc", "-O", "-swift-version", "5",
+     "-target", f"{platform.machine()}-apple-macos13.0",
+     "-o", str(helper), str(root / "app/Helper/main.swift")],
+    check=True, capture_output=True, text=True)
+
 stub = work / "tool.py"
 stub.write_text('''#!/usr/bin/python3
 import json, os, sys
@@ -29,10 +36,7 @@ if name=='kill':
 stub.chmod(0o755)
 for name in ("lpstat", "pgrep", "ps", "kill"):
     (work / name).symlink_to(stub)
-    for prefix in ("/usr/bin/", "/bin/"):
-        source = source.replace(prefix + name, shlex.quote(str(work / name)))
-worker = work / "worker.sh"
-worker.write_text(source)
+
 base = dict(queues="device for HPLaser107a: usb://HP/HP%20Laser%20103%20107%20108?serial=ABC123",
             executable="/usr/libexec/ippusbd",
             command="/usr/libexec/ippusbd usb://HP%20Inc./HP%20Laser%20107a?serial=ABC123")
@@ -51,8 +55,9 @@ cases = [
 ]
 for name, changes, killed, status in cases:
     log = work / (name.replace(" ", "-") + ".log")
-    env = dict(os.environ, USB_FIXTURE=json.dumps(base | changes), USB_KILL_LOG=str(log))
-    result = subprocess.run(["/bin/bash", str(worker)], env=env, capture_output=True, text=True)
+    env = dict(os.environ, USB_FIXTURE=json.dumps(base | changes),
+               USB_KILL_LOG=str(log), PRINTER_STUDIO_TOOL_DIR=str(work))
+    result = subprocess.run([str(helper), "usb"], env=env, capture_output=True, text=True)
     assert result.returncode == status, (name, result.returncode, result.stderr)
     assert log.exists() == killed, name
     if killed:

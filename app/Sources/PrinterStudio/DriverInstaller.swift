@@ -173,11 +173,11 @@ enum DriverInstaller {
 
     /// Installed per-user, not per-machine.
     ///
-    /// `dns-sd` needs no privileges to publish a Bonjour service, so this needs
-    /// no administrator password and matches how the share-fix watcher is
-    /// installed. The trade-off: it starts at login rather than at boot, so a
-    /// Mac that reboots to the login screen and stays there advertises nothing
-    /// until someone logs in.
+    /// Publishing Bonjour needs no privileges, so this needs no administrator
+    /// password and matches how the share-fix watcher is installed. The
+    /// trade-off: it starts at login rather than at boot, so a Mac that
+    /// reboots to the login screen and stays there advertises nothing until
+    /// someone logs in.
     static var airPrintAgentPath: String {
         if isTestMode {
             return airPrintSupportDirectory
@@ -187,93 +187,51 @@ enum DriverInstaller {
             .appendingPathComponent("Library/LaunchAgents/\(airPrintLabel).plist").path
     }
 
+    /// The bash advertisement used before 1.0.15. An upgrade retires it.
     static var airPrintScriptPath: String {
         airPrintSupportDirectory.appendingPathComponent("airprint-bridge.sh").path
     }
 
-    /// Where the advertisement script and its LaunchAgent live.
+    /// Where the helper and its LaunchAgent live.
     ///
     /// The environment override lets the test suite work in a scratch
     /// directory instead of the user's own installation.
     static var airPrintSupportDirectory: URL {
-        if let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SUPPORT_DIR"] {
-            return URL(fileURLWithPath: override, isDirectory: true)
-        }
-        return ShareFix.supportDirectory
-    }
-
-    /// The launcher script, shipped inside the app bundle, with a fallback to
-    /// the checkout so the standalone report tool can install it too.
-    static var bundledAirPrintScript: String? {
-        if let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_BUNDLED_SCRIPT"],
-           FileManager.default.fileExists(atPath: override) {
-            return override
-        }
-        if let url = Bundle.main.url(forResource: "airprint-bridge", withExtension: "sh") {
-            return url.path
-        }
-        let executableDirectory = URL(fileURLWithPath: CommandLine.arguments.first ?? "")
-            .resolvingSymlinksInPath()
-            .deletingLastPathComponent()
-        let candidate = executableDirectory
-            .appendingPathComponent("../app/Resources/airprint-bridge.sh")
-            .standardizedFileURL.path
-        return FileManager.default.fileExists(atPath: candidate) ? candidate : nil
+        ShareFix.supportDirectory
     }
 
     static var isAirPrintInstalled: Bool {
         FileManager.default.fileExists(atPath: airPrintAgentPath)
     }
 
-    /// Where replaced and removed files are kept. Nothing is deleted: a
-    /// wrong script is still recoverable, and the old one stays readable next
-    /// to the new one.
-    private static var trashDirectory: URL {
-        airPrintSupportDirectory.appendingPathComponent("_trash", isDirectory: true)
-    }
-
-    /// Moves a file into `_trash` under a dated name and returns the new
-    /// path. A file that is not there is not an error.
-    @discardableResult
-    private static func moveToTrash(_ path: String) -> String? {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: path) else { return nil }
-        let name = URL(fileURLWithPath: path).lastPathComponent
-        let stamp = ISO8601DateFormatter().string(from: Date())
-            .replacingOccurrences(of: ":", with: "-")
-        let destination = trashDirectory
-            .appendingPathComponent("\(name).\(stamp).\(UUID().uuidString)")
-        do {
-            try fileManager.createDirectory(at: trashDirectory, withIntermediateDirectories: true)
-            try fileManager.moveItem(atPath: path, toPath: destination.path)
-            return destination.path
-        } catch {
-            return nil
-        }
-    }
-
     /// Exposes the trash rule to the test suite.
     static func moveToTrashForTesting(_ path: String) -> String? {
-        moveToTrash(path)
+        ShareFix.moveToTrash(path)
     }
 
-    /// Copies the bundled script into place, keeping the old one in `_trash`.
-    private static func installScriptFile(from source: String) -> Bool {
-        let fileManager = FileManager.default
-        do {
-            try fileManager.createDirectory(at: airPrintSupportDirectory,
-                                            withIntermediateDirectories: true)
-            _ = moveToTrash(airPrintScriptPath)
-            try fileManager.copyItem(atPath: source, toPath: airPrintScriptPath)
-            try fileManager.setAttributes([.posixPermissions: 0o755],
-                                          ofItemAtPath: airPrintScriptPath)
+    private static var helperExecutablePath: String {
+        ShareFix.helperExecutable.path
+    }
+
+    private static var installedAgentPointsAtHelper: Bool {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: airPrintAgentPath)),
+              let plist = try? PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? [String: Any],
+              let arguments = plist["ProgramArguments"] as? [String] else { return false }
+        return arguments == [helperExecutablePath, "bridge"]
+    }
+
+    private static var installedHelperIsOutdated: Bool {
+        guard let bundled = ShareFix.bundledHelperApp else { return false }
+        let bundledExecutable = bundled + "/Contents/MacOS/\(ShareFix.helperBundleName)"
+        guard let installed = try? Data(contentsOf: ShareFix.helperExecutable),
+              let shipped = try? Data(contentsOf: URL(fileURLWithPath: bundledExecutable)) else {
             return true
-        } catch {
-            return false
         }
+        return installed != shipped
     }
 
-    /// Replaces the installed script and restarts the agent.
+    /// Restarts the agent after its files or plist changed.
     private static func reloadAgent() -> CommandResult {
         if isTestMode {
             // No launchd job in the test suite.
@@ -300,24 +258,24 @@ enum DriverInstaller {
     static func installAirPrintBridge(
         prepareSharing: () -> CommandResult = CUPS.prepareAirPrintSharing
     ) -> CommandResult {
-        guard let source = bundledAirPrintScript else {
-            return .failure("The AirPrint advertisement script is missing from this build.")
+        guard ShareFix.bundledHelperApp != nil else {
+            return .failure("Printer Studio KH Helper is missing from this build.")
         }
         let sharing = prepareSharing()
         guard sharing.ok else { return sharing }
 
-        let fileManager = FileManager.default
         do {
-            try fileManager.createDirectory(
+            try FileManager.default.createDirectory(
                 at: URL(fileURLWithPath: airPrintAgentPath).deletingLastPathComponent(),
                 withIntermediateDirectories: true)
         } catch {
             return .failure("Could not install the AirPrint advertisement: \(error.localizedDescription)")
         }
 
-        guard installScriptFile(from: source) else {
-            return .failure("Could not install the AirPrint advertisement script.")
+        guard ShareFix.installHelperBundle() else {
+            return .failure("Could not install Printer Studio KH Helper.")
         }
+        _ = ShareFix.moveToTrash(airPrintScriptPath)
 
         do {
             try agentPlist.write(toFile: airPrintAgentPath, atomically: true, encoding: .utf8)
@@ -330,27 +288,42 @@ enum DriverInstaller {
         return CommandResult(status: 0, stdout: "AirPrint advertisement installed.", stderr: "")
     }
 
-    /// Updates an installed advertisement script when the app ships a newer
-    /// one, so a fix reaches a Mac that already has the advertisement on.
+    /// Upgrades an installation from the shell advertisement to the helper
+    /// bundle, and refreshes the helper when the app ships a newer one.
     ///
-    /// Does nothing when the advertisement is off, and nothing when the
-    /// installed script already matches the bundled one. The LaunchAgent is
-    /// left alone: its contents do not change with the script.
+    /// Does nothing when the advertisement is off, and nothing when both the
+    /// helper and the agent already match this build.
     @discardableResult
     static func refreshAirPrintBridgeIfOutdated() -> CommandResult {
         guard isAirPrintInstalled else {
             return CommandResult(status: 0, stdout: "AirPrint advertisement is off.", stderr: "")
         }
-        guard let source = bundledAirPrintScript,
-              let bundled = try? Data(contentsOf: URL(fileURLWithPath: source)) else {
-            return .failure("The AirPrint advertisement script is missing from this build.")
+        guard ShareFix.bundledHelperApp != nil else {
+            return .failure("Printer Studio KH Helper is missing from this build.")
         }
-        let installedPath = URL(fileURLWithPath: airPrintScriptPath)
-        if let installed = try? Data(contentsOf: installedPath), installed == bundled {
+
+        var changed = false
+        let helperPresent = FileManager.default.fileExists(atPath: helperExecutablePath)
+        if !helperPresent || installedHelperIsOutdated {
+            guard ShareFix.installHelperBundle() else {
+                return .failure("Could not update Printer Studio KH Helper.")
+            }
+            changed = true
+        }
+        if !installedAgentPointsAtHelper {
+            do {
+                try agentPlist.write(toFile: airPrintAgentPath, atomically: true, encoding: .utf8)
+            } catch {
+                return .failure("Could not update the AirPrint advertisement: \(error.localizedDescription)")
+            }
+            changed = true
+        }
+        if FileManager.default.fileExists(atPath: airPrintScriptPath),
+           ShareFix.moveToTrash(airPrintScriptPath) != nil {
+            changed = true
+        }
+        guard changed else {
             return CommandResult(status: 0, stdout: "AirPrint advertisement is up to date.", stderr: "")
-        }
-        guard installScriptFile(from: source) else {
-            return .failure("Could not update the AirPrint advertisement script.")
         }
         let started = reloadAgent()
         guard started.ok else { return started }
@@ -364,7 +337,7 @@ enum DriverInstaller {
         }
 
         for path in [airPrintAgentPath, airPrintScriptPath] {
-            if FileManager.default.fileExists(atPath: path), moveToTrash(path) == nil {
+            if FileManager.default.fileExists(atPath: path), ShareFix.moveToTrash(path) == nil {
                 return .failure("Could not move the AirPrint files to _trash. The service was stopped; check file permissions and try again.")
             }
         }
@@ -372,7 +345,7 @@ enum DriverInstaller {
         return CommandResult(
             status: 0,
             stdout: "AirPrint advertisement removed. The old files are kept in "
-                + trashDirectory.path + ".",
+                + ShareFix.supportDirectory.appendingPathComponent("_trash").path + ".",
             stderr: "")
     }
 
@@ -386,9 +359,12 @@ enum DriverInstaller {
             <string>\(airPrintLabel)</string>
             <key>ProgramArguments</key>
             <array>
-                <string>/bin/bash</string>
-                <string>\(airPrintScriptPath)</string>
-                <string>run</string>
+                <string>\(helperExecutablePath)</string>
+                <string>bridge</string>
+            </array>
+            <key>AssociatedBundleIdentifiers</key>
+            <array>
+                <string>\(ShareFix.helperIdentifier)</string>
             </array>
             <key>RunAtLoad</key>
             <true/>

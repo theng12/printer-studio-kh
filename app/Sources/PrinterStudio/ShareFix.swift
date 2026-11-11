@@ -9,18 +9,33 @@ import Foundation
 ///   * once, on demand (the "Fix now" button), and
 ///   * continuously, via a per-user LaunchAgent that re-checks every 60s.
 ///
-/// The worker is idempotent — it only touches a queue when a restriction is
-/// actually present — so it cannot loop on its own writes.
+/// The work runs inside `Printer Studio KH Helper.app`, so Activity Monitor and
+/// Login Items show the app rather than an invisible bash script.
 enum ShareFix {
 
     static let label = "com.theng12.printerstudio.sharefix"
+    static let helperBundleName = "Printer Studio KH Helper"
+    static let helperIdentifier = "com.theng12.printerstudio.helper"
+    static let usbHelperBundleName = "Printer Studio KH USB Helper"
 
     static var supportDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        if let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SUPPORT_DIR"] {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/PrinterStudio", isDirectory: true)
     }
 
-    static var workerScript: URL {
+    static var helperApp: URL {
+        supportDirectory.appendingPathComponent("\(helperBundleName).app", isDirectory: true)
+    }
+
+    static var helperExecutable: URL {
+        helperApp.appendingPathComponent("Contents/MacOS/\(helperBundleName)", isDirectory: false)
+    }
+
+    /// The shell worker used before 1.0.15. Kept so an upgrade can retire it.
+    static var legacyWorkerScript: URL {
         supportDirectory.appendingPathComponent("keep-shared-queues-open.sh")
     }
 
@@ -35,11 +50,83 @@ enum ShareFix {
             .appendingPathComponent("share-fix.log", isDirectory: false)
     }
 
+    // MARK: - Bundled helper
+
+    /// Finds a helper bundle shipped inside the app, with checkout fallbacks so
+    /// the standalone report tool works too. The test suite can override the
+    /// user helper with `PRINTER_STUDIO_BUNDLED_HELPER`.
+    static func bundledHelper(named name: String) -> String? {
+        let fileManager = FileManager.default
+        if name == helperBundleName,
+           let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_BUNDLED_HELPER"] {
+            return fileManager.fileExists(atPath: override) ? override : nil
+        }
+        var directories: [URL] = []
+        if let resources = Bundle.main.resourceURL {
+            directories.append(resources)
+        }
+        let executableDirectory = URL(fileURLWithPath: CommandLine.arguments.first ?? "")
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent()
+        directories.append(executableDirectory
+            .appendingPathComponent("Printer Studio KH.app/Contents/Resources"))
+        directories.append(executableDirectory
+            .appendingPathComponent("../dist/Printer Studio KH.app/Contents/Resources"))
+
+        for directory in directories {
+            let candidate = directory.appendingPathComponent("\(name).app").path
+            if fileManager.fileExists(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
+
+    static var bundledHelperApp: String? { bundledHelper(named: helperBundleName) }
+
+    /// Copies the bundled helper into the user support directory, retaining any
+    /// previous copy in `_trash`.
+    @discardableResult
+    static func installHelperBundle() -> Bool {
+        guard let source = bundledHelperApp else { return false }
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
+            _ = moveToTrash(helperApp.path)
+            try fileManager.copyItem(atPath: source, toPath: helperApp.path)
+            return fileManager.fileExists(atPath: helperExecutable.path)
+        } catch {
+            return false
+        }
+    }
+
+    private static var trashDirectory: URL {
+        supportDirectory.appendingPathComponent("_trash", isDirectory: true)
+    }
+
+    /// Moves a file or bundle into `_trash` under a dated name and returns the
+    /// new path. Nothing installed is ever deleted outright.
+    @discardableResult
+    static func moveToTrash(_ path: String) -> String? {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: path) else { return nil }
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let destination = trashDirectory
+            .appendingPathComponent("\(name).\(stamp).\(UUID().uuidString)")
+        do {
+            try fileManager.createDirectory(at: trashDirectory, withIntermediateDirectories: true)
+            try fileManager.moveItem(atPath: path, toPath: destination.path)
+            return destination.path
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Status
 
     static var isWatcherInstalled: Bool {
         FileManager.default.fileExists(atPath: launchAgent.path)
-            && FileManager.default.fileExists(atPath: workerScript.path)
+            && FileManager.default.fileExists(atPath: helperExecutable.path)
     }
 
     static var isWatcherLoaded: Bool {
@@ -48,55 +135,23 @@ enum ShareFix {
         return result.ok
     }
 
+    static var installedAgentPointsAtHelper: Bool {
+        guard let data = try? Data(contentsOf: launchAgent),
+              let plist = try? PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? [String: Any],
+              let arguments = plist["ProgramArguments"] as? [String] else { return false }
+        return arguments == [helperExecutable.path, "sharefix"]
+    }
+
     static func recentLogLines(limit: Int = 40) -> [String] {
         guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return [] }
         let lines = text.split(separator: "\n").map(String.init)
         return Array(lines.suffix(limit))
     }
 
-    // MARK: - The worker
-
-    /// Kept as a shell script rather than reimplemented in Swift so the
-    /// LaunchAgent can run it with no app process alive.
-    static var workerSource: String {
-        """
-        #!/bin/bash
-        # Printer Studio KH — keeps every SHARED queue open to the LAN.
-        # Idempotent: only acts when a per-user ACL is actually present.
-        LOG="\(logFile.path)"
-        mkdir -p "$(dirname "$LOG")"
-        ts() { date '+%Y-%m-%d %H:%M:%S'; }
-
-        changed=0
-        # Only lines that really are queues. `lpstat -p` also prints warnings on
-        # stdout, and a naive `awk '{print $2}'` turns those into bogus "queue
-        # names" — it has been observed to emit a quoted filter path this way,
-        # which then gets queried as if it were a printer.
-        for P in $(\(Tool.lpstat) -p 2>/dev/null | \(Tool.awk) '/^printer /{print $2}'); do
-          [ -n "$P" ] || continue
-          # Defensive: a real queue name never contains a path separator.
-          case "$P" in */*|*:*) continue ;; esac
-          attrs=$(\(Tool.ipptool) -tv "ipp://localhost/printers/$P" get-printer-attributes.test 2>/dev/null) || continue
-          # only shared queues matter
-          echo "$attrs" | grep -q 'printer-is-shared (boolean) = true' || continue
-          # only act when a per-user ACL is present
-          if echo "$attrs" | grep -qi 'requesting-user-name-allowed'; then
-            if \(Tool.lpadmin) -p "$P" -u allow:all 2>>"$LOG"; then
-              echo "$(ts) cleared user-ACL on '$P' -> allow:all" >> "$LOG"
-              changed=1
-            else
-              echo "$(ts) FAILED on '$P' (need admin/_lpadmin rights?)" >> "$LOG"
-            fi
-          fi
-        done
-        [ "$changed" -eq 0 ] && echo "$(ts) checked: all shared queues already open" >> "$LOG"
-        exit 0
-        """
-    }
-
     // MARK: - Install / uninstall
 
-    /// Writes the worker + LaunchAgent and loads it. No admin rights needed:
+    /// Writes the helper + LaunchAgent and loads it. No admin rights needed:
     /// both live in the user's own Library.
     static func installWatcher() -> CommandResult {
         let fm = FileManager.default
@@ -106,25 +161,59 @@ enum ShareFix {
                 at: launchAgent.deletingLastPathComponent(), withIntermediateDirectories: true)
             try fm.createDirectory(
                 at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try workerSource.write(to: workerScript, atomically: true, encoding: .utf8)
-            try fm.setAttributes([.posixPermissions: 0o755], ofItemPath: workerScript.path)
+        } catch {
+            return .failure("Could not write the background watcher: \(error.localizedDescription)")
+        }
+        guard installHelperBundle() else {
+            return .failure("The Printer Studio KH Helper bundle is missing from this build.")
+        }
+        _ = moveToTrash(legacyWorkerScript.path)
+        do {
             try launchAgentPlist.write(to: launchAgent, atomically: true, encoding: .utf8)
         } catch {
             return .failure("Could not write the background watcher: \(error.localizedDescription)")
         }
+        return reloadAgent(failure: "The watcher was written but could not be loaded")
+    }
 
+    /// Upgrades an older install whose agent still runs the shell worker.
+    /// Runs at app launch and needs no administrator password.
+    @discardableResult
+    static func migrateWatcherIfNeeded() -> CommandResult {
+        guard ProcessInfo.processInfo.environment["PRINTER_STUDIO_AIRPRINT_TEST"] != "1" else {
+            return CommandResult(status: 0, stdout: "Background watcher migration skipped in test mode.", stderr: "")
+        }
+        guard FileManager.default.fileExists(atPath: launchAgent.path) else {
+            return CommandResult(status: 0, stdout: "Background watcher is off.", stderr: "")
+        }
+        let legacyPresent = FileManager.default.fileExists(atPath: legacyWorkerScript.path)
+        let helperPresent = FileManager.default.fileExists(atPath: helperExecutable.path)
+        guard !helperPresent || !installedAgentPointsAtHelper || legacyPresent else {
+            return CommandResult(status: 0, stdout: "Background watcher is up to date.", stderr: "")
+        }
+        guard installHelperBundle() else {
+            return .failure("Could not install the Printer Studio KH Helper bundle.")
+        }
+        _ = moveToTrash(legacyWorkerScript.path)
+        do {
+            try launchAgentPlist.write(to: launchAgent, atomically: true, encoding: .utf8)
+        } catch {
+            return .failure("Could not update the background watcher: \(error.localizedDescription)")
+        }
+        return reloadAgent(failure: "The watcher was updated but could not be loaded")
+    }
+
+    private static func reloadAgent(failure: String) -> CommandResult {
         let uid = getuid()
         _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(label)"])
         let bootstrap = Shell.run(Tool.launchctl, ["bootstrap", "gui/\(uid)", launchAgent.path])
         if !bootstrap.ok {
             let legacy = Shell.run(Tool.launchctl, ["load", "-w", launchAgent.path])
             if !legacy.ok {
-                return .failure(
-                    "The watcher was written but could not be loaded: \(bootstrap.combined)")
+                return .failure("\(failure): \(bootstrap.combined)")
             }
         }
         _ = Shell.run(Tool.launchctl, ["kickstart", "-k", "gui/\(uid)/\(label)"])
-
         return CommandResult(status: 0, stdout: "Background watcher installed and started.", stderr: "")
     }
 
@@ -132,9 +221,11 @@ enum ShareFix {
         let uid = getuid()
         _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(label)"])
 
-        let fm = FileManager.default
-        try? fm.removeItem(at: launchAgent)
-        try? fm.removeItem(at: supportDirectory)
+        if moveToTrash(launchAgent.path) == nil,
+           FileManager.default.fileExists(atPath: launchAgent.path) {
+            return .failure("Could not move the background watcher to _trash. Check file permissions and try again.")
+        }
+        _ = moveToTrash(legacyWorkerScript.path)
 
         return CommandResult(
             status: 0,
@@ -152,8 +243,12 @@ enum ShareFix {
             <string>\(label)</string>
             <key>ProgramArguments</key>
             <array>
-                <string>/bin/bash</string>
-                <string>\(workerScript.path)</string>
+                <string>\(helperExecutable.path)</string>
+                <string>sharefix</string>
+            </array>
+            <key>AssociatedBundleIdentifiers</key>
+            <array>
+                <string>\(helperIdentifier)</string>
             </array>
             <key>RunAtLoad</key>
             <true/>
@@ -175,12 +270,15 @@ enum ShareFix {
             try fm.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
             try fm.createDirectory(
                 at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try workerSource.write(to: workerScript, atomically: true, encoding: .utf8)
-            try fm.setAttributes([.posixPermissions: 0o755], ofItemPath: workerScript.path)
         } catch {
-            return .failure("Could not write the worker script: \(error.localizedDescription)")
+            return .failure("Could not prepare the worker: \(error.localizedDescription)")
         }
-        return Shell.run(Tool.bash, [workerScript.path])
+        if !fm.fileExists(atPath: helperExecutable.path) {
+            guard installHelperBundle() else {
+                return .failure("The Printer Studio KH Helper bundle is missing from this build.")
+            }
+        }
+        return Shell.run(helperExecutable.path, ["sharefix"])
     }
 }
 

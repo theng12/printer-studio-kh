@@ -1,5 +1,19 @@
 # Printer Studio KH handoff
 
+## Background helper naming — 2026-11-11 (unreleased 1.0.15)
+
+Every installed background job now runs from a named `.app` bundle. The launchd labels are unchanged, so migration only replaces each job's program.
+
+| Surface | Before | After |
+|---|---|---|
+| Activity Monitor | `bash` (`airprint-bridge.sh`, `keep-shared-queues-open.sh`, `keep-usb-printer-ready.sh`) plus one `dns-sd` child per shared queue | `Printer Studio KH Helper` (bridge and sharefix); `Printer Studio KH USB Helper` (root USB daemon) |
+| Login Items & Extensions → Allow in the Background | `Unknown Developer`, executable `/bin/bash` | Attributed to `com.theng12.printerstudio.helper` (user jobs) or `com.theng12.printerstudio.usbhelper` (USB daemon), executable inside the helper bundle via `AssociatedBundleIdentifiers` |
+| BTM row (`sfltool dumpbtm`) | Parent Identifier `Unknown Developer`; Executable Path `/bin/bash` | Parent Identifier `com.theng12.printerstudio.helper` / `com.theng12.printerstudio.usbhelper`; Executable Path inside `Printer Studio KH Helper.app` / `Printer Studio KH USB Helper.app` |
+| launchd label | `com.theng12.printerstudio.airprint`, `.sharefix`, `.usb` | unchanged |
+| Login item | `com.theng12.printerstudio.app` → `/usr/bin/open` | unchanged |
+
+Migration: AirPrint and ShareFix rewrite their agents at app launch (no admin prompt), copy the user helper into `~/Library/Application Support/PrinterStudio/` and retire the old shell scripts to `_trash/`. The USB daemon needs the existing one-time admin prompt, so its old-style install reports as needing setup and migrates on the next enable. The native Bonjour API replaces the persistent `dns-sd -R` children; transient lookups still use `dns-sd`.
+
 ## Release state — 2026-11-09
 
 - Product source: `e510375e29f9447836dc1049ecb822d20cff2cf6`, merged and pushed to main.

@@ -102,10 +102,6 @@ CHANGELOG="$ROOT/../CHANGELOG.md"
 chmod 644 "$APP/Contents/Resources/WhatsNew.txt"
 echo "==> Bundled What's New for $VERSION"
 
-# The AirPrint advertisement script, installed by the app for iOS discovery.
-cp "$ROOT/Resources/airprint-bridge.sh" "$ROOT/Resources/keep-usb-printer-ready.sh" "$APP/Contents/Resources/"
-chmod 755 "$APP/Contents/Resources/airprint-bridge.sh"
-
 # Label-only CUPS filters: use system libcups and CoreGraphics, no new runtime.
 LABEL_FILTERS="$APP/Contents/Resources/label-filters"
 mkdir -p "$LABEL_FILTERS"
@@ -128,6 +124,64 @@ if [ -f "$ROOT/Resources/PrinterStudio.icns" ]; then
 else
   echo "!! warning: Resources/PrinterStudio.icns missing — run ./app/make-icon.sh" >&2
 fi
+
+# One helper executable, shipped in two small app bundles so every background
+# process shows the app's own name. Both are signed before the app seal.
+echo "==> Compiling Printer Studio KH Helper"
+for ARCH in arm64 x86_64; do
+  /usr/bin/swiftc \
+    -O \
+    -swift-version 5 \
+    -target "${ARCH}-apple-macos${MIN_MACOS}" \
+    -o "$SLICES/helper.$ARCH" \
+    "$ROOT/Helper/main.swift"
+done
+/usr/bin/lipo -create "$SLICES/helper.arm64" "$SLICES/helper.x86_64" -output "$SLICES/helper"
+HELPER_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/Resources/Info.plist")
+HELPER_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT/Resources/Info.plist")
+for SPEC in "Printer Studio KH Helper|com.theng12.printerstudio.helper" \
+            "Printer Studio KH USB Helper|com.theng12.printerstudio.usbhelper"; do
+  HELPER_NAME="${SPEC%%|*}"
+  HELPER_ID="${SPEC##*|}"
+  HELPER_APP="$APP/Contents/Resources/$HELPER_NAME.app"
+  /bin/mkdir -p "$HELPER_APP/Contents/MacOS" "$HELPER_APP/Contents/Resources"
+  /bin/cp "$SLICES/helper" "$HELPER_APP/Contents/MacOS/$HELPER_NAME"
+  cat > "$HELPER_APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>$HELPER_NAME</string>
+    <key>CFBundleDisplayName</key>
+    <string>$HELPER_NAME</string>
+    <key>CFBundleIdentifier</key>
+    <string>$HELPER_ID</string>
+    <key>CFBundleExecutable</key>
+    <string>$HELPER_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>PrinterStudio.icns</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$HELPER_VERSION</string>
+    <key>CFBundleVersion</key>
+    <string>$HELPER_BUILD</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>$MIN_MACOS</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+  if [ -f "$ROOT/Resources/PrinterStudio.icns" ]; then
+    /bin/cp "$ROOT/Resources/PrinterStudio.icns" "$HELPER_APP/Contents/Resources/"
+  fi
+  sign_code "$HELPER_APP" "$HELPER_ID"
+done
+echo "==> Bundled helper apps"
 
 # Nested code has already been signed; seal the app before creating its installer.
 sign_code "$APP" 'com.theng12.printerstudio'

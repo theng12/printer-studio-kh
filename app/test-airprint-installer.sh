@@ -35,4 +35,10 @@ BIN="$OUT/TestAirPrintInstaller"
   "${SOURCES[@]}"
 
 echo "==> Running TestAirPrintInstaller"
-"$BIN" "$ROOT/Resources/airprint-bridge.sh"
+# A stand-in helper bundle: the installer only copies it into the scratch
+# support directory, so no signed binary is needed for this file-handling test.
+FAKE_HELPER="$OUT/Printer Studio KH Helper.app"
+mkdir -p "$FAKE_HELPER/Contents/MacOS" "$FAKE_HELPER/Contents/Resources"
+printf '#!/bin/sh\nexit 0\n' > "$FAKE_HELPER/Contents/MacOS/Printer Studio KH Helper"
+chmod 755 "$FAKE_HELPER/Contents/MacOS/Printer Studio KH Helper"
+"$BIN" "$FAKE_HELPER"

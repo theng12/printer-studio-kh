@@ -130,6 +130,10 @@ final class AppState: ObservableObject {
         work.async {
             let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
             if !result.ok { self.report(result, success: "") }
+            // Upgrades an older shell-based watcher without an admin prompt.
+            let watcher = ShareFix.migrateWatcherIfNeeded()
+            if !watcher.ok { self.report(watcher, success: "") }
+            DispatchQueue.main.async { self.refresh() }
         }
         refresh()
     }
