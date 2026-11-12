@@ -84,9 +84,11 @@ struct MainWindow: View {
                         Label(item.title, systemImage: item.symbol).tag(item)
                     }
                 }
+                .scrollContentBackground(.hidden)
                 Divider()
                 footer
             }
+            .background(SidebarMaterial())
             .navigationSplitViewColumnWidth(min: 240, ideal: 248, max: 260)
         } detail: {
             Group {
@@ -190,10 +192,22 @@ struct MainWindow: View {
         .padding(.horizontal, 10)
         .padding(.top, 9)
         .padding(.bottom, 8)
-        .background(.background)
     }
 }
 
+
+/// The sidebar's own material, for content that lives below the List.
+struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
 
 /// A stand-in for `ContentUnavailableView`, which requires macOS 14.
 /// Declared here so the app's deployment target can stay at macOS 13.
