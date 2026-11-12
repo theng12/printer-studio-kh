@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.19 — 2026-11-13
+- Opening the app now shows its window straight away; the menu-bar icon is still there for quick actions.
+- The window can be reopened from the application menu with Command-O or from the menu-bar menu after it is closed.
+
+
 ## 1.0.18 — 2026-11-12
 - If the app is dragged to the Trash, its background helper now notices and removes its own background job instead of leaving one pointing at a missing app.
 

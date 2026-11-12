@@ -3,6 +3,50 @@ import AppKit
 
 // MARK: - Entry point
 
+/// Opens the main window once at launch. A menu-bar app gets no window for
+/// free, and the rule is that launching shows it; `PRINTER_STUDIO_NO_WINDOW`
+/// keeps a hidden or packaged test run from putting anything on screen.
+struct MenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+    let symbol: String
+
+    private var hiddenRun: Bool {
+        ProcessInfo.processInfo.environment["PRINTER_STUDIO_NO_WINDOW"] == "1"
+            || ProcessInfo.processInfo.environment["PRINTER_STUDIO_AIRPRINT_TEST"] == "1"
+            || ProcessInfo.processInfo.environment["PRINTER_STUDIO_SIGNING_SMOKE"] != nil
+    }
+
+    var body: some View {
+        Image(systemName: symbol)
+            .onAppear {
+                guard !hiddenRun else { return }
+                DispatchQueue.main.async {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "main")
+                }
+            }
+    }
+}
+
+/// The application menu can open or rebuild the window even after it is closed.
+struct MainCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .appTermination) {
+            Button("Quit Printer Studio KH") { NSApp.terminate(nil) }
+                .keyboardShortcut("q")
+        }
+        CommandGroup(after: .appInfo) {
+            Button("Open Printer Studio KH") {
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "main")
+            }
+            .keyboardShortcut("o")
+        }
+    }
+}
+
 @main
 struct PrinterStudioApp: App {
     @StateObject private var state = AppState()
@@ -15,7 +59,7 @@ struct PrinterStudioApp: App {
             MenuBarContent()
                 .environmentObject(state)
         } label: {
-            Image(systemName: state.menuBarSymbol)
+            MenuBarLabel(symbol: state.menuBarSymbol)
         }
         .menuBarExtraStyle(.menu)
 
@@ -34,14 +78,7 @@ struct PrinterStudioApp: App {
                 .frame(minWidth: 860, minHeight: 580)
                 .preferredColorScheme(appearance.colorScheme)
         }
-        .commands {
-            // A menu-bar app with no window open has no app menu to reach, so
-            // this names Quit plainly rather than relying on the system default.
-            CommandGroup(replacing: .appTermination) {
-                Button("Quit Printer Studio KH") { NSApp.terminate(nil) }
-                    .keyboardShortcut("q")
-            }
-        }
+        .commands { MainCommands() }
 
         Window("What's New", id: "whats-new") {
             WhatsNewView()
