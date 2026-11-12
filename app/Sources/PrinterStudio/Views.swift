@@ -41,9 +41,16 @@ enum Screen: String, CaseIterable, Identifiable {
 struct MainWindow: View {
     @EnvironmentObject var state: AppState
     @Environment(\.openWindow) private var openWindow
+    @StateObject private var checker = UpdateChecker()
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
+    /// The band carries one line only. Before anyone asks, it is the app's own
+    /// summary; after a check it becomes that check's answer and stays there.
+    private var footerStatus: String {
+        checker.state == .notChecked ? state.statusSummary : checker.statusLine
     }
 
     var body: some View {
@@ -53,30 +60,78 @@ struct MainWindow: View {
                     Label(item.title, systemImage: item.symbol).tag(item)
                 }
             }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
+            .navigationSplitViewColumnWidth(min: 240, ideal: 248, max: 260)
             .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     if state.busy {
                         HStack(spacing: 6) {
                             ProgressView().controlSize(.small)
                             Text(state.busyMessage).font(.caption).lineLimit(2)
                         }
                     }
-                    Text(state.statusSummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        Text("Version \(version)")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("What's New") { openWindow(id: "whats-new") }
-                            .buttonStyle(.link)
-                            .help("Read what’s new in version \(version)")
+                    Button { openWindow(id: "support") } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "heart").font(.system(size: 13))
+                            Text("Support this app").font(.system(size: 12))
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .help("Printer Studio KH is free. Leave a one-time donation if you like.")
+                    .accessibilityLabel("Support this app")
+
+                    HStack(spacing: 6) {
+                        Button { openWindow(id: "whats-new") } label: {
+                            HStack(spacing: 4) {
+                                Text("Printer Studio KH").font(.system(size: 11, weight: .medium))
+                                Text(version).font(.system(size: 10)).foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 7)
+                            .frame(height: 26)
+                            .background(Capsule().fill(Color.primary.opacity(0.06)))
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("What's new in Printer Studio KH \(version)")
+                        .accessibilityLabel("Printer Studio KH \(version). Opens What's New.")
+
+                        Button { Task { await checker.check() } } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .medium))
+                                .frame(width: 26, height: 26)
+                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.05)))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(checker.state == .checking)
+                        .help("Check for updates")
+                        .accessibilityLabel("Check for updates")
+
+                        if let offered = checker.availableVersion {
+                            Button { UpdaterHandoff.open() } label: {
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .frame(width: 26, height: 26)
+                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.16)))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Update to \(offered)")
+                            .accessibilityLabel("Update to \(offered)")
+                        }
+                    }
+
+                    Text(footerStatus)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .accessibilityAddTraits(.updatesFrequently)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
+                .padding(.horizontal, 10)
+                .padding(.top, 9)
+                .padding(.bottom, 8)
                 .background(.bar)
             }
         } detail: {
@@ -949,23 +1004,6 @@ struct SettingsView: View {
                 Text("Settings").font(.title2.weight(.semibold))
 
                 GroupBox {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Appearance").font(.headline)
-                        Picker("Appearance", selection: $appearanceRaw) {
-                            ForEach(Appearance.allCases) { option in
-                                Text(option.title).tag(option.rawValue)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        Text("System follows macOS. Default keeps what the app ships with, which is also System.")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(6)
-                }
-
-                GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Open Printer Studio KH at login",
                                isOn: Binding(get: { state.startsAtLogin },
@@ -979,6 +1017,23 @@ struct SettingsView: View {
                         Text("Automatic USB release needs administrator approval once. It runs at boot and after a replug, without opening this app or saving a password.")
                             .font(.caption).foregroundStyle(.secondary)
                         Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(6)
+                }
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Appearance").font(.headline)
+                        Picker("Appearance", selection: $appearanceRaw) {
+                            ForEach(Appearance.allCases) { option in
+                                Text(option.title).tag(option.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Text("System follows macOS. Default keeps what the app ships with, which is also System.")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
