@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.18 — 2026-11-12
+- If the app is dragged to the Trash, its background helper now notices and removes its own background job instead of leaving one pointing at a missing app.
+
+
 ## 1.0.17 — 2026-11-12
 - The background helper now runs from inside the app, so deleting the app deletes the helper with it.
 - Installing replaces any older helper copy left on the Mac instead of leaving a second one behind.
