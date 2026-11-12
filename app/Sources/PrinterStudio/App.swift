@@ -65,6 +65,12 @@ struct PrinterStudioApp: App {
         }
         .defaultSize(width: 520, height: 300)
         .windowResizability(.contentMinSize)
+
+        Window("Support Printer Studio KH", id: "support") {
+            SupportView()
+                .preferredColorScheme(appearance.colorScheme)
+        }
+        .windowResizability(.contentMinSize)
     }
 }
 
