@@ -15,6 +15,11 @@
 #   ./app/build.sh --run    build, then launch
 #   ./app/build.sh --dmg    also produce a single file to send
 #
+# The app and the installer are written into ./dist on every run. Once that
+# installer is installed and verified, app/finalize-dist.sh <receipt> keeps the
+# newest two in dist and retires the rest recoverably, so dist never depends on
+# anyone remembering to tidy it.
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
