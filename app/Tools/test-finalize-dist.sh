@@ -27,8 +27,11 @@ env = {**os.environ, 'PRINTER_STUDIO_RELEASE_DIST_HELPER': str(helper),
        'HOME': str(work / 'home')}
 
 # 1.0.11 is never recorded in the ledger: the helper will not touch it, so the
-# automatic sweep has to move it out of dist on its own.
+# automatic sweep has to move it out of dist on its own. 1.0.10 is named by a
+# release manifest, so the guard must keep it exactly where it is.
 (dist / 'Printer Studio KH-1.0.11.dmg').write_bytes(b'mock installer 1.0.11')
+(dist / 'Printer Studio KH-1.0.10.dmg').write_bytes(b'mock installer 1.0.10')
+(dist / 'release.json').write_text(json.dumps({'version': '1.0.10'}))
 
 files, files_manifest = {}, {}
 for version in ('1.0.12', '1.0.13', '1.0.14'):
@@ -83,12 +86,17 @@ assert snapshot() == before, 'refused receipts must not touch dist'
 result = run(new_receipt)
 assert result.returncode == 0, result.stdout + result.stderr
 kept = sorted(p.name for p in dist.glob('Printer Studio KH-*.dmg'))
-assert kept == ['Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], kept
+assert kept == ['Printer Studio KH-1.0.10.dmg', 'Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], kept
 retired = list(work.rglob('Printer Studio KH-1.0.12.dmg'))
 assert retired and retired[0].read_bytes() == b'mock installer 1.0.12', 'older installer retired recoverably'
 swept = list((work / 'home/Desktop/_trash').rglob('Printer Studio KH-1.0.11.dmg'))
 assert swept and swept[0].read_bytes() == b'mock installer 1.0.11', 'unmanaged older installer swept to the trash'
 assert not (dist / 'Printer Studio KH-1.0.11.dmg').exists(), 'the sweep must leave dist'
+assert (dist / 'Printer Studio KH-1.0.10.dmg').is_file(), 'a version named by release.json is never moved'
+recorded = json.loads(new_receipt.read_text()).get('retiredInstallers') or []
+moved = [entry for entry in recorded if entry['version'] == '1.0.11']
+assert moved, 'every move is written into the receipt'
+assert len(moved[0]['sha256']) == 64 and moved[0]['destination'].endswith('Printer Studio KH-1.0.11.dmg')
 assert files['1.0.13'].read_bytes() == (dist / 'Printer Studio KH-1.0.13.dmg').read_bytes()
 pins = sorted((project / '_trash').glob('finalize-dist-*.json'))
 assert pins, 'no pins document written'
