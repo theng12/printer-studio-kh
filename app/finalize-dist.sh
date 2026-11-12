@@ -79,3 +79,32 @@ print(f"Pinning {', '.join(r['version'] for r in releases)}")
 PY
 
 bash "$ROOT/app/retain-dmgs.sh" "$RECEIPT" "$PINS"
+
+# Nothing older than the newest two stays in dist, and nobody has to tidy it.
+# Anything the retention helper did not place, or a third version it kept, is
+# moved — never deleted — into a dated folder in the unified trash.
+/usr/bin/python3 -I -B - "$ROOT" <<'SWEEP'
+import re, shutil, sys
+from datetime import date
+from pathlib import Path
+
+root = Path(sys.argv[1])
+dist = root / "dist"
+
+def version_of(path):
+    return tuple(int(part) for part in re.findall(r"\d+", path.stem.split("Printer Studio KH-", 1)[1]))
+
+installers = sorted((p for p in dist.glob("Printer Studio KH-*.dmg") if p.is_file()),
+                    key=version_of, reverse=True)
+for older in installers[2:]:
+    target = Path.home() / "Desktop/_trash" / f"{date.today().isoformat()}_printer-studio-kh-retired-installers"
+    target.mkdir(parents=True, exist_ok=True)
+    destination = target / older.name
+    suffix = 1
+    while destination.exists():
+        destination = target / f"{older.stem}-{suffix}.dmg"
+        suffix += 1
+    shutil.move(str(older), str(destination))
+    print(f"Retired {older.name} -> {destination}")
+print("dist keeps:", ", ".join(p.name for p in installers[:2]))
+SWEEP
