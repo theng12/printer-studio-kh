@@ -3,9 +3,36 @@ import AppKit
 
 // MARK: - Entry point
 
+/// The app's appearance choice. "Default" is what the app ships with, which is
+/// System; the two are kept apart because the owner lists them separately.
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark, appDefault = "default"
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        case .appDefault: return "Default"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .light: return .light
+        case .dark: return .dark
+        case .system, .appDefault: return nil
+        }
+    }
+}
+
 @main
 struct PrinterStudioApp: App {
     @StateObject private var state = AppState()
+    @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
+
+    private var appearance: Appearance { Appearance(rawValue: appearanceRaw) ?? .system }
 
     var body: some Scene {
         MenuBarExtra {
@@ -29,10 +56,12 @@ struct PrinterStudioApp: App {
             MainWindow()
                 .environmentObject(state)
                 .frame(minWidth: 860, minHeight: 580)
+                .preferredColorScheme(appearance.colorScheme)
         }
 
         Window("What's New", id: "whats-new") {
             WhatsNewView()
+                .preferredColorScheme(appearance.colorScheme)
         }
         .defaultSize(width: 520, height: 300)
         .windowResizability(.contentMinSize)

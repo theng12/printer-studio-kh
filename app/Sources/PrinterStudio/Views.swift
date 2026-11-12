@@ -934,6 +934,7 @@ struct WhatsNewView: View {
 
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
+    @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -946,6 +947,23 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Settings").font(.title2.weight(.semibold))
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Appearance").font(.headline)
+                        Picker("Appearance", selection: $appearanceRaw) {
+                            ForEach(Appearance.allCases) { option in
+                                Text(option.title).tag(option.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Text("System follows macOS. Default keeps what the app ships with, which is also System.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(6)
+                }
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
