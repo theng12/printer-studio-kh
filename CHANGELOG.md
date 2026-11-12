@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.17 — 2026-11-12
+- The background helper now runs from inside the app, so deleting the app deletes the helper with it.
+- Installing replaces any older helper copy left on the Mac instead of leaving a second one behind.
+- Settings gains Remove Printer Studio KH: it stops the background jobs, removes the login item, moves the app to the Trash and keeps your settings.
+- A second copy of the app now says so and steps aside instead of both running.
+
 ## 1.0.16 — 2026-11-12
 - Background helpers now run as Printer Studio KH Helper instead of invisible shell scripts.
 - Keeps the AirPrint helper running after an upgrade instead of stopping it.
