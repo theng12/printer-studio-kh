@@ -114,6 +114,17 @@ struct MainWindow: View {
                 .disabled(state.busy)
             }
         }
+        .task {
+            // Two copies would fight over the same launchd jobs; say so plainly
+            // and let the newer one step aside.
+            guard let other = Removal.anotherCopyIsRunning() else { return }
+            let alert = NSAlert()
+            alert.messageText = "Printer Studio KH is already running"
+            alert.informativeText = "Another copy is open from \(other.path). This copy will quit so the two do not fight over the same background jobs."
+            alert.addButton(withTitle: "Quit this copy")
+            alert.runModal()
+            NSApp.terminate(nil)
+        }
     }
 
     /// One left-aligned group, inside the sidebar so it shares its material.
@@ -1038,6 +1049,7 @@ struct WhatsNewView: View {
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
+    @State private var confirmingRemoval = false
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -1135,6 +1147,24 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(state.busy)
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Remove from this Mac").font(.headline)
+                        Text("Stops the background helpers, unloads their launchd jobs, removes the login item and moves the app to the Trash. Your settings and saved sticker sizes stay, and the printer queues and driver are left alone.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Remove Printer Studio KH…") { confirmingRemoval = true }
+                            .confirmationDialog("Remove Printer Studio KH from this Mac?",
+                                                isPresented: $confirmingRemoval) {
+                                Button("Remove", role: .destructive) { state.removeEverything() }
+                                Button("Cancel", role: .cancel) {}
+                            } message: {
+                                Text("The app quits when this finishes.")
+                            }
+                    }
+                    .padding(6)
+                }
 
                 Spacer(minLength: 0)
             }

@@ -461,6 +461,18 @@ final class AppState: ObservableObject {
         refresh()
     }
 
+    /// Takes the app back off this Mac and then quits, so nothing it installed is
+    /// left behind. Settings and saved sizes are the person's, and stay.
+    func removeEverything() {
+        let result = Removal.everything()
+        log(result.combined, kind: result.ok ? .info : .warning)
+        reportFeedback = result.ok ? "Removed from this Mac. Your settings were kept." : result.combined
+        refresh()
+        if result.ok {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { NSApp.terminate(nil) }
+        }
+    }
+
     /// Opens the instructions that ship inside the app, so the app can be sent
     /// on its own without a separate Read Me.
     func openReadMe() {
