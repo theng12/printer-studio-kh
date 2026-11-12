@@ -40,14 +40,18 @@ enum Screen: String, CaseIterable, Identifiable {
 
 /// Bare-styled footer controls drop their hover feedback; this puts it back so
 /// every control has a hover state, not just a pressed one.
+private final class HoverState: ObservableObject { @Published var isHovering = false }
+
 private struct HoverHighlight<S: Shape>: ViewModifier {
     let shape: S
-    @State private var hovering = false
+    // @StateObject rather than @State: this Command Line Tools install has no
+    // SwiftUIMacros plugin, so @State does not build here (see HANDOFF notes).
+    @StateObject private var hover = HoverState()
 
     func body(content: Content) -> some View {
         content
-            .overlay(shape.fill(Color.primary.opacity(hovering ? 0.07 : 0)))
-            .onHover { hovering = $0 }
+            .overlay(shape.fill(Color.primary.opacity(hover.isHovering ? 0.07 : 0)))
+            .onHover { hover.isHovering = $0 }
     }
 }
 
