@@ -1,5 +1,5 @@
 #!/bin/bash
-# Retains the newest two installers in dist from one installed-acceptance
+# Retains the newest three installers in dist from one installed-acceptance
 # receipt, so nobody has to write the pins by hand.
 #
 # The receipt is still the gate: retain-dmgs.sh refuses it unless launch health
@@ -55,17 +55,15 @@ def version_of(path):
 def key(path):
     return tuple(int(p) for p in re.findall(r"\d+", version_of(path)))
 
+# Three verified versions stay in dist: this one plus the two before it.
 others = [p for p in (root / "dist").glob("Printer Studio KH-*.dmg") if p != dmg and p.is_file()]
 others.sort(key=key, reverse=True)
-previous = others[0] if others else None
-evidence = manifest.get(previous.name, {}).get("evidence") if previous else None
-if previous and not (evidence and Path(evidence).is_file()):
-    sys.exit(f"No recorded evidence for the retained installer {previous.name}")
-
 releases = [{"version": version, "source": str(dmg), "evidence": str(receipt_path)}]
-if previous:
-    releases.append({"version": version_of(previous),
-                     "source": str(previous), "evidence": evidence})
+for previous in others[:2]:
+    evidence = manifest.get(previous.name, {}).get("evidence")
+    if not (evidence and Path(evidence).is_file()):
+        sys.exit(f"No recorded evidence for the retained installer {previous.name}")
+    releases.append({"version": version_of(previous), "source": str(previous), "evidence": evidence})
 for release in releases:
     data = Path(release["source"]).read_bytes()
     release["sha256"] = hashlib.sha256(data).hexdigest()
@@ -80,7 +78,7 @@ PY
 
 bash "$ROOT/app/retain-dmgs.sh" "$RECEIPT" "$PINS"
 
-# Nothing older than the newest two stays in dist, and nobody has to tidy it.
+# Nothing older than the newest three stays in dist, and nobody has to tidy it.
 # Anything the retention helper did not place, or a third version it kept, is
 # moved — never deleted — into a dated folder in the unified trash. Three guards
 # hold: a version named by a release manifest, by the ledger, or by a running
@@ -123,7 +121,7 @@ installers = sorted((p for p in dist.glob("Printer Studio KH-*.dmg") if p.is_fil
 kept, retired = [], []
 for index, candidate in enumerate(installers):
     version = ".".join(str(part) for part in version_of(candidate))
-    if index < 2:
+    if index < 3:
         kept.append(candidate.name)
         continue
     if version in named:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Focused check: app/finalize-dist.sh pins the newest two installers from one
+# Focused check: app/finalize-dist.sh pins the newest three installers from one
 # receipt, and refuses a receipt the release rules reject. Mock DMG bytes, the
 # real scripts and the real shared helper.
 set -euo pipefail
@@ -86,7 +86,7 @@ assert snapshot() == before, 'refused receipts must not touch dist'
 result = run(new_receipt)
 assert result.returncode == 0, result.stdout + result.stderr
 kept = sorted(p.name for p in dist.glob('Printer Studio KH-*.dmg'))
-assert kept == ['Printer Studio KH-1.0.10.dmg', 'Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], kept
+assert kept == ['Printer Studio KH-1.0.10.dmg', 'Printer Studio KH-1.0.12.dmg', 'Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], kept
 retired = list(work.rglob('Printer Studio KH-1.0.12.dmg'))
 assert retired and retired[0].read_bytes() == b'mock installer 1.0.12', 'older installer retired recoverably'
 swept = list((work / 'home/Desktop/_trash').rglob('Printer Studio KH-1.0.11.dmg'))
@@ -101,11 +101,11 @@ assert files['1.0.13'].read_bytes() == (dist / 'Printer Studio KH-1.0.13.dmg').r
 pins = sorted((project / '_trash').glob('finalize-dist-*.json'))
 assert pins, 'no pins document written'
 document = json.loads(pins[-1].read_text())['apps'][0]
-assert [r['version'] for r in document['releases']] == ['1.0.14', '1.0.13'], document['releases']
+assert [r['version'] for r in document['releases']] == ['1.0.14', '1.0.13', '1.0.12'], document['releases']
 assert document['releases'][1]['evidence'] == files_manifest['Printer Studio KH-1.0.13.dmg']['evidence']
 repeat = sorted(p.name for p in dist.iterdir())
 assert run(new_receipt).returncode == 0
 assert sorted(p.name for p in dist.iterdir()) == repeat, 'a repeat run must change nothing'
-print('PASS: finalize-dist pins the newest two, sweeps anything older into the trash without a hand step, and refuses an unverified install or a receipt whose gate is missing, failed or covers other bytes')
+print('PASS: finalize-dist pins the newest three, sweeps anything older into the trash without a hand step, and refuses an unverified install or a receipt whose gate is missing, failed or covers other bytes')
 print(f'Fixtures retained: {work}')
 PY
