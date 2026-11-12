@@ -38,7 +38,7 @@ enum Removal {
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let trash = ShareFix.supportDirectory.appendingPathComponent("_trash/removed-\(stamp)", isDirectory: true)
         let bundles = [
-            ShareFix.helperApp,
+            ShareFix.legacyHelperApp,
             ShareFix.supportDirectory.appendingPathComponent("\(ShareFix.usbHelperBundleName).app", isDirectory: true),
         ]
         do {

@@ -26,12 +26,25 @@ enum ShareFix {
             .appendingPathComponent("Library/Application Support/PrinterStudio", isDirectory: true)
     }
 
-    static var helperApp: URL {
+    /// A copy older builds put here. Nothing new is written to it: the helper now
+    /// runs from inside the app bundle so deleting the app deletes the helper.
+    static var legacyHelperApp: URL {
         supportDirectory.appendingPathComponent("\(helperBundleName).app", isDirectory: true)
     }
 
+    static var legacyHelperExecutable: URL {
+        legacyHelperApp.appendingPathComponent("Contents/MacOS/\(helperBundleName)", isDirectory: false)
+    }
+
+    /// The executable the launchd jobs run: the helper inside the app bundle, so
+    /// the two cannot drift apart and nothing outlives the bundle. The support
+    /// copy is only a fallback for a build or tool with no bundle around it.
     static var helperExecutable: URL {
-        helperApp.appendingPathComponent("Contents/MacOS/\(helperBundleName)", isDirectory: false)
+        if let bundled = bundledHelperApp {
+            return URL(fileURLWithPath: bundled, isDirectory: true)
+                .appendingPathComponent("Contents/MacOS/\(helperBundleName)", isDirectory: false)
+        }
+        return legacyHelperExecutable
     }
 
     /// The shell worker used before 1.0.15. Kept so an upgrade can retire it.
@@ -82,20 +95,13 @@ enum ShareFix {
 
     static var bundledHelperApp: String? { bundledHelper(named: helperBundleName) }
 
-    /// Copies the bundled helper into the user support directory, retaining any
-    /// previous copy in `_trash`.
+    /// Makes the bundled helper the one the jobs run, and retires any copy an
+    /// older build left in the support directory so no second runner survives.
     @discardableResult
     static func installHelperBundle() -> Bool {
         guard let source = bundledHelperApp else { return false }
-        let fileManager = FileManager.default
-        do {
-            try fileManager.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
-            _ = moveToTrash(helperApp.path)
-            try fileManager.copyItem(atPath: source, toPath: helperApp.path)
-            return fileManager.fileExists(atPath: helperExecutable.path)
-        } catch {
-            return false
-        }
+        _ = moveToTrash(legacyHelperApp.path)
+        return FileManager.default.fileExists(atPath: source)
     }
 
     private static var trashDirectory: URL {
