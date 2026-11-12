@@ -20,7 +20,7 @@ PINS="$ROOT/_trash/finalize-dist-$(date +%Y%m%d-%H%M%S)-$$.json"
 mkdir -p "$ROOT/_trash"
 
 /usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$PINS" <<'PY'
-import json, re, sys
+import hashlib, json, re, sys
 from pathlib import Path
 
 root, receipt_path, pins_path = map(Path, sys.argv[1:])
@@ -29,6 +29,20 @@ version = receipt["version"]
 dmg = root / "dist" / f"Printer Studio KH-{version}.dmg"
 if not dmg.is_file():
     sys.exit(f"No installer for {version} in dist: {dmg}")
+
+# The receipt must carry the gate that produced these exact bytes, and that gate
+# must have passed. Without it the receipt proves an install, not the installer.
+gate = receipt.get("gate")
+if not isinstance(gate, dict):
+    sys.exit(f"Receipt has no gate evidence for {version}; refusing to retain it")
+log = Path(gate.get("log", ""))
+if not log.is_absolute():
+    log = receipt_path.parent / log
+if gate.get("exit") != 0 or not log.is_file():
+    sys.exit(f"Receipt's gate is missing or did not pass (exit={gate.get('exit')!r}, log={log}); refusing to retain {version}")
+digest = hashlib.sha256(dmg.read_bytes()).hexdigest()
+if gate.get("artifactSha256") != digest:
+    sys.exit(f"Receipt's gate covers {gate.get('artifactSha256')!r}, not the installer in dist ({digest}); refusing to retain {version}")
 
 manifest = {}
 state = root / "dist/.release-dist.json"
@@ -54,7 +68,7 @@ if previous:
                      "source": str(previous), "evidence": evidence})
 for release in releases:
     data = Path(release["source"]).read_bytes()
-    release["sha256"] = __import__("hashlib").sha256(data).hexdigest()
+    release["sha256"] = hashlib.sha256(data).hexdigest()
     release["bytes"] = len(data)
 
 pins = {"schema": 1, "apps": [{"app": "Printer Studio KH", "project": str(root),

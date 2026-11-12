@@ -32,8 +32,12 @@ for version in ('1.0.12', '1.0.13', '1.0.14'):
     path.write_bytes(f'mock installer {version}'.encode())
     files[version] = path
     receipt = work / f'installed-{version}.json'
+    gate_log = work / f'gate-{version}.log'
+    gate_log.write_text(f'GATE-EXIT:0 %s\n' % version)
     receipt.write_text(json.dumps({'version': version, 'launchHealthVerified': True,
-                                   'exactMainBuiltHashes': True}))
+                                   'exactMainBuiltHashes': True,
+                                   'gate': {'log': str(gate_log), 'exit': 0,
+                                            'artifactSha256': hashlib.sha256(path.read_bytes()).hexdigest()}}))
     files_manifest[path.name] = {'version': version, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                                  'bytes': path.stat().st_size, 'evidence': str(receipt),
                                  'provenance': 'fixture'}
@@ -53,9 +57,24 @@ before = snapshot()
 bad = work / 'bad.json'
 bad.write_text(json.dumps({'version': '1.0.14', 'launchHealthVerified': False,
                            'exactMainBuiltHashes': True}))
-result = run(bad)
-assert result.returncode != 0, result.stdout + result.stderr
+assert run(bad).returncode != 0, 'an unverified install must be refused'
 assert snapshot() == before, 'a rejected receipt must not touch dist'
+
+# A receipt without the gate that produced these exact bytes proves nothing.
+good = json.loads(new_receipt.read_text())
+no_gate = work / 'no-gate.json'
+no_gate.write_text(json.dumps({k: v for k, v in good.items() if k != 'gate'}))
+refused = run(no_gate)
+assert refused.returncode != 0 and 'gate evidence' in refused.stderr, refused.stderr
+wrong_bytes = work / 'wrong-bytes.json'
+wrong_bytes.write_text(json.dumps({**good, 'gate': {**good['gate'], 'artifactSha256': '0' * 64}}))
+refused = run(wrong_bytes)
+assert refused.returncode != 0 and 'not the installer in dist' in refused.stderr, refused.stderr
+missing_log = work / 'missing-log.json'
+missing_log.write_text(json.dumps({**good, 'gate': {**good['gate'], 'log': str(work / 'gone.log')}}))
+refused = run(missing_log)
+assert refused.returncode != 0 and 'missing or did not pass' in refused.stderr, refused.stderr
+assert snapshot() == before, 'refused receipts must not touch dist'
 
 result = run(new_receipt)
 assert result.returncode == 0, result.stdout + result.stderr
@@ -72,6 +91,6 @@ assert document['releases'][1]['evidence'] == files_manifest['Printer Studio KH-
 repeat = sorted(p.name for p in dist.iterdir())
 assert run(new_receipt).returncode == 0
 assert sorted(p.name for p in dist.iterdir()) == repeat, 'a repeat run must change nothing'
-print('PASS: finalize-dist pins the newest two with recorded evidence, retires the older installer recoverably, and refuses an unverified receipt')
+print('PASS: finalize-dist pins the newest two with recorded evidence, retires the older installer recoverably, and refuses an unverified install or a receipt whose gate is missing, failed or covers other bytes')
 print(f'Fixtures retained: {work}')
 PY
