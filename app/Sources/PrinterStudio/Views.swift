@@ -78,89 +78,16 @@ struct MainWindow: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $state.screen) {
-                ForEach(Screen.allCases) { item in
-                    Label(item.title, systemImage: item.symbol).tag(item)
+            VStack(spacing: 0) {
+                List(selection: $state.screen) {
+                    ForEach(Screen.allCases) { item in
+                        Label(item.title, systemImage: item.symbol).tag(item)
+                    }
                 }
+                Divider()
+                footer
             }
             .navigationSplitViewColumnWidth(min: 240, ideal: 248, max: 260)
-            .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if state.busy {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
-                            Text(state.busyMessage).font(.caption).lineLimit(2)
-                        }
-                    }
-                    Button { openWindow(id: "support") } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "heart").font(.system(size: 13))
-                            Text("Support this app").font(.system(size: 12))
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Printer Studio KH is free. Leave a one-time donation if you like.")
-                    .accessibilityLabel("Support this app")
-                    .hoverHighlight(RoundedRectangle(cornerRadius: 6))
-
-                    HStack(spacing: 6) {
-                        Button { openWindow(id: "whats-new") } label: {
-                            HStack(spacing: 4) {
-                                Text("Printer Studio KH").font(.system(size: 11, weight: .medium))
-                                Text(version).font(.system(size: 10)).foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 7)
-                            .frame(height: 26)
-                            .background(Capsule().fill(Color.primary.opacity(0.06)))
-                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
-                            .contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .help("What's new in Printer Studio KH \(version)")
-                        .accessibilityLabel("Printer Studio KH \(version). Opens What's New.")
-                        .hoverHighlight(Capsule())
-
-                        Button { Task { await checker.check() } } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14, weight: .medium))
-                                .frame(width: 26, height: 26)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.05)))
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(checker.state == .checking)
-                        .help("Check for updates")
-                        .accessibilityLabel("Check for updates")
-                        .hoverHighlight(RoundedRectangle(cornerRadius: 7))
-
-                        if let offered = checker.availableVersion {
-                            Button { UpdaterHandoff.open() } label: {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .frame(width: 26, height: 26)
-                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.16)))
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .help("Update to \(offered)")
-                            .accessibilityLabel("Update to \(offered)")
-                            .hoverHighlight(RoundedRectangle(cornerRadius: 7))
-                        }
-                    }
-
-                    Text(footerStatus)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .accessibilityAddTraits(.updatesFrequently)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.top, 9)
-                .padding(.bottom, 8)
-                .background(.bar)
-            }
         } detail: {
             Group {
                 switch state.screen ?? .overview {
@@ -186,7 +113,87 @@ struct MainWindow: View {
             }
         }
     }
+
+    /// One left-aligned group, inside the sidebar so it shares its material.
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if state.busy {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(state.busyMessage).font(.caption).lineLimit(2)
+                }
+            }
+            Button { openWindow(id: "support") } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "heart").font(.system(size: 13))
+                    Text("Support this app").font(.system(size: 12))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Printer Studio KH is free. Leave a one-time donation if you like.")
+            .accessibilityLabel("Support this app")
+            .hoverHighlight(RoundedRectangle(cornerRadius: 6))
+
+            HStack(spacing: 6) {
+                Button { openWindow(id: "whats-new") } label: {
+                    HStack(spacing: 4) {
+                        Text("Printer Studio KH").font(.system(size: 11, weight: .medium))
+                        Text(version).font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 7)
+                    .frame(height: 26)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("What's new in Printer Studio KH \(version)")
+                .accessibilityLabel("Printer Studio KH \(version). Opens What's New.")
+                .hoverHighlight(Capsule())
+
+                Button { Task { await checker.check() } } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 26, height: 26)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.05)))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(checker.state == .checking)
+                .help("Check for updates")
+                .accessibilityLabel("Check for updates")
+                .hoverHighlight(RoundedRectangle(cornerRadius: 7))
+
+                if let offered = checker.availableVersion {
+                    Button { UpdaterHandoff.open() } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 26, height: 26)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.16)))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Update to \(offered)")
+                    .accessibilityLabel("Update to \(offered)")
+                    .hoverHighlight(RoundedRectangle(cornerRadius: 7))
+                }
+            }
+
+            Text(footerStatus)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .accessibilityAddTraits(.updatesFrequently)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.top, 9)
+        .padding(.bottom, 8)
+        .background(.background)
+    }
 }
+
 
 /// A stand-in for `ContentUnavailableView`, which requires macOS 14.
 /// Declared here so the app's deployment target can stay at macOS 13.
