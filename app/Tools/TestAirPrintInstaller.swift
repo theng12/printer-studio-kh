@@ -41,6 +41,7 @@ struct TestAirPrintInstaller {
         testRefreshDoesNothingWhenOff()
         testRefreshMigratesOldStyleAgent()
         testRefreshLeavesNewStyleAlone()
+        testUninstallLeavesNoJobOrCopy()
 
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
@@ -61,10 +62,20 @@ struct TestAirPrintInstaller {
         CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : nil
     }
 
+    /// The helper the jobs run: the one inside the app bundle. A copy in the
+    /// support directory is what older builds left behind and is now retired.
     static var installedHelperExecutable: URL {
+        if let bundled = bundledHelperPath {
+            return URL(fileURLWithPath: bundled, isDirectory: true)
+                .appendingPathComponent("Contents/MacOS/Printer Studio KH Helper")
+        }
+        return looseHelperCopy
+            .appendingPathComponent("Contents/MacOS/Printer Studio KH Helper")
+    }
+
+    static var looseHelperCopy: URL {
         DriverInstaller.airPrintSupportDirectory
             .appendingPathComponent("Printer Studio KH Helper.app")
-            .appendingPathComponent("Contents/MacOS/Printer Studio KH Helper")
     }
 
     static var agentPlist: URL { URL(fileURLWithPath: DriverInstaller.airPrintAgentPath) }
@@ -130,7 +141,9 @@ struct TestAirPrintInstaller {
         let result = DriverInstaller.installAirPrintBridge(prepareSharing: sharingOK)
         assertTest(result.ok, "the advertisement installs into the scratch directory")
         assertTest(FileManager.default.fileExists(atPath: installedHelperExecutable.path),
-                   "Printer Studio KH Helper.app is copied into the support directory")
+                   "the job runs the helper from inside the app bundle")
+        assertTest(!FileManager.default.fileExists(atPath: looseHelperCopy.path),
+                   "no loose copy of the helper is left in the support directory")
         assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
                    "the agent runs the helper with bridge")
         assertTest(agentBundleIdentifiers() == ["com.theng12.printerstudio.helper"],
@@ -225,6 +238,22 @@ struct TestAirPrintInstaller {
             atPath: DriverInstaller.airPrintScriptPath),
                    "migration retires the old shell advertisement")
         assertTest(result.stdout.contains("updated"), "the migration says it updated the agent")
+    }
+
+    /// Uninstalling must take the job and any loose copy with it, and leave the
+    /// helper inside the bundle alone — the bundle is the app's own.
+    static func testUninstallLeavesNoJobOrCopy() {
+        _ = DriverInstaller.installAirPrintBridge(prepareSharing: sharingOK)
+        let removed = DriverInstaller.removeAirPrintBridge()
+        assertTest(removed.ok, "uninstall succeeds")
+        assertTest(!FileManager.default.fileExists(atPath: agentPlist.path),
+                   "no launchd job is left naming a missing path")
+        assertTest(!FileManager.default.fileExists(atPath: looseHelperCopy.path),
+                   "no loose helper copy is left in the support directory")
+        assertTest(FileManager.default.fileExists(atPath: installedHelperExecutable.path),
+                   "the helper inside the app bundle is untouched")
+        assertTest(trashFiles().contains { $0.hasPrefix("com.theng12.printerstudio.airprint") },
+                   "the removed job is kept in _trash, not deleted")
     }
 
     static func testRefreshLeavesNewStyleAlone() {
