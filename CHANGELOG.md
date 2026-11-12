@@ -3,6 +3,13 @@
 ## 1.0.16 — 2026-11-12
 - Background helpers now run as Printer Studio KH Helper instead of invisible shell scripts.
 - Keeps the AirPrint helper running after an upgrade instead of stopping it.
+- The bottom of the sidebar is one group now: Support this app, a version pill that opens What's New, Check for Updates, and one status line.
+- Check for Updates asks the Studio KH update feed and says plainly what it found; it opens Studio Launcher to install, never installing by itself.
+- Settings gains Appearance — System, Light or Dark — starting on System.
+- Support this app opens a page with an optional one-time donation; nothing is required.
+- The menu bar menu and the application menu both quit the app, so Activity Monitor is never needed.
+- The sidebar reads as one surface from top to bottom in both light and dark.
+- Same version, rebuilt with the appearance change: this installer replaces the earlier 1.0.16 build, which never shipped. Compare installers by checksum, not by version number.
 
 ## 1.0.14 — 2026-11-08
 - Avoids adding a second AirPrint entry when this Mac already advertises the same queue as AirPrint.

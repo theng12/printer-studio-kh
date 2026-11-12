@@ -1,6 +1,13 @@
+## Sidebar, appearance and update controls — 2026-11-12 (in the rebuilt 1.0.16)
+
+Footer is one group (Support, version pill, Check for Updates, one status line); Settings → Appearance
+is System/Light/Dark with System as the start; Support page with optional donation; Quit in both menus;
+sidebar is one surface. Verified by source tests and a hidden build; on-screen checks paused under the
+owner screen rule.
+
 # Printer Studio KH handoff
 
-## Background helper naming — 2026-11-12 (unreleased 1.0.16)
+## Background helper naming — 2026-11-12 (released in 1.0.16)
 
 Every installed background job now runs from a named `.app` bundle. The launchd labels are unchanged, so migration only replaces each job's program.
 
