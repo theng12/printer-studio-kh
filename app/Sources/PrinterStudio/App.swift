@@ -58,6 +58,14 @@ struct PrinterStudioApp: App {
                 .frame(minWidth: 860, minHeight: 580)
                 .preferredColorScheme(appearance.colorScheme)
         }
+        .commands {
+            // A menu-bar app with no window open has no app menu to reach, so
+            // this names Quit plainly rather than relying on the system default.
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Printer Studio KH") { NSApp.terminate(nil) }
+                    .keyboardShortcut("q")
+            }
+        }
 
         Window("What's New", id: "whats-new") {
             WhatsNewView()
