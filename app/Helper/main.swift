@@ -329,6 +329,40 @@ func processResults(timeoutMilliseconds: Int32) {
     }
 }
 
+// MARK: - Orphan guard
+
+/// The labels the app's plists use, by mode.
+let jobLabels = ["bridge": "com.theng12.printerstudio.airprint",
+                 "sharefix": "com.theng12.printerstudio.sharefix"]
+
+/// The helper ships inside the app bundle. If that bundle is dragged to the
+/// Trash, its launchd job would point at a missing program for ever; the helper
+/// notices, retires its own plist and unloads the job instead of leaving an
+/// orphan. `PRINTER_STUDIO_JOB_LABEL` lets a test use a throwaway label.
+@discardableResult
+func clearOwnJobIfBundleIsGone(_ mode: String) -> Bool {
+    guard let label = environment["PRINTER_STUDIO_JOB_LABEL"] ?? jobLabels[mode] else { return false }
+    var url = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    var outermost: URL?
+    while url.pathComponents.count > 1 {
+        url.deleteLastPathComponent()
+        if url.pathExtension == "app" { outermost = url }
+    }
+    guard let app = outermost, !FileManager.default.fileExists(atPath: app.path) else { return false }
+
+    let home = URL(fileURLWithPath: environment["HOME"] ?? NSHomeDirectory(), isDirectory: true)
+    let plist = home.appendingPathComponent("Library/LaunchAgents/\(label).plist")
+    let day = ISO8601DateFormatter().string(from: Date()).prefix(10)
+    let trash = home.appendingPathComponent("Desktop/_trash/\(day) printer-studio-kh-orphaned-jobs", isDirectory: true)
+    if FileManager.default.fileExists(atPath: plist.path) {
+        try? FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        try? FileManager.default.moveItem(at: plist, to: trash.appendingPathComponent(plist.lastPathComponent))
+    }
+    _ = run("/bin/launchctl", ["bootout", "gui/\(getuid())/\(label)"])
+    note("The app is no longer on this Mac, so this helper removed its own background job (\(label)).")
+    return true
+}
+
 // MARK: - Modes
 
 func runBridge() {
@@ -337,6 +371,8 @@ func runBridge() {
     let rescan = max(1, Int(environment["PRINTER_STUDIO_RESCAN_SECONDS"] ?? "") ?? 60)
     var current = ""
     while true {
+        // The app can be dragged to the Trash while this job is running.
+        if clearOwnJobIfBundleIsGone("bridge") { exit(0) }
         var plans: [(queue: String, arguments: [String])] = []
         if sharingEnabled() {
             for queue in sharedPrinters() {
@@ -490,7 +526,9 @@ func runSelfTest() {
 
 // MARK: - Entry point
 
-switch CommandLine.arguments.dropFirst().first {
+let mode = CommandLine.arguments.dropFirst().first ?? ""
+if clearOwnJobIfBundleIsGone(mode) { exit(0) }
+switch mode {
 case "bridge":
     runBridge()
 case "sharefix":
