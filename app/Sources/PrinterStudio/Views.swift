@@ -1081,7 +1081,7 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
-                        Text("System follows macOS. Default keeps what the app ships with, which is also System.")
+                        Text("System follows macOS and is where every install starts.")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }

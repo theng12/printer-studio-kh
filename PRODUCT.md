@@ -88,5 +88,4 @@ shared NOWPayments page. No logo changes.
 ## Accessibility & Inclusion
 
 Native AppKit/SwiftUI controls, keyboard reachability, VoiceOver labels on the
-footer and nav, and legible text in every appearance mode (System, Light, Dark,
-Default). Assumed (confirm): no stricter standard than the macOS defaults.
+footer and nav, and legible text in every appearance mode (System, Light, Dark). Assumed (confirm): no stricter standard than the macOS defaults.
