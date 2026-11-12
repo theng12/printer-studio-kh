@@ -38,6 +38,25 @@ enum Screen: String, CaseIterable, Identifiable {
     }
 }
 
+/// Bare-styled footer controls drop their hover feedback; this puts it back so
+/// every control has a hover state, not just a pressed one.
+private struct HoverHighlight<S: Shape>: ViewModifier {
+    let shape: S
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(shape.fill(Color.primary.opacity(hovering ? 0.07 : 0)))
+            .onHover { hovering = $0 }
+    }
+}
+
+private extension View {
+    func hoverHighlight<S: Shape>(_ shape: S) -> some View {
+        modifier(HoverHighlight(shape: shape))
+    }
+}
+
 struct MainWindow: View {
     @EnvironmentObject var state: AppState
     @Environment(\.openWindow) private var openWindow
@@ -79,6 +98,7 @@ struct MainWindow: View {
                     .buttonStyle(.plain)
                     .help("Printer Studio KH is free. Leave a one-time donation if you like.")
                     .accessibilityLabel("Support this app")
+                    .hoverHighlight(RoundedRectangle(cornerRadius: 6))
 
                     HStack(spacing: 6) {
                         Button { openWindow(id: "whats-new") } label: {
@@ -95,6 +115,7 @@ struct MainWindow: View {
                         .buttonStyle(.plain)
                         .help("What's new in Printer Studio KH \(version)")
                         .accessibilityLabel("Printer Studio KH \(version). Opens What's New.")
+                        .hoverHighlight(Capsule())
 
                         Button { Task { await checker.check() } } label: {
                             Image(systemName: "arrow.clockwise")
@@ -107,6 +128,7 @@ struct MainWindow: View {
                         .disabled(checker.state == .checking)
                         .help("Check for updates")
                         .accessibilityLabel("Check for updates")
+                        .hoverHighlight(RoundedRectangle(cornerRadius: 7))
 
                         if let offered = checker.availableVersion {
                             Button { UpdaterHandoff.open() } label: {
@@ -119,6 +141,7 @@ struct MainWindow: View {
                             .buttonStyle(.plain)
                             .help("Update to \(offered)")
                             .accessibilityLabel("Update to \(offered)")
+                            .hoverHighlight(RoundedRectangle(cornerRadius: 7))
                         }
                     }
 
