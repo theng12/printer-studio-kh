@@ -50,7 +50,7 @@ private struct HoverHighlight<S: Shape>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay(shape.fill(Color.primary.opacity(hover.isHovering ? 0.07 : 0)))
+            .overlay(shape.fill(Palette.body.opacity(hover.isHovering ? 0.07 : 0)))
             .onHover { hover.isHovering = $0 }
     }
 }
@@ -58,6 +58,28 @@ private struct HoverHighlight<S: Shape>: ViewModifier {
 private extension View {
     func hoverHighlight<S: Shape>(_ shape: S) -> some View {
         modifier(HoverHighlight(shape: shape))
+    }
+
+    /// A card on the page: surface fill and a quiet border, one step above the
+    /// page.
+    func cardSurface(radius: CGFloat = 10) -> some View {
+        background(RoundedRectangle(cornerRadius: radius).fill(Palette.surface))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Palette.border, lineWidth: 1))
+    }
+}
+
+/// Groups use the same surface and border as the standalone cards. The 5 pt
+/// inset is the native GroupBox content inset (measured 260×160 box, 250×150
+/// content), so the layout is unchanged.
+struct CardGroupStyle: GroupBoxStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            configuration.label
+            configuration.content
+        }
+        .padding(5)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.surface))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.border, lineWidth: 1))
     }
 }
 
@@ -85,7 +107,7 @@ struct MainWindow: View {
                     }
                 }
                 .scrollContentBackground(.hidden)
-                Divider()
+                Rectangle().fill(Palette.border).frame(height: 1)
                 footer
             }
             .background(SidebarMaterial())
@@ -103,6 +125,9 @@ struct MainWindow: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Palette.page)
+            .foregroundStyle(Palette.body)
+            .groupBoxStyle(CardGroupStyle())
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -152,12 +177,12 @@ struct MainWindow: View {
                 Button { openWindow(id: "whats-new") } label: {
                     HStack(spacing: 4) {
                         Text("Printer Studio KH").font(.system(size: 11, weight: .medium))
-                        Text(version).font(.system(size: 10)).foregroundStyle(.secondary)
+                        Text(version).font(.system(size: 10)).foregroundStyle(Palette.muted)
                     }
                     .padding(.horizontal, 7)
                     .frame(height: 26)
-                    .background(Capsule().fill(Color.primary.opacity(0.06)))
-                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
+                    .background(Capsule().fill(Palette.surface))
+                    .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.5))
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -169,7 +194,7 @@ struct MainWindow: View {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 14, weight: .medium))
                         .frame(width: 26, height: 26)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.05)))
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Palette.surface))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -183,7 +208,7 @@ struct MainWindow: View {
                         Image(systemName: "arrow.down.circle")
                             .font(.system(size: 14, weight: .medium))
                             .frame(width: 26, height: 26)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.16)))
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.accent.opacity(0.16)))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -195,7 +220,7 @@ struct MainWindow: View {
 
             Text(footerStatus)
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.muted)
                 .lineLimit(1)
                 .accessibilityAddTraits(.updatesFrequently)
         }
@@ -231,14 +256,14 @@ struct EmptyState: View {
         VStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(.largeTitle)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.muted)
             Text(title)
                 .font(.headline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.muted)
             if let detail {
                 Text(detail)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
                     .multilineTextAlignment(.center)
             }
         }
@@ -253,13 +278,13 @@ struct StatusCard: View {
     let title: String
     let value: String
     let symbol: String
-    var tint: Color = .accentColor
+    var tint: Color = Palette.accent
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: symbol).foregroundStyle(tint)
-                Text(title).font(.caption).foregroundStyle(.secondary)
+                Text(title).font(.caption).foregroundStyle(Palette.muted)
             }
             Text(value)
                 .font(.title3.weight(.semibold))
@@ -268,7 +293,7 @@ struct StatusCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+        .cardSurface()
     }
 }
 
@@ -304,7 +329,7 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Printer Studio KH").font(.largeTitle.weight(.semibold))
                     Text("Share this Mac's printers with every device on your network — and keep them working.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.muted)
                 }
 
                 HStack(spacing: 12) {
@@ -312,7 +337,7 @@ struct OverviewView: View {
                         title: "PRINTER SHARING",
                         value: state.sharingEnabled ? "On" : "Off",
                         symbol: state.sharingEnabled ? "checkmark.circle.fill" : "xmark.circle",
-                        tint: state.sharingEnabled ? .green : .orange)
+                        tint: state.sharingEnabled ? Palette.success : Palette.warning)
                     StatusCard(
                         title: "PRINTERS",
                         value: "\(state.printers.count)",
@@ -321,12 +346,12 @@ struct OverviewView: View {
                         title: "QUEUES BLOCKED",
                         value: "\(state.queuesHeldShut.count)",
                         symbol: state.queuesHeldShut.isEmpty ? "checkmark.shield" : "exclamationmark.triangle.fill",
-                        tint: state.queuesHeldShut.isEmpty ? .green : .red)
+                        tint: state.queuesHeldShut.isEmpty ? Palette.success : Palette.danger)
                     StatusCard(
                         title: "HP LASER 107a",
                         value: state.laser107a != nil ? "Connected" : "Not connected",
                         symbol: state.laser107a != nil ? "cable.connector" : "cable.connector.slash",
-                        tint: state.laser107a != nil ? .green : .secondary)
+                        tint: state.laser107a != nil ? Palette.success : Palette.muted)
                 }
 
                 if !advice.isEmpty {
@@ -372,7 +397,7 @@ struct OverviewView: View {
 
         if state.printerHeldByIPPUSB {
             items.append(Advice(
-                symbol: "exclamationmark.triangle.fill", tint: .red,
+                symbol: "exclamationmark.triangle.fill", tint: Palette.danger,
                 text: "macOS's IPP-over-USB service has claimed the printer. While it holds the device, CUPS cannot open it: the queue reports “offline” and jobs never print, with nothing logged to explain why. This comes back after a reboot or a replug.",
                 actionTitle: "Release",
                 action: { state.releasePrinter() }))
@@ -380,7 +405,7 @@ struct OverviewView: View {
 
         if !state.sharingEnabled {
             items.append(Advice(
-                symbol: "wifi.slash", tint: .orange,
+                symbol: "wifi.slash", tint: Palette.warning,
                 text: "Printer Sharing is off, so other devices on your network cannot see this Mac's printers.",
                 actionTitle: "Turn on",
                 action: { state.setSharing(true) }))
@@ -389,7 +414,7 @@ struct OverviewView: View {
         if !state.queuesHeldShut.isEmpty {
             let names = state.queuesHeldShut.map(\.displayName).joined(separator: ", ")
             items.append(Advice(
-                symbol: "lock.fill", tint: .red,
+                symbol: "lock.fill", tint: Palette.danger,
                 text: "\(names) \(state.queuesHeldShut.count == 1 ? "is" : "are") shared but locked to specific users. Other Macs will report “Job held for authentication”.",
                 actionTitle: "Fix now",
                 action: { state.fixSharingNow() }))
@@ -397,7 +422,7 @@ struct OverviewView: View {
 
         if state.sharingEnabled && !state.watcherInstalled {
             items.append(Advice(
-                symbol: "clock.arrow.circlepath", tint: .blue,
+                symbol: "clock.arrow.circlepath", tint: Palette.accent,
                 text: "The background watcher is not installed. Without it, re-saving the Sharing settings can lock the queues again.",
                 actionTitle: "Install",
                 action: { state.installWatcher() }))
@@ -405,11 +430,11 @@ struct OverviewView: View {
 
         if state.laser107a == nil {
             items.append(Advice(
-                symbol: "cable.connector", tint: .secondary,
+                symbol: "cable.connector", tint: Palette.muted,
                 text: "The HP Laser 107a is not plugged in. Connect it by USB and it will appear here automatically."))
         } else if !Driver.isReady {
             items.append(Advice(
-                symbol: "shippingbox", tint: .orange,
+                symbol: "shippingbox", tint: Palette.warning,
                 text: "The HP Laser 107a is connected but its print driver is not installed yet. Open the “HP Laser 107a” tab."))
         }
 
@@ -454,7 +479,7 @@ struct PrinterCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: printer.isStopped ? "printer.fill" : "printer")
-                    .foregroundStyle(printer.isStopped ? .orange : .accentColor)
+                    .foregroundStyle(printer.isStopped ? Palette.warning : Palette.accent)
                 Text(printer.displayName).font(.headline)
                 Spacer()
                 StateBadge(printer: printer)
@@ -473,7 +498,7 @@ struct PrinterCard: View {
 
             if printer.transport != .usb {
                 Text("This name is for Mac sharing. A network printer’s own AirPrint name is set on the printer.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Palette.muted)
             }
 
             if let choices = state.paperChoices[printer.name], !choices.isEmpty {
@@ -490,32 +515,32 @@ struct PrinterCard: View {
                 }
                 .disabled(state.busy)
                 Text("Use the stock loaded in the printer. Reopen the phone or Mac print dialog after changing it; choose the same size there. Test page uses this size and prints one page.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                 GridRow {
-                    Text("Connection").foregroundStyle(.secondary)
+                    Text("Connection").foregroundStyle(Palette.muted)
                     Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
                 }
                 if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
                     GridRow {
-                        Text("Model").foregroundStyle(.secondary)
+                        Text("Model").foregroundStyle(Palette.muted)
                         Text(model)
                     }
                 }
                 GridRow {
-                    Text("Shared").foregroundStyle(.secondary)
+                    Text("Shared").foregroundStyle(Palette.muted)
                     Text((detail?.isShared ?? printer.isShared) ? "Yes" : "No")
                 }
                 if let detail, detail.isShared {
                     GridRow {
-                        Text("Access").foregroundStyle(.secondary)
+                        Text("Access").foregroundStyle(Palette.muted)
                         if detail.hasUserACL {
-                            Label("Locked to specific users", systemImage: "lock.fill").foregroundStyle(.red)
+                            Label("Locked to specific users", systemImage: "lock.fill").foregroundStyle(Palette.danger)
                         } else {
-                            Label("Open to everyone", systemImage: "lock.open.fill").foregroundStyle(.green)
+                            Label("Open to everyone", systemImage: "lock.open.fill").foregroundStyle(Palette.success)
                         }
                     }
                 }
@@ -537,7 +562,7 @@ struct PrinterCard: View {
             .disabled(state.busy)
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+        .cardSurface()
     }
 }
 
@@ -546,10 +571,10 @@ struct StateBadge: View {
 
     var body: some View {
         let (text, color): (String, Color) = {
-            if printer.isStopped { return ("Paused", .orange) }
-            if printer.isPrinting { return ("Printing", .blue) }
-            if printer.isIdle { return ("Ready", .green) }
-            return (printer.state.capitalized, .secondary)
+            if printer.isStopped { return ("Paused", Palette.warning) }
+            if printer.isPrinting { return ("Printing", Palette.accent) }
+            if printer.isIdle { return ("Ready", Palette.success) }
+            return (printer.state.capitalized, Palette.muted)
         }()
 
         return Text(text)
@@ -571,14 +596,14 @@ struct SharingView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Printer Sharing").font(.title2.weight(.semibold))
                 Text("Other Macs and iOS devices find shared printers over Bonjour. macOS sometimes locks a shared queue to specific users, which makes other machines park jobs with “Job held for authentication”. This screen fixes and prevents that.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
                             Image(systemName: state.airPrintInstalled && state.sharingEnabled ? "checkmark.circle.fill" : "circle.dashed")
-                                .foregroundStyle(state.airPrintInstalled && state.sharingEnabled ? .green : .secondary)
+                                .foregroundStyle(state.airPrintInstalled && state.sharingEnabled ? Palette.success : Palette.muted)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Print from iPhone and iPad").font(.callout.weight(.medium))
                                 Text(!state.sharingEnabled
@@ -586,7 +611,7 @@ struct SharingView: View {
                                      : state.airPrintInstalled
                                      ? "Enabled — every shared printer is announced as its name followed by (AirPrint). iPhone visibility is not checked until you see the printers on your phone."
                                      : "Off. Turn on to announce every shared printer to iPhone and iPad.")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Palette.muted)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
@@ -600,7 +625,7 @@ struct SharingView: View {
                         if state.labelPrintingNeedsSetup {
                             HStack {
                                 Text("Label printing needs a one-time driver update. After setup, test one label from your iPhone.")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Palette.muted)
                                     .fixedSize(horizontal: false, vertical: true)
                                 Spacer()
                                 Button("Set up label printing") { state.setupLabelPrinting() }
@@ -609,12 +634,12 @@ struct SharingView: View {
                         }
                         if state.labelQueues.contains(where: { $0.isLabel }) {
                             Text("iPhone output is not checked by this app. Test one label from your iPhone after setup.")
-                                .font(.caption2).foregroundStyle(.secondary)
+                                .font(.caption2).foregroundStyle(Palette.muted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         if state.airPrintInstalled {
                             Text("Jobs go through this Mac's print service and the printer's driver. Turning on Printer Sharing may ask for administrator approval.")
-                                .font(.caption2).foregroundStyle(.secondary)
+                                .font(.caption2).foregroundStyle(Palette.muted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -632,13 +657,13 @@ struct SharingView: View {
 
                         HStack(spacing: 10) {
                             Image(systemName: state.watcherInstalled ? "checkmark.circle.fill" : "circle.dashed")
-                                .foregroundStyle(state.watcherInstalled ? .green : .secondary)
+                                .foregroundStyle(state.watcherInstalled ? Palette.success : Palette.muted)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Background watcher").font(.callout.weight(.medium))
                                 Text(state.watcherInstalled
                                      ? "Watching every 60 seconds — queues reopen on their own."
                                      : "Not installed. Queues can silently lock again.")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Palette.muted)
                             }
                             Spacer()
                             if state.watcherInstalled {
@@ -664,27 +689,26 @@ struct SharingView: View {
                         Text(state.sharingEnabled
                              ? "No queues are shared yet. Share one from the Printers tab."
                              : "Printer Sharing is off, so nothing is shared.")
-                            .foregroundStyle(.secondary).font(.callout)
+                            .foregroundStyle(Palette.muted).font(.callout)
                     } else {
                         ForEach(shared) { printer in
                             HStack(spacing: 10) {
                                 Image(systemName: printer.hasUserACL ? "lock.fill" : "lock.open.fill")
-                                    .foregroundStyle(printer.hasUserACL ? .red : .green)
+                                    .foregroundStyle(printer.hasUserACL ? Palette.danger : Palette.success)
                                 Text(printer.displayName)
                                 Spacer()
                                 if printer.hasUserACL {
-                                    Text("Blocked").font(.caption).foregroundStyle(.red)
+                                    Text("Blocked").font(.caption).foregroundStyle(Palette.danger)
                                     Button("Open to everyone") { state.openQueue(printer) }
                                         .controlSize(.small)
                                 } else {
-                                    Text("Open to LAN").font(.caption).foregroundStyle(.green)
+                                    Text("Open to LAN").font(.caption).foregroundStyle(Palette.success)
                                     Button("Restrict") { state.restrictQueue(printer) }
                                         .controlSize(.small)
                                 }
                             }
                             .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(nsColor: .controlBackgroundColor)))
+                            .cardSurface(radius: 8)
                         }
                     }
                 }
@@ -703,7 +727,7 @@ struct SharingView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
                             if state.shareLog.isEmpty {
-                                Text("No entries yet.").foregroundStyle(.secondary).font(.caption)
+                                Text("No entries yet.").foregroundStyle(Palette.muted).font(.caption)
                             } else {
                                 ForEach(Array(state.shareLog.enumerated()), id: \.offset) { _, line in
                                     Text(line).font(.system(.caption2, design: .monospaced))
@@ -714,7 +738,7 @@ struct SharingView: View {
                     }
                     .frame(height: 140)
                     .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                    .cardSurface(radius: 8)
                 }
 
                 Spacer(minLength: 0)
@@ -735,7 +759,7 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("HP Laser 107a").font(.title2.weight(.semibold))
                 Text("This printer is a rebadged Samsung SL-M2026. It speaks Samsung's QPDL language over USB and has no Apple driver, so Printer Studio KH supplies one and then shares the queue to the network.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 SetupStep(
@@ -797,7 +821,7 @@ struct SetupView: View {
                             .font(.callout.weight(.medium))
                         Text("The earlier attempt built a QPDL encoder from scratch. It produced streams the printer accepted without any error, but it never fed paper. The cause is now known: this engine rejects a page whose band width is not exactly one of a fixed set of values, and it fails silently rather than reporting an error. The supported splix driver contains that table, which is why the app uses it instead of a hand-written encoder.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(6)
@@ -813,7 +837,7 @@ struct SetupView: View {
                                 Spacer()
                                 Text("\(device.vendorID):\(device.productID)")
                                     .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Palette.muted)
                             }
                             .font(.callout)
                         }
@@ -842,24 +866,24 @@ struct SetupStep: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
-                Circle().fill(done ? Color.green : Color.secondary.opacity(0.2))
+                Circle().fill(done ? Palette.success : Palette.muted.opacity(0.2))
                 if done {
                     Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.white)
                 } else {
-                    Text("\(number)").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    Text("\(number)").font(.caption.weight(.bold)).foregroundStyle(Palette.muted)
                 }
             }
             .frame(width: 22, height: 22)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.callout.weight(.medium))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(detail).font(.caption).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+        .cardSurface()
     }
 }
 
@@ -900,7 +924,7 @@ struct StickerSizesView: View {
                 Text("Paper & sticker sizes").font(.title2.weight(.semibold))
 
                 Text("Set the sizes here for AirPrint to read from your shared printer. Width and height follow how the stock feeds into the printer. You can edit any size or turn it off.\n\nCustom sizes apply to label printers within their driver’s limits. A4 and A5 are already standard choices on the HP Laser queue; use that printer’s paper-size menu. A narrow label printer cannot print an A4 or A5 sheet.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 GroupBox {
@@ -914,7 +938,7 @@ struct StickerSizesView: View {
                             Spacer()
                         }
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.muted)
 
                         ForEach($state.stickerSizes) { $size in
                             HStack(spacing: 8) {
@@ -932,7 +956,7 @@ struct StickerSizesView: View {
                                     .frame(width: 80)
                                 Text(size.inchesLabel + " in")
                                     .font(.callout)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Palette.muted)
                                     .frame(width: 150, alignment: .leading)
                                     .textSelection(.enabled)
                                 Spacer()
@@ -965,23 +989,23 @@ struct StickerSizesView: View {
                         if targets.isEmpty {
                             Text("No label printer found yet. Install its driver and add it in System Settings > Printers & Scanners, then come back — the list updates itself.")
                                 .font(.callout)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Palette.muted)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {
                             ForEach(targets, id: \.self) { queue in
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 8) {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.green)
+                                            .foregroundStyle(Palette.success)
                                         Text(state.printers.first { $0.name == queue }?.displayName ?? queue).font(.callout)
                                     }
                                     Text(summary(for: queue))
                                         .font(.caption)
-                                        .foregroundStyle(countOfOurs(queue) > 0 ? .green : .secondary)
+                                        .foregroundStyle(countOfOurs(queue) > 0 ? Palette.success : Palette.muted)
                                         .padding(.leading, 24)
                                     Text(PageSizeInstaller.queueSummary(queue: queue, sizes: state.stickerSizes))
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Palette.muted)
                                         .fixedSize(horizontal: false, vertical: true)
                                         .textSelection(.enabled)
                                         .padding(.leading, 24)
@@ -989,7 +1013,7 @@ struct StickerSizesView: View {
                             }
                             Text("Apply adds only sizes supported by each label printer’s driver. macOS asks for administrator approval. Reopen the iPhone or iPad print dialog afterward; the choices shown can vary by app and iOS version.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Palette.muted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -1026,7 +1050,7 @@ struct WhatsNewView: View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("What's New").font(.title2.weight(.semibold))
-                Text("Printer Studio KH \(version)").foregroundStyle(.secondary)
+                Text("Printer Studio KH \(version)").foregroundStyle(Palette.muted)
             }
             ScrollView {
                 Text(notes)
@@ -1075,9 +1099,9 @@ struct SettingsView: View {
                             .toggleStyle(.switch)
                             .disabled(state.busy)
                         Text("Automatic USB release needs administrator approval once. It runs at boot and after a replug, without opening this app or saving a password.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Palette.muted)
                         Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(6)
@@ -1094,7 +1118,7 @@ struct SettingsView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         Text("System follows macOS and is where every install starts.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(6)
@@ -1143,7 +1167,7 @@ struct SettingsView: View {
                     if let feedback = state.reportFeedback {
                         Text(feedback)
                             .font(.caption)
-                            .foregroundStyle(feedback.contains("Failed") ? .red : .secondary)
+                            .foregroundStyle(feedback.contains("Failed") ? Palette.danger : Palette.muted)
                     }
                 }
                 .disabled(state.busy)
@@ -1152,7 +1176,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Remove from this Mac").font(.headline)
                         Text("Stops the background helpers, unloads their launchd jobs, removes the login item and moves the app to the Trash. Your settings and saved sticker sizes stay, and the printer queues and driver are left alone.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         Button("Remove Printer Studio KH…") { confirmingRemoval = true }
                             .confirmationDialog("Remove Printer Studio KH from this Mac?",
@@ -1197,11 +1221,11 @@ struct SettingsRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(label)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.muted)
                 .frame(width: 150, alignment: .leading)
             if let good {
                 Image(systemName: good ? "checkmark.circle.fill" : "circle.dashed")
-                    .foregroundStyle(good ? .green : .secondary)
+                    .foregroundStyle(good ? Palette.success : Palette.muted)
             }
             Text(value)
                 .textSelection(.enabled)
@@ -1238,7 +1262,7 @@ struct ActivityView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(entry.timestamp)
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Palette.muted)
                         }
                     }
                     .padding(.vertical, 2)
@@ -1250,10 +1274,10 @@ struct ActivityView: View {
 
     private func color(for kind: LogEntry.Kind) -> Color {
         switch kind {
-        case .info: return .accentColor
-        case .success: return .green
-        case .warning: return .orange
-        case .error: return .red
+        case .info: return Palette.accent
+        case .success: return Palette.success
+        case .warning: return Palette.warning
+        case .error: return Palette.danger
         }
     }
 }

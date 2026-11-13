@@ -3,14 +3,14 @@ name: Printer Studio KH
 description: Native macOS app that shares a USB-only printer and keeps shared queues alive.
 colors:
   accent: "#007aff"
-  window: "#ececec"
-  panel: "#e8e8e8"
-  content: "#ffffff"
-  text: "#000000"
-  text-secondary: "#6e6e73"
-  success: "#28a745"
-  warning: "#f0a020"
-  danger: "#d70015"
+  page: "#ececec"
+  surface: "#ffffff"
+  border: "#d4d4d4"
+  body: "#242424"
+  muted: "#686868"
+  success: "#34c759"
+  warning: "#ff8d28"
+  danger: "#ff383c"
 typography:
   footer-version:
     fontFamily: "SF Pro Text, -apple-system"
@@ -56,17 +56,17 @@ spacing:
   footer-bottom: "8px"
 components:
   footer-pill:
-    backgroundColor: "{colors.panel}"
-    textColor: "{colors.text}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.body}"
     rounded: "{rounded.pill}"
     height: "26px"
     padding: "0 7px"
   footer-icon-button:
-    backgroundColor: "{colors.panel}"
+    backgroundColor: "{colors.surface}"
     rounded: "{rounded.button}"
     size: "26px"
   settings-group:
-    backgroundColor: "{colors.panel}"
+    backgroundColor: "{colors.surface}"
     rounded: "{rounded.group}"
 ---
 
@@ -86,15 +86,17 @@ and honest status wording.
 
 ## Colors
 
-- **Accent** — the system accent (default blue), used only for the primary
-  action, the selected sidebar row, and "good" states. Never for decoration.
-- **Window / panel / content** — the system window background, the sidebar
-  panel, and `controlBackgroundColor`/`textBackgroundColor` for cards and text
-  fields. No custom background images or tints.
-- **Text** — `.primary` and `.secondary` only; 40 uses of secondary against one
-  white, so hierarchy is weight and color, not decoration.
-- **State** — green for healthy, red for failure, orange for a stopped printer or
-  a needs-attention state. Color never carries a state alone; each has text.
+One neutral ramp, defined once in `app/Sources/PrinterStudio/DesignTokens.swift`
+and resolved through SwiftUI semantic colours so Light and Dark follow macOS:
+**page** (the window background with 9% body ink) behind every page, **surface**
+(`controlBackground`) for cards and groups, **border** (`separator`) for
+hairlines and quiet card outlines, **muted** (body ink at 66%) for captions and
+supporting text, and **body** (`label`) for body text. The page sits 1.19:1
+(Light) and 1.25:1 (Dark) from the surface, so cards read as a layer; body
+measures 13.08:1 and 10.04:1, and muted 4.71:1 and 5.32:1 on the page — all at
+or above the 4.5:1 floor. One **accent** (`accentColor`) is used for primary
+actions and selection; **success** (green), **warning** (orange) and **danger**
+(red) are for state only, and never carry a state without a text label.
 
 ## Typography
 
@@ -116,9 +118,10 @@ version inside the pill is 10 px; section titles 14 px semibold; a page title
 
 ## Elevation & Depth
 
-Flat. Grouped cards use the system `GroupBox` look; the only custom fills are
-`controlBackgroundColor` cards at radius 10 and `accentColor.opacity(0.16)` for
-the update-available button. No shadows, no glass, no blur.
+Flat. Grouped cards use the same `surface` fill and `border` outline as the
+standalone cards; the only custom fills are `surface` cards at radius 10 and
+`accentColor.opacity(0.16)` for the update-available button. No shadows, no
+glass, no blur.
 
 ## Shapes
 

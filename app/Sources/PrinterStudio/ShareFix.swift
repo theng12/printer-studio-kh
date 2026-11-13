@@ -7,13 +7,16 @@ import Foundation
 /// keeps every *shared* queue open with `lpadmin -u allow:all`:
 ///
 ///   * once, on demand (the "Fix now" button), and
-///   * continuously, via a per-user LaunchAgent that re-checks every 60s.
+///   * continuously, inside the AirPrint helper job, which runs both passes.
 ///
 /// The work runs inside `Printer Studio KH Helper.app`, so Activity Monitor and
 /// Login Items show the app rather than an invisible bash script.
 enum ShareFix {
 
-    static let label = "com.theng12.printerstudio.sharefix"
+    /// The share-fix agent older builds wrote. The pass now runs inside the
+    /// AirPrint helper job, so Login Items shows one helper row; this agent is
+    /// booted out and retired to `_trash` on upgrade.
+    static let legacyLabel = "com.theng12.printerstudio.sharefix"
     static let helperBundleName = "Printer Studio KH Helper"
     static let helperIdentifier = "com.theng12.printerstudio.helper"
     static let usbHelperBundleName = "Printer Studio KH USB Helper"
@@ -52,9 +55,15 @@ enum ShareFix {
         supportDirectory.appendingPathComponent("keep-shared-queues-open.sh")
     }
 
-    static var launchAgent: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/\(label).plist", isDirectory: false)
+    /// The retired agent's plist. In test mode it lives in the scratch support
+    /// directory so the real installation is never touched.
+    static var legacyLaunchAgent: URL {
+        if DriverInstaller.isTestMode {
+            return supportDirectory
+                .appendingPathComponent("LaunchAgents/\(legacyLabel).plist", isDirectory: false)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/\(legacyLabel).plist", isDirectory: false)
     }
 
     static var logFile: URL {
@@ -130,23 +139,16 @@ enum ShareFix {
 
     // MARK: - Status
 
+    /// Both the watcher and the advertisement are the one helper job.
     static var isWatcherInstalled: Bool {
-        FileManager.default.fileExists(atPath: launchAgent.path)
+        FileManager.default.fileExists(atPath: DriverInstaller.airPrintAgentPath)
             && FileManager.default.fileExists(atPath: helperExecutable.path)
     }
 
     static var isWatcherLoaded: Bool {
         let uid = getuid()
-        let result = Shell.run(Tool.launchctl, ["print", "gui/\(uid)/\(label)"])
+        let result = Shell.run(Tool.launchctl, ["print", "gui/\(uid)/\(DriverInstaller.airPrintLabel)"])
         return result.ok
-    }
-
-    static var installedAgentPointsAtHelper: Bool {
-        guard let data = try? Data(contentsOf: launchAgent),
-              let plist = try? PropertyListSerialization.propertyList(
-                from: data, options: [], format: nil) as? [String: Any],
-              let arguments = plist["ProgramArguments"] as? [String] else { return false }
-        return arguments == [helperExecutable.path, "sharefix"]
     }
 
     static func recentLogLines(limit: Int = 40) -> [String] {
@@ -157,61 +159,54 @@ enum ShareFix {
 
     // MARK: - Install / uninstall
 
-    /// Writes the helper + LaunchAgent and loads it. No admin rights needed:
-    /// both live in the user's own Library.
-    static func installWatcher() -> CommandResult {
-        let fm = FileManager.default
-        do {
-            try fm.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
-            try fm.createDirectory(
-                at: launchAgent.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try fm.createDirectory(
-                at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        } catch {
-            return .failure("Could not write the background watcher: \(error.localizedDescription)")
+    /// Boots out the share-fix agent older builds wrote and retires its plist,
+    /// so an upgrade ends with one helper row. Never deletes: the plist goes
+    /// to the app's support `_trash`.
+    @discardableResult
+    static func retireLegacyAgent() -> Bool {
+        if !DriverInstaller.isTestMode {
+            _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(getuid())/\(legacyLabel)"])
         }
-        guard installHelperBundle() else {
-            return .failure("The Printer Studio KH Helper bundle is missing from this build.")
+        if FileManager.default.fileExists(atPath: legacyLaunchAgent.path),
+           moveToTrash(legacyLaunchAgent.path) == nil {
+            return false
         }
-        _ = moveToTrash(legacyWorkerScript.path)
-        do {
-            try launchAgentPlist.write(to: launchAgent, atomically: true, encoding: .utf8)
-        } catch {
-            return .failure("Could not write the background watcher: \(error.localizedDescription)")
-        }
-        return reloadAgent(failure: "The watcher was written but could not be loaded")
+        return true
     }
 
-    /// Upgrades an older install whose agent still runs the shell worker.
-    /// Runs at app launch and needs no administrator password.
+    /// Installs the one helper job. Its `all` mode keeps shared queues open
+    /// and advertises every shared queue, so there is no second LaunchAgent.
+    static func installWatcher() -> CommandResult {
+        // The watcher shares the one helper job with the AirPrint bridge, but
+        // installing it must not switch Printer Sharing on: that is a separate,
+        // deliberate action on the Sharing page.
+        let result = DriverInstaller.installAirPrintBridge(prepareSharing: {
+            CommandResult(status: 0, stdout: "Printer Sharing left as it is.", stderr: "")
+        })
+        guard result.ok else { return result }
+        return CommandResult(
+            status: 0, stdout: "Background watcher installed and started.", stderr: "")
+    }
+
+    /// Upgrades an older install: the share-fix agent is replaced by the one
+    /// combined helper job. Runs at app launch and needs no password.
     @discardableResult
     static func migrateWatcherIfNeeded() -> CommandResult {
-        guard ProcessInfo.processInfo.environment["PRINTER_STUDIO_AIRPRINT_TEST"] != "1" else {
+        guard !DriverInstaller.isTestMode else {
             return CommandResult(status: 0, stdout: "Background watcher migration skipped in test mode.", stderr: "")
         }
-        guard FileManager.default.fileExists(atPath: launchAgent.path) else {
-            return CommandResult(status: 0, stdout: "Background watcher is off.", stderr: "")
-        }
-        let legacyPresent = FileManager.default.fileExists(atPath: legacyWorkerScript.path)
-        let helperPresent = FileManager.default.fileExists(atPath: helperExecutable.path)
-        guard !helperPresent || !installedAgentPointsAtHelper || legacyPresent else {
+        guard FileManager.default.fileExists(atPath: legacyLaunchAgent.path) else {
             return CommandResult(status: 0, stdout: "Background watcher is up to date.", stderr: "")
         }
-        guard installHelperBundle() else {
-            return .failure("Could not install the Printer Studio KH Helper bundle.")
+        if !DriverInstaller.isAirPrintInstalled {
+            let installed = DriverInstaller.installAirPrintBridge()
+            guard installed.ok else { return installed }
         }
-        _ = moveToTrash(legacyWorkerScript.path)
-        do {
-            try launchAgentPlist.write(to: launchAgent, atomically: true, encoding: .utf8)
-        } catch {
-            return .failure("Could not update the background watcher: \(error.localizedDescription)")
+        guard retireLegacyAgent() else {
+            return .failure("Could not move the old background watcher to _trash. Check file permissions and try again.")
         }
-        return reloadAgent(failure: "The watcher was updated but could not be loaded")
-    }
-
-    private static func reloadAgent(failure: String) -> CommandResult {
-        reloadJob(label: label, plistPath: launchAgent.path,
-                  started: "Background watcher installed and started.", failure: failure)
+        return CommandResult(
+            status: 0, stdout: "Background watcher updated: one helper runs both jobs.", stderr: "")
     }
 
     /// Boots a job out and back in.
@@ -248,48 +243,15 @@ enum ShareFix {
         Shell.run(Tool.launchctl, ["print", "gui/\(getuid())/\(label)"]).ok
     }
 
+    /// Stops the one helper job. The share fix and the advertisement share a
+    /// process, so removing either removes both.
     static func uninstallWatcher() -> CommandResult {
-        let uid = getuid()
-        _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(label)"])
-
-        if moveToTrash(launchAgent.path) == nil,
-           FileManager.default.fileExists(atPath: launchAgent.path) {
-            return .failure("Could not move the background watcher to _trash. Check file permissions and try again.")
-        }
-        _ = moveToTrash(legacyWorkerScript.path)
-
+        let removed = DriverInstaller.removeAirPrintBridge()
+        guard removed.ok else { return removed }
         return CommandResult(
             status: 0,
             stdout: "Background watcher removed. Printer settings already applied were left as-is.",
             stderr: "")
-    }
-
-    private static var launchAgentPlist: String {
-        """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(label)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>\(helperExecutable.path)</string>
-                <string>sharefix</string>
-            </array>
-            <key>AssociatedBundleIdentifiers</key>
-            <array>
-                <string>\(helperIdentifier)</string>
-            </array>
-            <key>RunAtLoad</key>
-            <true/>
-            <key>StartInterval</key>
-            <integer>60</integer>
-            <key>StandardErrorPath</key>
-            <string>\(logFile.deletingLastPathComponent().path)/share-fix.err.log</string>
-        </dict>
-        </plist>
-        """
     }
 
     // MARK: - Fix now

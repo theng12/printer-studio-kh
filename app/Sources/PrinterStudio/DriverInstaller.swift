@@ -218,7 +218,7 @@ enum DriverInstaller {
               let plist = try? PropertyListSerialization.propertyList(
                 from: data, options: [], format: nil) as? [String: Any],
               let arguments = plist["ProgramArguments"] as? [String] else { return false }
-        return arguments == [helperExecutablePath, "bridge"]
+        return arguments == [helperExecutablePath, "all"]
     }
 
     private static var installedHelperIsOutdated: Bool {
@@ -268,6 +268,7 @@ enum DriverInstaller {
             return .failure("Could not install Printer Studio KH Helper.")
         }
         _ = ShareFix.moveToTrash(airPrintScriptPath)
+        _ = ShareFix.moveToTrash(ShareFix.legacyWorkerScript.path)
 
         do {
             try agentPlist.write(toFile: airPrintAgentPath, atomically: true, encoding: .utf8)
@@ -277,6 +278,9 @@ enum DriverInstaller {
 
         let started = reloadAgent()
         guard started.ok else { return started }
+        guard ShareFix.retireLegacyAgent() else {
+            return .failure("The helper is running, but the old share-fix watcher could not be moved to _trash.")
+        }
         return CommandResult(status: 0, stdout: "AirPrint advertisement installed.", stderr: "")
     }
 
@@ -328,10 +332,13 @@ enum DriverInstaller {
             _ = Shell.run(Tool.launchctl, ["bootout", "gui/\(uid)/\(airPrintLabel)"])
         }
 
-        for path in [airPrintAgentPath, airPrintScriptPath] {
+        for path in [airPrintAgentPath, airPrintScriptPath, ShareFix.legacyWorkerScript.path] {
             if FileManager.default.fileExists(atPath: path), ShareFix.moveToTrash(path) == nil {
                 return .failure("Could not move the AirPrint files to _trash. The service was stopped; check file permissions and try again.")
             }
+        }
+        guard ShareFix.retireLegacyAgent() else {
+            return .failure("Could not move the old share-fix watcher to _trash. The service was stopped; check file permissions and try again.")
         }
 
         return CommandResult(
@@ -352,7 +359,7 @@ enum DriverInstaller {
             <key>ProgramArguments</key>
             <array>
                 <string>\(helperExecutablePath)</string>
-                <string>bridge</string>
+                <string>all</string>
             </array>
             <key>AssociatedBundleIdentifiers</key>
             <array>

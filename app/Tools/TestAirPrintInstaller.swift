@@ -36,6 +36,7 @@ struct TestAirPrintInstaller {
         testSharingFailureDoesNotInstall()
         testSharingPreparedBeforeInstall()
         testInstallCopiesHelperAndAgent()
+        testInstallRetiresLegacyShareFixAgent()
         testTrashKeepsOldScript()
         testTrashKeepsOldAgent()
         testRefreshDoesNothingWhenOff()
@@ -144,8 +145,8 @@ struct TestAirPrintInstaller {
                    "the job runs the helper from inside the app bundle")
         assertTest(!FileManager.default.fileExists(atPath: looseHelperCopy.path),
                    "no loose copy of the helper is left in the support directory")
-        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
-                   "the agent runs the helper with bridge")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "all"],
+                   "the one agent runs both jobs")
         assertTest(agentBundleIdentifiers() == ["com.theng12.printerstudio.helper"],
                    "the agent is attributed to the helper bundle")
         assertTest(!FileManager.default.fileExists(
@@ -159,8 +160,26 @@ struct TestAirPrintInstaller {
         assertTest(second.ok, "a second install succeeds")
         assertTest(FileManager.default.fileExists(atPath: installedHelperExecutable.path),
                    "a second install keeps the helper")
-        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
+        assertTest(agentArguments() == [installedHelperExecutable.path, "all"],
                    "a second install keeps the same agent program")
+    }
+
+    /// The share-fix agent older builds wrote must give way to the single
+    /// combined agent, and be kept in _trash rather than deleted.
+    static func testInstallRetiresLegacyShareFixAgent() {
+        let legacy = ShareFix.legacyLaunchAgent
+        try? FileManager.default.createDirectory(
+            at: legacy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        write("<plist/>", to: legacy)
+
+        let result = DriverInstaller.installAirPrintBridge(prepareSharing: sharingOK)
+        assertTest(result.ok, "an install with an old share-fix agent succeeds")
+        assertTest(!FileManager.default.fileExists(atPath: legacy.path),
+                   "the old share-fix agent is no longer installed")
+        assertTest(trashFiles().contains { $0.hasPrefix("com.theng12.printerstudio.sharefix") },
+                   "the old share-fix agent is kept in _trash")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "all"],
+                   "one helper agent remains after retiring the old one")
     }
 
     static func testTrashKeepsOldScript() {
@@ -230,7 +249,7 @@ struct TestAirPrintInstaller {
 
         let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
         assertTest(result.ok, "a refresh of an old-style agent succeeds")
-        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
+        assertTest(agentArguments() == [installedHelperExecutable.path, "all"],
                    "the old-style agent is rewritten to run the helper")
         assertTest(agentBundleIdentifiers() == ["com.theng12.printerstudio.helper"],
                    "the migrated agent is attributed to the helper bundle")
@@ -259,8 +278,8 @@ struct TestAirPrintInstaller {
     static func testRefreshLeavesNewStyleAlone() {
         let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
         assertTest(result.ok, "a refresh of a helper installation succeeds")
-        assertTest(agentArguments() == [installedHelperExecutable.path, "bridge"],
-                   "the helper agent is left alone")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "all"],
+                   "the combined helper agent is left alone")
         assertTest(result.stdout.contains("up to date"),
                    "an up-to-date advertisement says it is up to date")
     }

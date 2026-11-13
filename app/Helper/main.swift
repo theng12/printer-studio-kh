@@ -5,7 +5,7 @@ import dnssd
 // Activity Monitor and launchd show the app's own name instead of bash scripts.
 // Transient work still calls the same system tools the scripts called.
 
-let usage = "usage: Printer Studio KH Helper [bridge|sharefix|usb|list|selftest]"
+let usage = "usage: Printer Studio KH Helper [all|bridge|sharefix|usb|list|selftest]"
 
 let environment = ProcessInfo.processInfo.environment
 
@@ -339,8 +339,10 @@ func processResults(timeoutMilliseconds: Int32) {
 
 // MARK: - Orphan guard
 
-/// The labels the app's plists use, by mode.
-let jobLabels = ["bridge": "com.theng12.printerstudio.airprint",
+/// The labels the app's plists use, by mode. `all` is the one installed job:
+/// the AirPrint bridge and the share-fix pass run together in this process.
+let jobLabels = ["all": "com.theng12.printerstudio.airprint",
+                 "bridge": "com.theng12.printerstudio.airprint",
                  "sharefix": "com.theng12.printerstudio.sharefix"]
 
 /// The helper ships inside the app bundle. If that bundle is dragged to the
@@ -373,16 +375,23 @@ func clearOwnJobIfBundleIsGone(_ mode: String) -> Bool {
 
 // MARK: - Modes
 
-func runBridge() {
+/// `shareFixEvery` > 0 makes the same loop run the share-fix pass on that
+/// interval. The `all` mode uses it, so Login Items shows one helper job.
+func runBridge(mode: String = "bridge", shareFixEvery: Int = 0) {
     signal(SIGTERM, handleTermination)
     signal(SIGINT, handleTermination)
     let rescan = max(1, Int(environment["PRINTER_STUDIO_RESCAN_SECONDS"] ?? "") ?? 60)
     var current = ""
     var advertisedNames: [String] = []
     var cyclesSinceChange = 0
+    var nextShareFix = Date().addingTimeInterval(TimeInterval(shareFixEvery))
     while true {
         // The app can be dragged to the Trash while this job is running.
-        if clearOwnJobIfBundleIsGone("bridge") { exit(0) }
+        if clearOwnJobIfBundleIsGone(mode) { exit(0) }
+        if shareFixEvery > 0, Date() >= nextShareFix {
+            runShareFix()
+            nextShareFix = Date().addingTimeInterval(TimeInterval(shareFixEvery))
+        }
         var plans: [(queue: String, arguments: [String])] = []
         if sharingEnabled() {
             for queue in sharedPrinters() {
@@ -551,6 +560,8 @@ func runSelfTest() {
 let mode = CommandLine.arguments.dropFirst().first ?? ""
 if clearOwnJobIfBundleIsGone(mode) { exit(0) }
 switch mode {
+case "all":
+    runBridge(mode: "all", shareFixEvery: 60)
 case "bridge":
     runBridge()
 case "sharefix":
