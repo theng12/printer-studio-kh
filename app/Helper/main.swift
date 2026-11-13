@@ -270,6 +270,14 @@ let registrationCallback: DNSServiceRegisterReply = { _, _, error, _, _, _, _ in
     }
 }
 
+/// True when every name we advertise is still visible on the network. A browse
+/// that itself fails returns true, so a flaky query never causes churn.
+func advertisementsAlive(_ names: [String]) -> Bool {
+    let browsed = queryDnssd(["-B", "_ipp._tcp,_universal", "local."])
+    guard browsed.ok else { return true }
+    return names.allSatisfy { browseConfirms(browsed.stdout, name: $0) }
+}
+
 func withdrawAll() {
     for reference in registrations { DNSServiceRefDeallocate(reference) }
     registrations.removeAll()
@@ -370,6 +378,8 @@ func runBridge() {
     signal(SIGINT, handleTermination)
     let rescan = max(1, Int(environment["PRINTER_STUDIO_RESCAN_SECONDS"] ?? "") ?? 60)
     var current = ""
+    var advertisedNames: [String] = []
+    var cyclesSinceChange = 0
     while true {
         // The app can be dragged to the Trash while this job is running.
         if clearOwnJobIfBundleIsGone("bridge") { exit(0) }
@@ -383,7 +393,19 @@ func runBridge() {
         if found != current {
             withdrawAll()
             current = found
+            advertisedNames = plans.map { $0.arguments[1] }
+            cyclesSinceChange = 0
             for plan in plans { _ = register(plan.arguments) }
+        } else {
+            cyclesSinceChange += 1
+            // A registration can be lost without the process noticing — a name
+            // conflict while updating, or mDNSResponder restarting. Re-announce
+            // rather than stay silent until someone restarts the job.
+            if !advertisedNames.isEmpty, cyclesSinceChange > 1, !advertisementsAlive(advertisedNames) {
+                note("An AirPrint advertisement went missing; announcing it again.")
+                withdrawAll()
+                current = ""
+            }
         }
         // Keep Bonjour callbacks serviced while waiting for the next scan.
         for _ in 0..<rescan { processResults(timeoutMilliseconds: 1000) }
