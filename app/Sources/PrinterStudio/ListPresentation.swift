@@ -197,6 +197,18 @@ struct USBGroup: Identifiable {
     let count: Int
 }
 
+/// What the page shows for the last action. Pure so it is testable without
+/// running a command.
+enum OutcomeMessage {
+    static func outcome(for result: CommandResult, success: String)
+        -> (message: String, ok: Bool, kind: LogEntry.Kind) {
+        if result.ok { return (success, true, .success) }
+        if result.status == -128 { return ("Cancelled.", false, .warning) }
+        let text = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (text.isEmpty ? "Command failed." : text, false, .error)
+    }
+}
+
 struct JobLine: Hashable {
     let queue: String
     let id: String

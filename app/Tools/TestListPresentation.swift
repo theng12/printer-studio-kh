@@ -150,6 +150,26 @@ struct TestListPresentation {
         assertTest(address.friendlyLocation == "Network · 192.168.1.5",
                    "An IP address stays an address")
 
+        // Action outcomes are chosen in one place and shown on the page.
+        let okOutcome = OutcomeMessage.outcome(
+            for: CommandResult(status: 0, stdout: "", stderr: ""),
+            success: "Test page sent to HP Laser 107a.")
+        assertTest(okOutcome.message == "Test page sent to HP Laser 107a." && okOutcome.ok
+                   && okOutcome.kind == .success, "A successful action reports its success message")
+        let cancelOutcome = OutcomeMessage.outcome(
+            for: CommandResult(status: -128, stdout: "", stderr: ""), success: "unused")
+        assertTest(cancelOutcome.message == "Cancelled." && !cancelOutcome.ok
+                   && cancelOutcome.kind == .warning, "A cancelled action is a warning, not an error")
+        let failOutcome = OutcomeMessage.outcome(
+            for: CommandResult(status: 1, stdout: "", stderr: "The printer is not responding."),
+            success: "unused")
+        assertTest(failOutcome.message == "The printer is not responding." && !failOutcome.ok
+                   && failOutcome.kind == .error, "A failed action surfaces its own reason")
+        let silentFail = OutcomeMessage.outcome(
+            for: CommandResult(status: 2, stdout: "", stderr: ""), success: "unused")
+        assertTest(silentFail.message == "Command failed." && !silentFail.ok,
+                   "A silent failure still says something failed")
+
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
     }

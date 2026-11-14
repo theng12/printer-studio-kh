@@ -235,22 +235,11 @@ final class AppState: ObservableObject {
     }
 
     private func report(_ result: CommandResult, success: String) {
-        let message: String
-        let ok: Bool
-        if result.ok {
-            message = success
-            ok = true
-        } else if result.status == -128 {
-            message = "Cancelled."
-            ok = false
-        } else {
-            message = result.combined.isEmpty ? "Command failed." : result.combined
-            ok = false
-        }
-        log(message, kind: ok ? .success : .error)
+        let outcome = OutcomeMessage.outcome(for: result, success: success)
+        log(outcome.message, kind: outcome.kind)
         DispatchQueue.main.async {
-            self.lastMessage = message
-            self.lastMessageOK = ok
+            self.lastMessage = outcome.message
+            self.lastMessageOK = outcome.ok
         }
     }
 
