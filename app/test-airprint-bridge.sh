@@ -12,9 +12,18 @@ export PRINTER_STUDIO_DNSSD_SECONDS=2 HOME="$OUT/home"
 cat > "$OUT/tools/lpstat" <<'MOCK'
 #!/bin/bash
 case "$1" in
--p) printf '%s\n' 'printer TSC_TTP_244_Pro is idle.' 'printer Xprinter_XP_D463B is idle.' 'printer Brother_HL_L2370DN_series is idle.' ;;
--l) case "$3" in TSC*) printf '\tDescription: %s\n' "$(cat "$PRINTER_STUDIO_FIXTURES/tsc-name")" ;; Xprinter*) printf '\tDescription: Xprinter XP-D463B\n' ;; *) printf '\tDescription: Brother HL-L2370DN series\n' ;; esac ;;
--v) printf '%s\n' 'device for TSC_TTP_244_Pro: usb://TSC/TTP-244%20Pro?serial=000001' 'device for Xprinter_XP_D463B: usb://Xprinter/XP-D463B?serial=00000000000011' ;;
+-p) printf '%s\n' 'printer TSC_TTP_244_Pro is idle.' 'printer Xprinter_XP_D463B is idle.' 'printer Brother_HL_L2370DN_series is idle.' 'printer HP_Laser_108w is idle.' ;;
+-l) case "$3" in
+      TSC*) printf '\tDescription: %s\n' "$(cat "$PRINTER_STUDIO_FIXTURES/tsc-name")" ;;
+      Xprinter*) printf '\tDescription: Xprinter XP-D463B\n' ;;
+      HP*) printf '\tDescription: HP Laser 108w\n' ;;
+      *) printf '\tDescription: Brother HL-L2370DN series-AirPrint\n' ;;
+    esac ;;
+-v) printf '%s\n' \
+      'device for TSC_TTP_244_Pro: usb://TSC/TTP-244%20Pro?serial=000001' \
+      'device for Xprinter_XP_D463B: usb://Xprinter/XP-D463B?serial=00000000000011' \
+      'device for Brother_HL_L2370DN_series: ippusb://Brother%20HL-L2370DN%20series._ipp._tcp.local/?uuid=2a48000-80ce-11db-8c00-3c2af470c7c4' \
+      'device for HP_Laser_108w: ipps://HP%20Laser%20108w._ipps._tcp.local./' ;;
 esac
 MOCK
 cat > "$OUT/tools/lpoptions" <<'MOCK'
@@ -135,9 +144,13 @@ run_list
 /usr/bin/grep -qx 'Printer Sharing is off, so nothing would be advertised.' "$OUT/plan"
 printf 'PASS: sharing-off guard prevents advertisements pointing at a closed service\n'
 
-# One known native AirPrint publisher per physical printer must not gain a bridge twin.
+# One known native AirPrint publisher per physical printer must not gain a bridge
+# twin — except a USB queue, whose macOS IPP-over-USB record is local-only and
+# never reaches an iPhone. The owner's Brother HL-L2370DN is the latter: ippusb
+# URI, a model ending in -AirPrint, and a complete native local record.
 printf '_share_printers=1\n' > "$OUT/sharing"
 printf 'printer-uuid (uri) = urn:uuid:99999999-2222-3333-4444-555555555555\n' > "$OUT/uuid-Brother_HL_L2370DN_series"
+printf 'printer-uuid (uri) = urn:uuid:77777777-2222-3333-4444-555555555555\n' > "$OUT/uuid-HP_Laser_108w"
 add_native_queue() {
   local queue="$1" uuid
   printf 'printer-dns-sd-name (nameWithoutLanguage) = %s native\n' "$queue" >> "$OUT/uuid-$queue"
@@ -155,32 +168,43 @@ check_native_plan() {
 }
 add_native_queue TSC_TTP_244_Pro
 add_native_queue Xprinter_XP_D463B
+add_native_queue HP_Laser_108w
 check_native_plan 1
 /usr/bin/grep -qx 'rp=printers/Brother_HL_L2370DN_series' "$OUT/plan"
-printf 'PASS: complete native records suppress while the observed Brother fixture keeps its bridge\n'
+! /usr/bin/grep -q 'rp=printers/HP_Laser_108w' "$OUT/plan"
+! /usr/bin/grep -q 'rp=printers/TSC_TTP_244_Pro' "$OUT/plan"
+printf 'PASS: native network and usb:// queues are not twinned; only the ippusb Brother stays bridged\n'
+
+# The real Brother shape: its complete native local record still must not hide it.
 add_native_queue Brother_HL_L2370DN_series
-check_native_plan 0
-printf 'PASS: one native entry per physical USB/network printer, no second bridge entry\n'
-# A plain CUPS record or an unrelated/malformed record must never hide a label printer.
-/bin/cp "$OUT/native-TSC_TTP_244_Pro native" "$OUT/native-tsc-original"
-/usr/bin/sed 's/ URF=W8,RS300//' "$OUT/native-tsc-original" > "$OUT/native-TSC_TTP_244_Pro native"
 check_native_plan 1
-/usr/bin/grep -qx 'rp=printers/TSC_TTP_244_Pro' "$OUT/plan"
-printf 'PASS: plain native IPP without URF keeps legacy label discovery\n'
-for replacement in 's/UUID=[^ ]*/UUID=99999999-2222-3333-4444-555555555555/' 's@rp=printers/TSC_TTP_244_Pro@rp=printers/unrelated@' 's/:631 /:8631 /' 's@pdl=application/pdf,image/urf@pdl=application/postscript@'; do
-  /usr/bin/sed "$replacement" "$OUT/native-tsc-original" > "$OUT/native-TSC_TTP_244_Pro native"
-  check_native_plan 1
+/usr/bin/grep -qx 'Brother HL-L2370DN series (AirPrint)' "$OUT/plan"
+/usr/bin/grep -qx 'rp=printers/Brother_HL_L2370DN_series' "$OUT/plan"
+/usr/bin/grep -qx 'ty=Brother HL-L2370DN series' "$OUT/plan"
+/usr/bin/grep -qx 'product=(Brother HL-L2370DN series)' "$OUT/plan"
+/usr/bin/grep -qx 'pdl=application/pdf,image/jpeg,image/urf' "$OUT/plan"
+printf 'PASS: an ippusb/AirPrint-shaped USB queue is advertised exactly like the label queues\n'
+
+# A plain or malformed native record must fall back to the bridge for the network queue.
+/bin/cp "$OUT/native-HP_Laser_108w native" "$OUT/native-hp-original"
+/usr/bin/sed 's/ URF=W8,RS300//' "$OUT/native-hp-original" > "$OUT/native-HP_Laser_108w native"
+check_native_plan 2
+/usr/bin/grep -qx 'rp=printers/HP_Laser_108w' "$OUT/plan"
+printf 'PASS: plain native IPP without URF keeps the bridge copy\n'
+for replacement in 's/UUID=[^ ]*/UUID=99999999-2222-3333-4444-555555555555/' 's@rp=printers/HP_Laser_108w@rp=printers/unrelated@' 's/:631 /:8631 /' 's@pdl=application/pdf,image/urf@pdl=application/postscript@'; do
+  /usr/bin/sed "$replacement" "$OUT/native-hp-original" > "$OUT/native-HP_Laser_108w native"
+  check_native_plan 2
 done
-printf 'PASS: foreign UUID, different queue/port and unusable format cannot suppress a printer\n'
-/bin/cp "$OUT/native-tsc-original" "$OUT/native-TSC_TTP_244_Pro native"
+printf 'PASS: foreign UUID, different queue/port and unusable format keep the bridge copy\n'
+/bin/cp "$OUT/native-hp-original" "$OUT/native-HP_Laser_108w native"
 printf 'failure\n' > "$OUT/native-query-failure"
-check_native_plan 3
+check_native_plan 4
 /bin/mv "$OUT/native-query-failure" "$OUT/native-query-failure.used"
 printf 'PASS: failed native lookup keeps every bridge entry\n'
 /bin/mv "$OUT/native-browse" "$OUT/native-browse.saved"
-check_native_plan 3
+check_native_plan 4
 printf 'PASS: missing confirmed AirPrint subtype keeps every bridge entry\n'
 /usr/bin/sed 's/ native$/ (AirPrint)/' "$OUT/native-browse.saved" > "$OUT/native-browse"
-check_native_plan 3
+check_native_plan 4
 printf 'PASS: bridge copies alone never count as native coverage\n'
 printf 'Artifacts retained: %s\n' "$OUT"

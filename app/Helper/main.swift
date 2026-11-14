@@ -115,6 +115,24 @@ func queueFlags(_ queue: String) -> QueueFlags {
         duplex: duplex.range(of: "DuplexTumble|DuplexNoTumble", options: .regularExpression) != nil ? "T" : "F")
 }
 
+func deviceURI(_ queue: String) -> String? {
+    let prefix = "device for \(queue): "
+    for line in outputLines(run(lpstat, ["-v"]).stdout) {
+        if line.hasPrefix(prefix) { return String(line.dropFirst(prefix.count)) }
+    }
+    return nil
+}
+
+/// CUPS names an IPP Everywhere/AirPrint queue "<model>-AirPrint"; the bridge
+/// appends its own "(AirPrint)" suffix, so strip the driver's to avoid a
+/// "Brother HL-L2370DN series-AirPrint (AirPrint)" duplicate.
+func airprintModel(_ model: String) -> String {
+    for suffix in ["-AirPrint", " (AirPrint)", " AirPrint"] where model.hasSuffix(suffix) {
+        return String(model.dropLast(suffix.count)).trimmingCharacters(in: .whitespaces)
+    }
+    return model
+}
+
 func attributeUUID(_ attributes: String) -> String? {
     for line in outputLines(attributes) {
         let fields = line.split(whereSeparator: \.isWhitespace)
@@ -140,7 +158,7 @@ func shortHostName() -> String {
 }
 
 func advertisementArgs(_ queue: String) -> [String] {
-    let model = printerModel(queue)
+    let model = airprintModel(printerModel(queue))
     let flags = queueFlags(queue)
     var arguments = [
         "-R", "\(model) (AirPrint)", "_ipp._tcp,_universal", "local", "631",
@@ -221,6 +239,20 @@ func browseConfirms(_ text: String, name: String) -> Bool {
 }
 
 func nativeAirprint(_ queue: String) -> Bool {
+    // An IPP-over-USB queue can carry a valid printer-uuid and a DNS-SD name
+    // that looks natively AirPrint — macOS's IPP-over-USB service does advertise
+    // locally — but that advertisement is not a LAN AirPrint twin an iPhone can
+    // use. The owner's Brother HL-L2370DN (ippusb://…-AirPrint) was invisible on
+    // every iPhone for exactly this reason, so ippusb queues are always bridged.
+    // A plain usb:// queue keeps the native-twin check so a genuinely visible
+    // macOS advertisement is not duplicated.
+    if let uri = deviceURI(queue) {
+        let scheme = uri.split(separator: ":").first.map { $0.lowercased() } ?? ""
+        if scheme == "ippusb" {
+            note("AirPrint: \(queue) is an IPP-over-USB queue; macOS's local advertisement is not a LAN AirPrint twin, so it stays bridged.")
+            return false
+        }
+    }
     let attributes = run(ipptool, ["-tv", "ipp://localhost/printers/\(queue)",
                                    "get-printer-attributes.test"])
     guard attributes.ok, let uuid = attributeUUID(attributes.stdout) else { return false }
