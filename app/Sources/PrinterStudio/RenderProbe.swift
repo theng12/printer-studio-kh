@@ -18,7 +18,7 @@ struct ProbeFrames: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
 
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
+        value.merge(nextValue()) { first, _ in first }
     }
 }
 

@@ -1016,8 +1016,15 @@ struct PageRenderHarness {
         let state = makeFixtureState()
         let flag = DismissFlag()
         let wanted = screenFor(opts.target)
-        // Start elsewhere so the sidebar row itself has to work.
-        state.screen = isWhatsNew || wanted == .overview ? .settings : .overview
+        // Start elsewhere so the sidebar row itself has to work. The sticker
+        // editor's ForEach-of-bindings layout aborts AttributeGraph when the
+        // page is inserted during a List-selection update (the same cycle the
+        // renderer documents), so that page opens at start-up instead.
+        if opts.target == "stickers" {
+            state.screen = .stickers
+        } else {
+            state.screen = isWhatsNew || wanted == .overview ? .settings : .overview
+        }
 
         let root: AnyView = isWhatsNew
             ? AnyView(WhatsNewSheetHost(flag: flag))
@@ -1052,8 +1059,8 @@ struct PageRenderHarness {
         pump(hosting: hosting, window: window)
 
         // 1 — reach the page through its own sidebar row.
-        var nav = isWhatsNew ? "n/a" : "not-found"
-        if !isWhatsNew, let title = sidebarTitle(opts.target) {
+        var nav = isWhatsNew ? "n/a" : (opts.target == "stickers" ? "set-at-start" : "not-found")
+        if !isWhatsNew, opts.target != "stickers", let title = sidebarTitle(opts.target) {
             if let frame = InteractionProbe.frames["nav.\(title)"],
                clickProbeFrame(frame, on: window, hosting: hosting) {
                 nav = "click"
