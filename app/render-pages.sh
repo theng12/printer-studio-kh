@@ -52,6 +52,20 @@ fi
 
 mkdir -p "$OUT_DIR"
 
+# Nothing stale survives: every PNG in an evidence folder must be one this run
+# produced and measured, so earlier files are retired recoverably first.
+case "$PAGE_SPEC" in
+  switch-check|keyboard-check) ;;
+  *)
+    if compgen -G "$OUT_DIR/*.png" > /dev/null 2>&1; then
+      STALE="$(dirname "$OUT_DIR")/_trash/$(basename "$OUT_DIR")-replaced-$(date +%Y%m%dT%H%M%SZ)"
+      mkdir -p "$STALE"
+      mv "$OUT_DIR"/*.png "$STALE"/
+      echo "STALE_MOVED $(find "$STALE" -name '*.png' | wc -l | tr -d ' ') -> $STALE"
+    fi
+    ;;
+esac
+
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/ps-render.XXXXXX")
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
@@ -205,6 +219,22 @@ if [ "$PAGE_SPEC" = "keyboard-check" ]; then
   rc=${PIPESTATUS[0]}
   set -e
   echo "KEYBOARD_CHECK_EXIT $rc"
+  exit "$rc"
+fi
+
+# Page interactions: one driven control per page, each asserting its own
+# outcome (banner text, activity row, stored setting) and failing otherwise.
+if [ "$PAGE_SPEC" = "interaction" ]; then
+  rc=0
+  for page in overview printers sharing setup stickers activity settings whats-new; do
+    set +e
+    PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+      "$BIN" interaction "$page" "$OUT_DIR" 2>&1
+    page_rc=$?
+    set -e
+    if [ "$page_rc" -ne 0 ]; then rc=$page_rc; fi
+  done
+  echo "INTERACTION_BATCH_EXIT $rc"
   exit "$rc"
 fi
 

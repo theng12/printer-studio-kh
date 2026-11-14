@@ -93,6 +93,20 @@ struct CardGroupStyle: GroupBoxStyle {
     }
 }
 
+/// macOS 26 fades whatever rests under the window's toolbar. At 1440 the page
+/// heading was left a half-washed ghost while smaller windows looked fine
+/// (round-4 finding 1): the pages already start below the chrome, so keep them
+/// fully drawn instead of fading them.
+private struct NoToolbarFade: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 struct MainWindow: View {
     @EnvironmentObject var state: AppState
     @Environment(\.openWindow) private var openWindow
@@ -145,6 +159,7 @@ struct MainWindow: View {
             .background(Palette.page)
             .foregroundStyle(Palette.body)
             .groupBoxStyle(CardGroupStyle())
+            .modifier(NoToolbarFade())
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -1597,7 +1612,6 @@ struct WhatsNewView: View {
                         }
                     }
                 }
-                .frame(maxWidth: 640, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack {
@@ -1607,6 +1621,10 @@ struct WhatsNewView: View {
             }
         }
         .padding(24)
+        // One centred 640 pt column: pinned left it left ~780 px of dead space
+        // at 1440 (round-4 finding 2).
+        .frame(maxWidth: 640, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
         .frame(minWidth: 420, minHeight: 240)
     }
 }

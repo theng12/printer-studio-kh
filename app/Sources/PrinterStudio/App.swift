@@ -305,6 +305,14 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The offscreen render harness (PRINTER_STUDIO_RENDER) drives real controls
+    /// through their real actions. Only the command itself is faked, and the
+    /// system read-back is skipped so the harness's fixture state stays put; the
+    /// busy state, banner and activity row all still run.
+    var renderActionsStubbed: Bool {
+        ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER"] == "1"
+    }
+
     /// Runs a shell action off the main thread, then refreshes.
     private func perform(_ message: String, _ body: @escaping () -> CommandResult, success: String) {
         busy = true
@@ -312,13 +320,13 @@ final class AppState: ObservableObject {
         log(message)
         work.async { [weak self] in
             guard let self else { return }
-            let result = body()
+            let result = self.renderActionsStubbed ? CommandResult(status: 0, stdout: "", stderr: "") : body()
             DispatchQueue.main.async {
                 self.busy = false
                 self.busyMessage = ""
                 self.report(result, success: success,
                             action: OutcomeMessage.actionLabel(message))
-                self.refresh()
+                if !self.renderActionsStubbed { self.refresh() }
             }
         }
     }
@@ -491,13 +499,15 @@ final class AppState: ObservableObject {
     }
 
     func setStartAtLogin(_ enabled: Bool) {
-        let result = enabled ? LoginItem.enable() : LoginItem.disable()
+        let result = renderActionsStubbed
+            ? CommandResult(status: 0, stdout: "", stderr: "")
+            : (enabled ? LoginItem.enable() : LoginItem.disable())
         if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
         report(result, success: enabled
                ? "Printer Studio KH will open at login."
                : "Printer Studio KH will no longer open at login.",
                action: enabled ? "Turning on start at login" : "Turning off start at login")
-        refresh()
+        if !renderActionsStubbed { refresh() }
     }
 
     func refreshNow() {

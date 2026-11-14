@@ -25,6 +25,9 @@ struct RenderOptions {
         if args[1] == "keyboard-check" {
             return RenderOptions(mode: "keyboard-check", target: "printers", outDir: args.count > 2 ? args[2] : "", width: 1024, height: 720, appearance: "light", printersListMode: nil)
         }
+        if args[1] == "interaction" {
+            return RenderOptions(mode: "interaction", target: args.count > 2 ? args[2] : "", outDir: args.count > 3 ? args[3] : "", width: 1024, height: 720, appearance: "light", printersListMode: nil)
+        }
         guard args.count >= 6 else { return nil }
         let mode = args[1]
         let target = args[2]
@@ -34,6 +37,25 @@ struct RenderOptions {
         let appearance = args[5].lowercased()
         let plm = args.count > 6 ? args[6] : nil
         return RenderOptions(mode: mode, target: target, outDir: out, width: w, height: h, appearance: appearance, printersListMode: plm)
+    }
+}
+
+final class DismissFlag: ObservableObject {
+    @Published var dismissed = false
+}
+
+/// The What's New window's only control is Done, which closes the scene. Host it
+/// as a sheet so its own dismiss environment has something real to close.
+struct WhatsNewSheetHost: View {
+    @ObservedObject var flag: DismissFlag
+    @State private var showing = true
+
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .sheet(isPresented: $showing, onDismiss: { flag.dismissed = true }) {
+                WhatsNewView()
+            }
     }
 }
 
@@ -68,6 +90,10 @@ struct PageRenderHarness {
         }
         if opts.mode == "keyboard-check" {
             runKeyboardCheck(opts)
+            return
+        }
+        if opts.mode == "interaction" {
+            runInteraction(opts)
             return
         }
         runRender(opts)
@@ -334,9 +360,123 @@ struct PageRenderHarness {
         // background from the bottom edge for that render.
         let geom = measure(rep: rep, isWindow: isWindowRender, accent: accentFill,
                            sampleBottom: isWindowRender || opts.target.hasSuffix("-outcome") || opts.target == "banner-printers")
+        // The real window's chrome and the page heading against it: a heading
+        // that sits under the title bar, or a detail area whose top edge is
+        // washed by the toolbar fade, is the round-4 craft defect this measures.
+        var chrome: Int? = nil
+        var headingTop: Int? = nil
+        var topWashPct: Double? = nil
+        if isWindowRender {
+            let band = Int((window.frame.height - window.contentLayoutRect.height).rounded())
+            chrome = band
+            headingTop = accessibilityTop(of: headingLabel(for: opts.target), in: captureView,
+                                          windowFrame: window.frame)
+            topWashPct = detailTopWash(rep: rep, chrome: band)
+        }
         emitResult(opts: opts, ok: true, error: nil, geom: geom,
                    controls: controlStates(captureView),
-                   pixels: (rep.pixelsWide, rep.pixelsHigh))
+                   pixels: (rep.pixelsWide, rep.pixelsHigh),
+                   chrome: chrome, headingTop: headingTop, topWashPct: topWashPct)
+        if opts.target == "banner-printers" {
+            emitBanner(state: state, rep: rep, capture: captureView)
+        }
+    }
+
+    /// The page heading each window target draws, for the occlusion report.
+    static func headingLabel(for target: String) -> String {
+        switch target {
+        case "window-printers": return "Printers on this Mac"
+        case "window-sharing": return "Printer Sharing"
+        case "window-settings": return "Settings"
+        case "window-setup": return "HP Laser 107a"
+        case "window-stickers": return "Paper & sticker sizes"
+        case "window-activity": return "Activity"
+        case "window-whats-new": return "What's New"
+        default: return "Printer Studio KH"
+        }
+    }
+
+    /// Top of the drawn heading in image coordinates (top-left origin of the
+    /// captured window). The sidebar carries the same word on some screens, so
+    /// the highest match wins. -1 when the text is not in the accessibility tree.
+    static func accessibilityTop(of label: String, in view: NSView, windowFrame: NSRect) -> Int {
+        var tops: [Int] = []
+        func walk(_ element: Any) {
+            if let v = element as? NSView {
+                if (v.accessibilityLabel() ?? "") == label {
+                    tops.append(Int((windowFrame.maxY - v.accessibilityFrame().maxY).rounded()))
+                }
+                for child in v.accessibilityChildren() ?? [] { walk(child) }
+            } else if let ax = element as? any NSAccessibilityProtocol {
+                if (ax.accessibilityLabel() ?? "") == label {
+                    tops.append(Int((windowFrame.maxY - ax.accessibilityFrame().maxY).rounded()))
+                }
+                for child in ax.accessibilityChildren() ?? [] { walk(child) }
+            }
+        }
+        walk(view)
+        return tops.filter { $0 >= 0 }.min() ?? -1
+    }
+
+    /// How much the page background just under the window chrome is brightened
+    /// against the same background further down, in percent. macOS 26's toolbar
+    /// fade shows up here as a positive number.
+    static func detailTopWash(rep: NSBitmapImageRep, chrome: Int) -> Double {
+        let w = rep.pixelsWide, h = rep.pixelsHigh
+        guard w > 60, chrome > 0, h > chrome + 240, let data = rep.bitmapData else { return 0 }
+        let bpp = rep.bitsPerPixel / 8, bpr = rep.bytesPerRow
+        func lum(_ x: Int, _ y: Int) -> Double {
+            let p = pixel(data: data, x: x, y: y, bpp: bpp, bpr: bpr)
+            return (0.2126 * Double(p.0) + 0.7152 * Double(p.1) + 0.0722 * Double(p.2)) / 255
+        }
+        // The right 8 px are page padding at every window size: no card, no text.
+        func strip(_ ys: Range<Int>) -> Double {
+            var values: [Double] = []
+            for y in ys { for x in stride(from: w - 12, to: w - 4, by: 2) { values.append(lum(x, y)) } }
+            values.sort()
+            return values.isEmpty ? 0 : values[values.count / 2]
+        }
+        let base = strip((chrome + 120)..<min(chrome + 220, h))
+        let top = strip((chrome + 1)..<min(chrome + 9, h))
+        guard base > 0.02 else { return 0 }
+        return (top - base) / base * 100
+    }
+
+    /// The failure banner must carry its action, printer and cause as drawn
+    /// text. Report the message, its ok flag, the accessibility labels of what
+    /// was rendered, and the number of contrasting text pixels in the band.
+    static func emitBanner(state: AppState, rep: NSBitmapImageRep, capture: NSView) {
+        let labels = accessibilityLabels(capture)
+        let textPx = bannerTextPixels(rep: rep)
+        let obj: [String: Any] = [
+            "message": state.lastMessage ?? "",
+            "ok": state.lastMessageOK,
+            "labels": labels,
+            "text_px": textPx,
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
+           let s = String(data: data, encoding: .utf8) {
+            print("BANNER \(s)")
+        }
+    }
+
+    static func bannerTextPixels(rep: NSBitmapImageRep) -> Int {
+        let w = rep.pixelsWide, h = min(rep.pixelsHigh, 52)
+        guard w > 20, let data = rep.bitmapData else { return 0 }
+        let bpp = rep.bitsPerPixel / 8, bpr = rep.bytesPerRow
+        func lum(_ x: Int, _ y: Int) -> Double {
+            let p = pixel(data: data, x: x, y: y, bpp: bpp, bpr: bpr)
+            return (0.2126 * Double(p.0) + 0.7152 * Double(p.1) + 0.0722 * Double(p.2)) / 255
+        }
+        var bgValues: [Double] = []
+        for x in stride(from: w - 40, to: w - 20, by: 2) { bgValues.append(lum(x, 2)) }
+        bgValues.sort()
+        let bg = bgValues.isEmpty ? 0 : bgValues[bgValues.count / 2]
+        var count = 0
+        for y in 0..<h {
+            for x in 8..<(w - 8) where abs(lum(x, y) - bg) > 0.35 { count += 1 }
+        }
+        return count
     }
 
     static func outputName(_ opts: RenderOptions) -> String {
@@ -874,6 +1014,319 @@ struct PageRenderHarness {
         return data.hashValue
     }
 
+    // MARK: - Page interactions
+
+    /// One real control per page, driven in a hidden window. The app's own
+    /// action runs end to end (busy → action → banner/activity/setting); only
+    /// the system command is stubbed by AppState.renderActionsStubbed. Each run
+    /// reports how the control was reached and driven, the measured outcome,
+    /// and writes an after-image that is measured like every other render.
+    static func runInteraction(_ opts: RenderOptions) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.appearance = NSAppearance(named: .aqua)
+        try? FileManager.default.createDirectory(atPath: opts.outDir, withIntermediateDirectories: true)
+        UserDefaults.standard.removeObject(forKey: "printersListMode")
+        UserDefaults.standard.removeObject(forKey: "appearance")
+
+        let isWhatsNew = opts.target == "whats-new"
+        let state = makeFixtureState()
+        let flag = DismissFlag()
+        let wanted = screenFor(opts.target)
+        // Start elsewhere so the sidebar row itself has to work.
+        state.screen = isWhatsNew || wanted == .overview ? .settings : .overview
+
+        let root: AnyView = isWhatsNew
+            ? AnyView(WhatsNewSheetHost(flag: flag))
+            : AnyView(MainWindow().environmentObject(state))
+        let controller = NSHostingController(rootView: root
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Palette.page)
+            .foregroundStyle(Palette.body)
+            .tint(Color.accentColor)
+            .groupBoxStyle(CardGroupStyle())
+            .environment(\.controlActiveState, .key))
+        controller.sizingOptions = []
+        let hosting = controller.view
+        hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
+        let window = NSWindow(contentRect: hosting.frame,
+                              styleMask: isWhatsNew ? [.titled, .closable, .resizable] : [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        if let light = NSAppearance(named: .aqua) {
+            window.appearance = light
+            light.performAsCurrentDrawingAppearance { window.backgroundColor = NSColor.windowBackgroundColor }
+        }
+        window.contentViewController = controller
+        window.setContentSize(NSSize(width: opts.width, height: opts.height))
+        window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+        window.orderFront(nil)
+        window.makeKey()
+        pump(hosting: hosting, window: window)
+
+        // 1 — reach the page through its own sidebar row.
+        var nav = isWhatsNew ? "n/a" : "not-found"
+        if !isWhatsNew, let title = sidebarTitle(opts.target) {
+            let row = findHit(in: hosting, role: .row, label: title)
+                ?? findHit(in: hosting, label: title)
+            if let row, let frame = row.frame, click(at: frame, on: window) {
+                nav = "click"
+                pump(hosting: hosting, window: window)
+            }
+        }
+        if state.screen != wanted {
+            state.screen = wanted
+            nav += "+set-directly"
+            pump(hosting: hosting, window: window)
+        }
+
+        // 2 — drive the page's control.
+        let before = state.activity.count
+        let control = interactionControl(opts.target)
+        var via = "not-found"
+        switch opts.target {
+        case "settings":
+            if let seg = findSegments(in: hosting), let dark = segmentIndex(seg, "dark") {
+                if clickSegment(seg, index: dark, on: window) { via = "click" }
+                pump(hosting: hosting, window: window)
+            }
+        case "whats-new":
+            let sheet = window.attachedSheet
+            let sheetRoot: NSView = sheet?.contentView ?? hosting
+            if let done = findHit(in: sheetRoot, role: .button, label: "Done") ?? findHit(in: sheetRoot, label: "Done") {
+                if let frame = done.frame, click(at: frame, on: sheet ?? window) {
+                    via = "click"
+                    pump(hosting: hosting, window: window)
+                }
+                if !interactionOutcomeMet(opts.target, state: state, flag: flag) {
+                    if press(done) { via = "accessibility-press" }
+                    pump(hosting: hosting, window: window)
+                }
+            }
+        default:
+            if let hit = findHit(in: hosting, role: .button, label: control) ?? findHit(in: hosting, label: control) {
+                if let frame = hit.frame, click(at: frame, on: window) {
+                    via = "click"
+                    pump(hosting: hosting, window: window)
+                }
+                if !interactionOutcomeMet(opts.target, state: state, flag: flag) {
+                    if press(hit) { via = "accessibility-press" }
+                    pump(hosting: hosting, window: window)
+                }
+            }
+        }
+        let met = interactionOutcomeMet(opts.target, state: state, flag: flag)
+
+        var obj: [String: Any] = [
+            "page": opts.target,
+            "control": control,
+            "nav": nav,
+            "via": via,
+            "banner": state.lastMessage ?? "",
+            "ok": state.lastMessageOK,
+            "activity_before": before,
+            "activity_after": state.activity.count,
+            "result": met ? "PASS" : "FAIL",
+        ]
+        switch opts.target {
+        case "settings": obj["appearance"] = UserDefaults.standard.string(forKey: "appearance") ?? ""
+        case "activity": obj["first_row"] = state.activity.first?.message ?? ""
+        case "whats-new": obj["dismissed"] = flag.dismissed
+        default: break
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
+           let s = String(data: data, encoding: .utf8) {
+            print("INTERACTION \(s)")
+        }
+
+        // The outcome as drawn, measured like every other evidence image.
+        let capView = window.contentView?.superview ?? hosting
+        if let rep = capView.bitmapImageRepForCachingDisplay(in: capView.bounds) {
+            capView.cacheDisplay(in: capView.bounds, to: rep)
+            let name = "interaction-\(opts.target)-\(opts.width)x\(opts.height)-\(opts.appearance).png"
+            try? rep.representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: opts.outDir).appendingPathComponent(name))
+            let g = measure(rep: rep, isWindow: false, accent: nil, sampleBottom: true)
+            let shot = RenderOptions(mode: "page", target: "interaction-\(opts.target)", outDir: opts.outDir,
+                                     width: opts.width, height: opts.height, appearance: opts.appearance,
+                                     printersListMode: nil)
+            emitResult(opts: shot, ok: met, error: met ? nil : "interaction outcome not met", geom: g,
+                       controls: nil, pixels: (rep.pixelsWide, rep.pixelsHigh))
+        }
+        exit(met ? 0 : 1)
+    }
+
+    static func pump(hosting: NSView, window: NSWindow, rounds: Int = 12) {
+        for _ in 0..<rounds {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.12))
+            hosting.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+        }
+    }
+
+    static func interactionControl(_ target: String) -> String {
+        switch target {
+        case "overview": return "Fix shared queues now"
+        case "printers": return "Print test page"
+        case "sharing": return "Remove"
+        case "setup": return "Keep it ready"
+        case "stickers": return "Apply to printers"
+        case "activity": return "Refresh"
+        case "settings": return "Appearance: Dark"
+        case "whats-new": return "Done"
+        default: return ""
+        }
+    }
+
+    /// What the shipped app must have produced for the interaction to count.
+    static func interactionOutcomeMet(_ target: String, state: AppState, flag: DismissFlag) -> Bool {
+        let banner = state.lastMessage ?? ""
+        switch target {
+        case "overview": return state.lastMessageOK && banner == "Shared queues re-opened to the LAN."
+        case "printers": return state.lastMessageOK && banner == "Test page sent to HP_Laser_107a."
+        case "sharing": return state.lastMessageOK && banner == "Background watcher removed."
+        case "setup": return state.lastMessageOK && banner.hasPrefix("Automatic USB release is running")
+        case "stickers": return state.lastMessageOK && banner.hasPrefix("Sizes checked and applied")
+        case "activity": return state.activity.first?.message == "Refreshing…" && !state.busy
+        case "settings": return UserDefaults.standard.string(forKey: "appearance") == "dark"
+        case "whats-new": return flag.dismissed
+        default: return false
+        }
+    }
+
+    static func screenFor(_ target: String) -> Screen {
+        switch target {
+        case "printers": return .printers
+        case "sharing": return .sharing
+        case "setup": return .setup
+        case "stickers": return .stickers
+        case "activity": return .activity
+        case "settings": return .settings
+        default: return .overview
+        }
+    }
+
+    static func sidebarTitle(_ target: String) -> String? {
+        switch target {
+        case "overview": return "Overview"
+        case "printers": return "Printers"
+        case "sharing": return "Sharing"
+        case "setup": return "HP Laser 107a"
+        case "stickers": return "Paper & Sticker Sizes"
+        case "activity": return "Activity"
+        case "settings": return "Settings"
+        default: return nil
+        }
+    }
+
+    struct Hit {
+        let element: Any
+        let view: NSView?
+        let frame: CGRect?
+    }
+
+    /// Finds an accessibility element by role and label; SwiftUI's own controls
+    /// are elements rather than NSViews, so both are walked.
+    static func findHit(in root: Any, role: NSAccessibility.Role? = nil, label: String) -> Hit? {
+        func matches(_ text: String?) -> Bool {
+            (text ?? "").range(of: label, options: .caseInsensitive) != nil
+        }
+        func walk(_ element: Any, view: NSView?) -> Hit? {
+            if let v = element as? NSView {
+                if (role == nil || v.accessibilityRole() == role), matches(v.accessibilityLabel()) {
+                    return Hit(element: v, view: v, frame: v.accessibilityFrame())
+                }
+                for child in v.accessibilityChildren() ?? [] {
+                    if let hit = walk(child, view: nil) { return hit }
+                }
+                for sub in v.subviews {
+                    if let hit = walk(sub, view: sub) { return hit }
+                }
+                return nil
+            }
+            if let ax = element as? any NSAccessibilityProtocol {
+                if (role == nil || ax.accessibilityRole() == role), matches(ax.accessibilityLabel()) {
+                    return Hit(element: element, view: nil, frame: ax.accessibilityFrame())
+                }
+                for child in ax.accessibilityChildren() ?? [] {
+                    if let hit = walk(child, view: nil) { return hit }
+                }
+            }
+            return nil
+        }
+        return walk(root, view: root as? NSView)
+    }
+
+    /// A real mouse click at the element's screen frame through its window.
+    static func click(at screenFrame: CGRect, on window: NSWindow) -> Bool {
+        guard screenFrame.width > 1, screenFrame.height > 1 else { return false }
+        let point = window.convertPoint(fromScreen: NSPoint(x: screenFrame.midX, y: screenFrame.midY))
+        guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [],
+                                            timestamp: ProcessInfo.processInfo.systemUptime,
+                                            windowNumber: window.windowNumber, context: nil,
+                                            eventNumber: 0, clickCount: 1, pressure: 1),
+              let up = NSEvent.mouseEvent(with: .leftMouseUp, location: point, modifierFlags: [],
+                                          timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil,
+                                          eventNumber: 0, clickCount: 1, pressure: 0) else { return false }
+        window.sendEvent(down)
+        window.sendEvent(up)
+        return true
+    }
+
+    /// The assistive-technology path, used when an offscreen click does not land.
+    static func press(_ hit: Hit) -> Bool {
+        if let control = hit.view as? NSControl {
+            control.performClick(nil)
+            return true
+        }
+        if let ax = hit.element as? any NSAccessibilityProtocol {
+            return ax.accessibilityPerformPress()
+        }
+        return false
+    }
+
+    static func findSegments(in root: NSView) -> NSSegmentedControl? {
+        if let seg = root as? NSSegmentedControl, seg.segmentCount >= 2 {
+            let labels = (0..<seg.segmentCount).map { (seg.label(forSegment: $0) ?? "").lowercased() }
+            if labels.contains(where: { $0.contains("dark") }) && labels.contains(where: { $0.contains("light") }) {
+                return seg
+            }
+        }
+        for child in root.subviews {
+            if let found = findSegments(in: child) { return found }
+        }
+        return nil
+    }
+
+    static func segmentIndex(_ control: NSSegmentedControl, _ label: String) -> Int? {
+        (0..<control.segmentCount).first { (control.label(forSegment: $0) ?? "").lowercased().contains(label) }
+    }
+
+    static func clickSegment(_ control: NSSegmentedControl, index: Int, on window: NSWindow) -> Bool {
+        let widths = (0..<control.segmentCount).map { control.width(forSegment: $0) }
+        var x: CGFloat = control.bounds.width * (CGFloat(index) + 0.5) / CGFloat(control.segmentCount)
+        if widths.allSatisfy({ $0 > 0 }) {
+            x = widths.prefix(index).reduce(0, +) + widths[index] / 2
+        }
+        let point = control.convert(NSPoint(x: x, y: control.bounds.midY), to: nil)
+        guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [],
+                                            timestamp: ProcessInfo.processInfo.systemUptime,
+                                            windowNumber: window.windowNumber, context: nil,
+                                            eventNumber: 0, clickCount: 1, pressure: 1),
+              let up = NSEvent.mouseEvent(with: .leftMouseUp, location: point, modifierFlags: [],
+                                          timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil,
+                                          eventNumber: 0, clickCount: 1, pressure: 0) else { return false }
+        window.sendEvent(down)
+        window.sendEvent(up)
+        if control.selectedSegment != index {
+            control.mouseDown(with: down)
+            control.mouseUp(with: up)
+        }
+        return control.selectedSegment == index
+    }
+
     // MARK: - Measurement
 
     struct Geometry {
@@ -964,7 +1417,8 @@ struct PageRenderHarness {
 
     static func emitResult(opts: RenderOptions, ok: Bool, error: String?, geom: Geometry?,
                            controls: [[String: String]]? = nil,
-                           pixels: (Int, Int)? = nil) {
+                           pixels: (Int, Int)? = nil,
+                           chrome: Int? = nil, headingTop: Int? = nil, topWashPct: Double? = nil) {
         var obj: [String: Any] = [
             "page": opts.mode == "window" ? "window" : opts.target,
             "target": opts.target,
@@ -984,6 +1438,9 @@ struct PageRenderHarness {
             obj["accent_run_px"] = g.accentRun
         }
         if let controls, !controls.isEmpty { obj["controls"] = controls }
+        if let chrome { obj["chrome_px"] = chrome }
+        if let headingTop { obj["heading_top_px"] = headingTop }
+        if let topWashPct { obj["top_wash_pct"] = (topWashPct * 10).rounded() / 10 }
         if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
            let s = String(data: data, encoding: .utf8) {
             print("MEASURE \(s)")
