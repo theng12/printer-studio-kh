@@ -1104,7 +1104,13 @@ struct PageRenderHarness {
                 pump(hosting: hosting, window: window)
             }
         default:
-            if let frame = InteractionProbe.frames[probeName(opts.target)] {
+            if opts.target == "stickers", ProcessInfo.processInfo.environment["PRINTER_INTERACTION_DIRECT"] == "1" {
+                state.stickerSizes.append(StickerSize(name: "New size", widthMM: 50, heightMM: 30))
+                via = "direct-mutation"
+                step("mutated directly")
+                pump(hosting: hosting, window: window)
+                step("pump done")
+            } else if let frame = InteractionProbe.frames[probeName(opts.target)] {
                 clickFrame = frame
                 if clickProbeFrame(frame, on: window, hosting: hosting) {
                     via = "click"
