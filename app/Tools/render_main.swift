@@ -1259,7 +1259,7 @@ struct PageRenderHarness {
         let banner = state.lastMessage ?? ""
         switch target {
         case "overview": return state.lastMessageOK && banner == "Shared queues re-opened to the LAN." && state.queuesHeldShut.isEmpty
-        case "printers": return state.lastMessageOK && banner == "Test page sent to HP_Laser_107a."
+        case "printers": return state.lastMessageOK && banner == "Test page sent to HP Laser 107a."
         case "sharing": return state.lastMessageOK && banner == "Background watcher removed." && !state.watcherInstalled
         case "setup": return state.lastMessageOK && banner.hasPrefix("Automatic USB release is running") && state.automaticUSBRelease
 
