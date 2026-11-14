@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CoreGraphics
+import ApplicationServices
 
 // Offscreen render harness for Printer Studio KH.
 // Compiled as the temporary app entry point against copied app sources with @main stripped.
@@ -328,9 +329,11 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        // Deliberately never ordered front: cacheDisplay draws an unordered
-        // window in full, and ordering it in would put a test window on the
-        // owner's desktop (AppKit pulls an offscreen frame back onto the screen).
+        // Ordered in but fully transparent: sidebar material and list content
+        // only draw for an ordered window, and alpha 0 keeps it off the owner's
+        // desktop (AppKit also pulls an offscreen frame back onto the screen).
+        window.alphaValue = 0
+        window.orderFront(nil)
         // A non-key window draws the inactive selection style; make it key
         // without activating the app.
         window.makeKey()
@@ -376,6 +379,7 @@ struct PageRenderHarness {
         var chrome: Int? = nil
         var headingTop: Int? = nil
         var topWashPct: Double? = nil
+        var sidebarPx: Int? = nil
         if isWindowRender {
             let band = Int((window.frame.height - window.contentLayoutRect.height).rounded())
             chrome = band
@@ -386,11 +390,13 @@ struct PageRenderHarness {
                 headingTop = Int((contentTop + heading.minY).rounded())
             }
             topWashPct = detailTopWash(rep: rep, chrome: band)
+            sidebarPx = sidebarTextPixels(rep: rep, chrome: band)
         }
         emitResult(opts: opts, ok: true, error: nil, geom: geom,
                    controls: controlStates(captureView),
                    pixels: (rep.pixelsWide, rep.pixelsHigh),
-                   chrome: chrome, headingTop: headingTop, topWashPct: topWashPct)
+                   chrome: chrome, headingTop: headingTop, topWashPct: topWashPct,
+                   sidebarPx: sidebarPx)
         if opts.target == "banner-printers" {
             emitBanner(state: state, rep: rep, capture: captureView)
         }
@@ -418,6 +424,30 @@ struct PageRenderHarness {
         let top = strip((chrome + 1)..<min(chrome + 9, h))
         guard base > 0.02 else { return 0 }
         return (top - base) / base * 100
+    }
+
+    /// How many text pixels the sidebar band actually drew. A blank band means
+    /// the evidence does not show the real window's navigation (round-5 finding 1).
+    static func sidebarTextPixels(rep: NSBitmapImageRep, chrome: Int) -> Int {
+        let w = rep.pixelsWide, h = rep.pixelsHigh
+        let x0 = 8, x1 = min(240, w / 3)
+        guard x1 > x0, h > chrome + 420, let data = rep.bitmapData else { return 0 }
+        let bpp = rep.bitsPerPixel / 8, bpr = rep.bytesPerRow
+        func lum(_ x: Int, _ y: Int) -> Double {
+            let p = pixel(data: data, x: x, y: y, bpp: bpp, bpr: bpr)
+            return (0.2126 * Double(p.0) + 0.7152 * Double(p.1) + 0.0722 * Double(p.2)) / 255
+        }
+        var base: [Double] = []
+        for y in stride(from: chrome + 300, to: chrome + 400, by: 4) {
+            for x in stride(from: x0, to: x1, by: 6) { base.append(lum(x, y)) }
+        }
+        base.sort()
+        let bg = base.isEmpty ? 0 : base[base.count / 2]
+        var count = 0
+        for y in (chrome + 60)..<(chrome + 400) {
+            for x in x0..<x1 where abs(lum(x, y) - bg) > 0.35 { count += 1 }
+        }
+        return count
     }
 
     /// The failure banner must carry its action, printer and cause as drawn
@@ -864,6 +894,36 @@ struct PageRenderHarness {
         window.makeFirstResponder(control)
         let focusAccepted = window.firstResponder === control
         print("FOCUS_ACCEPTED \(focusAccepted) control=\(type(of: control))")
+
+        // Focus ring and responder traversal, plus the accessibility surface.
+        // Key delivery cannot run in an inactive offscreen app, so traversal is
+        // exercised through the window's own key-view command, which is what Tab
+        // runs at the responder level.
+        for _ in 0..<4 { RunLoop.current.run(until: Date().addingTimeInterval(0.1)); window.displayIfNeeded() }
+        func focusRingCount(_ view: NSView) -> Int {
+            var count = String(describing: type(of: view)).contains("FocusRing") ? 1 : 0
+            for child in view.subviews { count += focusRingCount(child) }
+            return count
+        }
+        let ring = focusRingCount(hosting)
+        print("FOCUS_RING \(ring > 0) rings=\(ring)")
+
+        window.makeFirstResponder(hosting)
+        let first = String(describing: type(of: window.firstResponder ?? hosting))
+        window.selectNextKeyView(nil)
+        for _ in 0..<3 { RunLoop.current.run(until: Date().addingTimeInterval(0.1)); window.displayIfNeeded() }
+        let second = String(describing: type(of: window.firstResponder ?? hosting))
+        window.selectNextKeyView(nil)
+        for _ in 0..<3 { RunLoop.current.run(until: Date().addingTimeInterval(0.1)); window.displayIfNeeded() }
+        let third = String(describing: type(of: window.firstResponder ?? hosting))
+        let traversalMoved = first != second || second != third
+        print("TRAVERSAL first=\(first) second=\(second) third=\(third) moved=\(traversalMoved)")
+
+        let axApp = AXUIElementCreateApplication(getpid())
+        var axValue: CFTypeRef?
+        let axErr = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &axValue)
+        let axWindows = (axValue as? [AXUIElement])?.count ?? -1
+        print("AX_SELF err=\(axErr.rawValue) windows=\(axWindows)")
         let before = control.selectedSegment
         let arrow = tableIndex == control.segmentCount - 1 ? "\u{F703}" : "\u{F702}"
         let keyCode: UInt16 = tableIndex == control.segmentCount - 1 ? 124 : 123
@@ -923,13 +983,13 @@ struct PageRenderHarness {
         print("TAB_FOCUS before=\(focusBefore) after=\(focusAfter) moved=\(focusBefore != focusAfter)")
 
         if keyboardOperated {
-            print("KEYBOARD_CHECK PASS via=\(path) before=\(before) after=\(after) mode=\(mode) tableIndex=\(tableIndex)")
+            print("KEYBOARD_CHECK PASS via=\(path) before=\(before) after=\(after) mode=\(mode) tableIndex=\(tableIndex) focusRing=\(ring > 0) traversalMoved=\(traversalMoved)")
             return
         }
         // Offscreen the harness app is not active, so AppKit does not deliver key
         // events. Record what is provable: the shipped control accepts keyboard
         // focus. Traversal is reported as not checked, never as passed.
-        print("KEYBOARD_CHECK PARTIAL focus=\(focusAccepted) via=\(path) before=\(before) after=\(after) mode=\(mode.isEmpty ? "(unset)" : mode) keys=inactive-window")
+        print("KEYBOARD_CHECK PARTIAL focus=\(focusAccepted) ring=\(ring > 0) traversalMoved=\(traversalMoved) via=\(path) before=\(before) after=\(after) mode=\(mode.isEmpty ? "(unset)" : mode) keys=inactive-window axErr=\(axErr.rawValue)")
         if focusAccepted { return }
         exit(1)
     }
@@ -1198,12 +1258,12 @@ struct PageRenderHarness {
     static func interactionOutcomeMet(_ target: String, state: AppState, flag: DismissFlag) -> Bool {
         let banner = state.lastMessage ?? ""
         switch target {
-        case "overview": return state.lastMessageOK && banner == "Shared queues re-opened to the LAN."
+        case "overview": return state.lastMessageOK && banner == "Shared queues re-opened to the LAN." && state.queuesHeldShut.isEmpty
         case "printers": return state.lastMessageOK && banner == "Test page sent to HP_Laser_107a."
-        case "sharing": return state.lastMessageOK && banner == "Background watcher removed."
-        case "setup": return state.lastMessageOK && banner.hasPrefix("Automatic USB release is running")
+        case "sharing": return state.lastMessageOK && banner == "Background watcher removed." && !state.watcherInstalled
+        case "setup": return state.lastMessageOK && banner.hasPrefix("Automatic USB release is running") && state.automaticUSBRelease
 
-        case "activity": return state.activity.first?.message == "Refreshing…" && !state.busy
+        case "activity": return (state.activity.first?.message ?? "").hasPrefix("Refreshed —") && !state.busy
         case "settings": return UserDefaults.standard.string(forKey: "appearance") == "dark"
         case "whats-new": return flag.dismissed
         default: return false
@@ -1402,7 +1462,8 @@ struct PageRenderHarness {
     static func emitResult(opts: RenderOptions, ok: Bool, error: String?, geom: Geometry?,
                            controls: [[String: String]]? = nil,
                            pixels: (Int, Int)? = nil,
-                           chrome: Int? = nil, headingTop: Int? = nil, topWashPct: Double? = nil) {
+                           chrome: Int? = nil, headingTop: Int? = nil, topWashPct: Double? = nil,
+                           sidebarPx: Int? = nil) {
         var obj: [String: Any] = [
             "page": opts.mode == "window" ? "window" : opts.target,
             "target": opts.target,
@@ -1425,6 +1486,7 @@ struct PageRenderHarness {
         if let chrome { obj["chrome_px"] = chrome }
         if let headingTop { obj["heading_top_px"] = headingTop }
         if let topWashPct { obj["top_wash_pct"] = (topWashPct * 10).rounded() / 10 }
+        if let sidebarPx { obj["sidebar_px"] = sidebarPx }
         if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
            let s = String(data: data, encoding: .utf8) {
             print("MEASURE \(s)")

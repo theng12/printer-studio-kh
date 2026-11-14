@@ -93,6 +93,21 @@ struct CardGroupStyle: GroupBoxStyle {
     }
 }
 
+/// One page scaffold: the same leading edge and one 980 pt column on every
+/// page, so 1440 does not look like seven different apps (round-5 finding 6).
+private struct PageScaffold: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(24)
+    }
+}
+
+extension View {
+    func pageScaffold() -> some View { modifier(PageScaffold()) }
+}
+
 struct MainWindow: View {
     @EnvironmentObject var state: AppState
     @Environment(\.openWindow) private var openWindow
@@ -512,7 +527,7 @@ struct OverviewView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(24)
+            .pageScaffold()
         }
     }
 
@@ -718,7 +733,7 @@ struct PrintersView: View {
                     .cardSurface(radius: 10)
                 }
             }
-            .padding(24)
+            .pageScaffold()
         }
         .sheet(item: $renamingPrinter) { printer in
             RenamePrinterSheet(printer: printer)
@@ -1214,9 +1229,7 @@ struct SharingView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(24)
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
+            .pageScaffold()
         }
         .disabled(state.busy)
     }
@@ -1352,7 +1365,7 @@ struct SetupView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(24)
+            .pageScaffold()
         }
     }
 
@@ -1554,9 +1567,7 @@ struct StickerSizesView: View {
                     .padding(6)
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
+            .pageScaffold()
             .onChange(of: state.stickerSizes) { _ in
                 state.saveStickerSizes()
             }
@@ -1652,6 +1663,7 @@ struct SettingsView: View {
                         Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
                             .font(.caption).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 680, alignment: .leading)
                         Toggle("Keep the USB printer ready after restarts",
                                isOn: Binding(get: { state.automaticUSBRelease },
                                              set: { state.setAutomaticUSBRelease($0) }))
@@ -1751,9 +1763,7 @@ struct SettingsView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(24)
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
+            .pageScaffold()
         }
     }
 
@@ -1830,7 +1840,7 @@ struct ActivityView: View {
                 }
             }
         }
-        .padding(24)
+        .pageScaffold()
     }
 
     private func color(for kind: LogEntry.Kind) -> Color {

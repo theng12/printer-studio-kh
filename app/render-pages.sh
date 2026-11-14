@@ -160,7 +160,7 @@ APP_BUNDLE="$WORK/RenderHarness.app"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 BIN="$APP_BUNDLE/Contents/MacOS/RenderHarness"
 xcrun swiftc -sdk "$SDK_PATH" -target arm64-apple-macos13.0 -parse-as-library -swift-version 5 \
-  -framework SwiftUI -framework AppKit -framework CoreGraphics \
+  -framework SwiftUI -framework AppKit -framework CoreGraphics -framework ApplicationServices \
   -o "$BIN" "${SOURCES[@]}"
 
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/app/Resources/Info.plist")
@@ -329,8 +329,11 @@ for target in "${TARGETS[@]}"; do
 
   for size in "${sizes_to_use[@]}"; do
     # What's New is a dialog whose window minimum is 420 pt; below that it would
-    # overflow rather than reflow, so render it at its real minimum.
-    if [ "$target" = "whats-new" ] && [[ "$size" == 375x* ]]; then size="420x900"; fi
+    # overflow rather than reflow, so render it at its real minimum and say so.
+    if [ "$target" = "whats-new" ] && [[ "$size" == 375x* ]]; then
+      echo "SKIP_SIZE whats-new 375x900 -> 420x900 (view minimum is 420 pt; 375 would overflow, not reflow)"
+      size="420x900"
+    fi
     for appearance in light dark; do
       if [[ "$target" == window* ]]; then
         if [[ "$target" == *-outcome ]]; then

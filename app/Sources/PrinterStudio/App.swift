@@ -246,7 +246,7 @@ final class AppState: ObservableObject {
     // MARK: Refresh
 
     /// Cheap refresh — safe to run often and from the menu bar.
-    func refresh() {
+    func refresh(announce: Bool = false) {
         work.async { [weak self] in
             guard let self else { return }
             let listing = CUPS.listPrintersChecked()
@@ -301,6 +301,10 @@ final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 self.detailedPrinters = detailed
                 self.shareLog = logLines
+                if announce {
+                    self.log("Refreshed — \(self.printers.count) printer\(self.printers.count == 1 ? "" : "s"), printer sharing \(self.sharingEnabled ? "on" : "off").",
+                             kind: .success)
+                }
             }
         }
     }
@@ -326,7 +330,13 @@ final class AppState: ObservableObject {
                 self.busyMessage = ""
                 self.report(result, success: success,
                             action: OutcomeMessage.actionLabel(message))
-                if !self.renderActionsStubbed { self.refresh() }
+                if !self.renderActionsStubbed {
+                    self.refresh()
+                } else {
+                    // Show the state the success implies, so the harness's
+                    // after-image is the terminal state, not the old one.
+                    RenderFixtures.apply(success: success, to: self)
+                }
             }
         }
     }
@@ -357,29 +367,29 @@ final class AppState: ObservableObject {
     }
 
     func openQueue(_ printer: Printer) {
-        perform("Opening \(printer.name) to all users…",
+        perform("Opening \(printer.displayName) to all users…",
                 { CUPS.allowAllUsers(printer.name) },
-                success: "\(printer.name) is now open to all users.")
+                success: "\(printer.displayName) is now open to all users.")
     }
 
     func restrictQueue(_ printer: Printer) {
-        perform("Restoring the restricted ACL on \(printer.name)…",
+        perform("Restoring the restricted ACL on \(printer.displayName)…",
                 { CUPS.restrictToUserACL(printer.name) },
-                success: "\(printer.name) is restricted again.")
+                success: "\(printer.displayName) is restricted again.")
     }
 
     func toggleShared(_ printer: Printer) {
         let target = !printer.isShared
-        perform(target ? "Sharing \(printer.name)…" : "Stopping sharing of \(printer.name)…",
+        perform(target ? "Sharing \(printer.displayName)…" : "Stopping sharing of \(printer.displayName)…",
                 { CUPS.setShared(printer.name, target) },
-                success: target ? "\(printer.name) is shared." : "\(printer.name) is no longer shared.")
+                success: target ? "\(printer.displayName) is shared." : "\(printer.displayName) is no longer shared.")
     }
 
     func toggleEnabled(_ printer: Printer) {
         let target = !printer.enabled
-        perform(target ? "Enabling \(printer.name)…" : "Pausing \(printer.name)…",
+        perform(target ? "Enabling \(printer.displayName)…" : "Pausing \(printer.displayName)…",
                 { CUPS.setEnabled(printer.name, target) },
-                success: target ? "\(printer.name) is enabled." : "\(printer.name) is paused.")
+                success: target ? "\(printer.displayName) is enabled." : "\(printer.displayName) is paused.")
     }
 
     func renamePrinter(_ printer: Printer) {
@@ -397,13 +407,13 @@ final class AppState: ObservableObject {
     func testPrint(_ printer: Printer) {
         perform("Sending one test page to \(printer.displayName)…",
                 { CUPS.printTestPage(printer.name) },
-                success: "Test page sent to \(printer.name).")
+                success: "Test page sent to \(printer.displayName).")
     }
 
     func clearJobs(on printer: Printer) {
-        perform("Clearing jobs on \(printer.name)…",
+        perform("Clearing jobs on \(printer.displayName)…",
                 { CUPS.cancelAllJobs(on: printer.name) },
-                success: "Jobs cleared on \(printer.name).")
+                success: "Jobs cleared on \(printer.displayName).")
     }
 
     func installDriver() {
@@ -512,7 +522,7 @@ final class AppState: ObservableObject {
 
     func refreshNow() {
         log("Refreshing…")
-        refresh()
+        refresh(announce: true)
     }
 
     /// Takes the app back off this Mac and then quits, so nothing it installed is
