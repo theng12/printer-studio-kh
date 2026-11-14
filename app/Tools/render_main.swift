@@ -303,19 +303,24 @@ struct PageRenderHarness {
         hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
 
         let isWindowRender = opts.mode == "window"
-        // What's New has no toolbar and keeps the classic titlebar; the main
-        // window matches the macOS 26 look: full-size content with a floating,
-        // transparent titlebar, which is also what stops SwiftUI washing the
-        // page heading under the bar.
-        let floatsTitlebar = isWindowRender && !opts.target.hasPrefix("window-whats-new")
-        var mask: NSWindow.StyleMask = isWindowRender ? [.titled, .closable, .resizable] : [.borderless]
-        if floatsTitlebar { mask.insert(.fullSizeContentView) }
-        let window = NSWindow(contentRect: hosting.frame, styleMask: mask,
+        // A window render's requested size is the window's frame, exactly as the
+        // brief reads it; the content area is the frame minus the real chrome.
+        // The window is created at its final frame so SwiftUI never lays out
+        // once at a taller transient size (that transient layout brings back the
+        // toolbar fade that washed headings in the 900 pt window).
+        let mask: NSWindow.StyleMask = isWindowRender ? [.titled, .closable, .resizable] : [.borderless]
+        var contentRect = hosting.frame
+        if isWindowRender {
+            contentRect = NSWindow.contentRect(forFrameRect: NSRect(x: 0, y: 0,
+                                                                    width: CGFloat(opts.width),
+                                                                    height: CGFloat(opts.height)),
+                                               styleMask: mask)
+        }
+        let window = NSWindow(contentRect: contentRect, styleMask: mask,
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         if isWindowRender {
             window.title = "Printer Studio KH"
-            window.titlebarAppearsTransparent = floatsTitlebar
             // The real window with its title bar and toolbar in the capture;
             // MEASURE reports the size actually drawn.
         }
@@ -327,12 +332,14 @@ struct PageRenderHarness {
         }
         window.backgroundColor = windowBackground
         window.contentViewController = controller
-        window.setContentSize(NSSize(width: opts.width, height: opts.height))
+        if !isWindowRender {
+            window.setContentSize(NSSize(width: opts.width, height: opts.height))
+        }
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        // Ordered in but fully transparent: sidebar material and list content
-        // only draw for an ordered window, and alpha 0 keeps it off the owner's
-        // desktop (AppKit also pulls an offscreen frame back onto the screen).
-        window.alphaValue = 0
+        // Ordered in but practically invisible: the sidebar's material and list
+        // rows only draw for an ordered window, and alpha 0.01 keeps it off the
+        // owner's desktop (AppKit also pulls an offscreen frame onto the screen).
+        window.alphaValue = 0.01
         window.orderFront(nil)
         // A non-key window draws the inactive selection style; make it key
         // without activating the app.
@@ -343,6 +350,17 @@ struct PageRenderHarness {
             RunLoop.current.run(until: Date().addingTimeInterval(0.12))
             hosting.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
+        }
+        if isWindowRender {
+            // Pin the real window to the requested frame once the toolbar has
+            // settled, then let SwiftUI lay out at the final content height.
+            window.setFrame(NSRect(x: window.frame.minX, y: window.frame.minY,
+                                   width: CGFloat(opts.width), height: CGFloat(opts.height)), display: true)
+            for _ in 0..<6 {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.12))
+                hosting.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+            }
         }
         // A real window includes its title bar and toolbar; capture the frame view.
         let captureView = isWindowRender ? (window.contentView?.superview ?? hosting) : hosting
