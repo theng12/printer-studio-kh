@@ -1105,7 +1105,17 @@ struct PageRenderHarness {
                 pump(hosting: hosting, window: window)
             }
         default:
-            if opts.target == "stickers", ProcessInfo.processInfo.environment["PRINTER_INTERACTION_DIRECT"] == "1" {
+            if opts.target == "stickers", ProcessInfo.processInfo.environment["PRINTER_PROBE_POINT"] == "1" {
+                // Sticker page without probes: its deterministic 1024x720 layout
+                // puts Add a size at (272,331)-(359,355).
+                clickFrame = CGRect(x: 272, y: 331, width: 87, height: 24)
+                if clickProbeFrame(clickFrame!, on: window, hosting: hosting) {
+                    via = "click"
+                    step("click sent at fixed point")
+                    pump(hosting: hosting, window: window)
+                    step("pump done")
+                }
+            } else if opts.target == "stickers", ProcessInfo.processInfo.environment["PRINTER_INTERACTION_DIRECT"] == "1" {
                 state.stickerSizes.append(StickerSize(name: "New size", widthMM: 50, heightMM: 30))
                 via = "direct-mutation"
                 step("mutated directly")

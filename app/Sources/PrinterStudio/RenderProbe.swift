@@ -9,6 +9,7 @@ import SwiftUI
 enum InteractionProbe {
     static var enabled: Bool {
         ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER"] == "1"
+            && ProcessInfo.processInfo.environment["PRINTER_NO_PROBES"] != "1"
     }
 
     static var frames: [String: CGRect] = [:]
