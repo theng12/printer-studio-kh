@@ -11,11 +11,31 @@ enum CUPS {
     /// Fast listing: `lpstat -p` for names/state plus `lpstat -v` for URIs.
     /// Deliberately does NOT call ipptool, so it can be polled cheaply.
     static func listPrinters() -> [Printer] {
+        parsePrinters(Shell.run(Tool.lpstat, ["-l", "-p"]).stdout)
+    }
+
+    /// The same listing, but a scheduler that cannot answer becomes a named
+    /// error instead of an empty list that reads as "no printers".
+    static func listPrintersChecked() -> (printers: [Printer], error: String?) {
+        let state = Shell.run(Tool.lpstat, ["-l", "-p"])
+        if let error = listingError(state) { return ([], error) }
+        return (parsePrinters(state.stdout), nil)
+    }
+
+    static func listingError(_ result: CommandResult) -> String? {
+        guard !result.ok else { return nil }
+        let reason = result.stderr
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+        return reason ?? "lpstat exited \(result.status) without a message."
+    }
+
+    private static func parsePrinters(_ stdout: String) -> [Printer] {
         var found: [String: Printer] = [:]
 
-        let state = Shell.run(Tool.lpstat, ["-l", "-p"])
         var currentName: String?
-        for raw in state.stdout.split(separator: "\n") {
+        for raw in stdout.split(separator: "\n") {
             let line = String(raw)
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("Description:"), let name = currentName {

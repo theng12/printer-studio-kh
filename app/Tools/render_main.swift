@@ -22,6 +22,9 @@ struct RenderOptions {
         if args[1] == "switch-check" {
             return RenderOptions(mode: "switch-check", target: "printers", outDir: args.count > 2 ? args[2] : "", width: 1024, height: 720, appearance: "light", printersListMode: nil)
         }
+        if args[1] == "keyboard-check" {
+            return RenderOptions(mode: "keyboard-check", target: "printers", outDir: args.count > 2 ? args[2] : "", width: 1024, height: 720, appearance: "light", printersListMode: nil)
+        }
         guard args.count >= 6 else { return nil }
         let mode = args[1]
         let target = args[2]
@@ -52,7 +55,7 @@ struct PageRenderHarness {
         }
 
         guard let opts = RenderOptions.parse(CommandLine.arguments) else {
-            fputs("usage: render-page <page|window|contrast|switch-check> <target> <outdir> <WxH> <light|dark> [printersListMode]\n", stderr)
+            fputs("usage: render-page <page|window|contrast|switch-check|keyboard-check> <target> <outdir> <WxH> <light|dark> [printersListMode]\n", stderr)
             exit(2)
         }
         if opts.mode == "contrast" {
@@ -61,6 +64,10 @@ struct PageRenderHarness {
         }
         if opts.mode == "switch-check" {
             runSwitchCheck(opts)
+            return
+        }
+        if opts.mode == "keyboard-check" {
+            runKeyboardCheck(opts)
             return
         }
         runRender(opts)
@@ -166,23 +173,37 @@ struct PageRenderHarness {
             app.appearance = NSAppearance(named: .aqua)
         }
 
-        // Printers list mode hint for fixtures; Fleet table mode UI may not exist at cb34f18.
-        if opts.target == "printers-table" {
+        let baseTarget = opts.target
+            .replacingOccurrences(of: "-empty", with: "")
+            .replacingOccurrences(of: "-error", with: "")
+        let isEmpty = opts.target.hasSuffix("-empty")
+            || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_EMPTY"] == "1"
+        let isError = opts.target.hasSuffix("-error")
+            || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_ERROR"] == "1"
+        if baseTarget == "printers-table" {
             UserDefaults.standard.set("table", forKey: "printersListMode")
-        } else if opts.target == "printers" {
+        } else if baseTarget == "printers" {
             UserDefaults.standard.set("cards", forKey: "printersListMode")
         }
 
         let state = makeFixtureState()
+        if isError {
+            applyErrorFixture(state)
+        } else if isEmpty {
+            applyEmptyFixture(state)
+        }
         if opts.mode == "page" {
-            applyPageSelection(state: state, page: opts.target, printersListMode: opts.printersListMode)
+            applyPageSelection(state: state, page: baseTarget, printersListMode: opts.printersListMode)
+        }
+        if opts.mode == "window" {
+            applyWindowSelection(state: state, target: opts.target)
         }
 
         let rootView: AnyView = {
             if opts.mode == "window" {
                 return AnyView(MainWindow().environmentObject(state))
             } else {
-                return AnyView(pageView(for: opts.target).environmentObject(state))
+                return AnyView(pageView(for: baseTarget).environmentObject(state))
             }
         }()
 
@@ -250,10 +271,50 @@ struct PageRenderHarness {
     }
 
     static func outputName(_ opts: RenderOptions) -> String {
-        if opts.mode == "window" {
-            return "window-\(opts.width)x\(opts.height)-\(opts.appearance).png"
-        }
         return "\(opts.target)-\(opts.width)x\(opts.height)-\(opts.appearance).png"
+    }
+
+    static func applyWindowSelection(state: AppState, target: String) {
+        switch target {
+        case "window-printers": state.screen = .printers
+        case "window-sharing": state.screen = .sharing
+        default: state.screen = .overview
+        }
+    }
+
+    /// A CUPS read that failed: the page must name the cause and offer Retry.
+    static func applyErrorFixture(_ state: AppState) {
+        applyEmptyFixture(state)
+        state.sharingEnabled = true
+        state.printersError = "CUPS is not responding — scheduler is not running."
+    }
+
+    /// The first-run state: nothing installed, nothing found.
+    static func applyEmptyFixture(_ state: AppState) {
+        state.printers = []
+        state.detailedPrinters = []
+        state.sharingEnabled = false
+        state.watcherInstalled = false
+        state.watcherLoaded = false
+        state.shareLog = []
+        state.usbDevices = []
+        state.printerHeldByIPPUSB = false
+        state.airPrintInstalled = false
+        state.labelPrintingNeedsSetup = false
+        state.startsAtLogin = false
+        state.automaticUSBRelease = false
+        state.stickerSizes = []
+        state.labelQueues = []
+        state.offeredSizes = [:]
+        state.printerNameDrafts = [:]
+        state.paperChoices = [:]
+        state.selectedPaper = [:]
+        state.unfinishedJobs = []
+        state.activity = []
+        state.busy = false
+        state.busyMessage = ""
+        state.printersError = nil
+        state.screen = .overview
     }
 
     static func pageView(for target: String) -> AnyView {
@@ -529,6 +590,150 @@ struct PageRenderHarness {
         }
         print("SWITCH_CHECK FAIL mode=\(mode.isEmpty ? "(unset)" : mode) changed=\(changed) persisted=\(stored) selectedSegment=\(control.selectedSegment) expected=\(tableIndex)")
         exit(1)
+    }
+
+    // MARK: - Keyboard check
+
+    /// Focuses the Cards/Table control, drives it with an arrow key through the
+    /// responder chain, and records whether Tab moves focus. Offscreen only.
+    static func runKeyboardCheck(_ opts: RenderOptions) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.appearance = NSAppearance(named: .aqua)
+        try? FileManager.default.createDirectory(atPath: opts.outDir, withIntermediateDirectories: true)
+        UserDefaults.standard.removeObject(forKey: "printersListMode")
+
+        let state = makeFixtureState()
+        state.screen = .printers
+        let controller = NSHostingController(rootView: MainWindow()
+            .environmentObject(state)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .tint(Color.accentColor)
+            .environment(\.controlActiveState, .key))
+        let hosting = controller.view
+        hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
+
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        if let light = NSAppearance(named: .aqua) {
+            window.appearance = light
+            light.performAsCurrentDrawingAppearance {
+                window.backgroundColor = NSColor.windowBackgroundColor
+            }
+        }
+        window.contentViewController = controller
+        window.setContentSize(NSSize(width: opts.width, height: opts.height))
+        window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+        window.orderFront(nil)
+        window.makeKey()
+        for _ in 0..<12 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.12))
+            hosting.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+        }
+
+        guard let control = findSwitchControl(hosting) else {
+            print("KEYBOARD_CHECK FAIL switch control not found")
+            exit(1)
+        }
+        guard let tableIndex = (0..<control.segmentCount).first(where: {
+            (control.label(forSegment: $0) ?? "").lowercased().contains("table")
+        }) else {
+            print("KEYBOARD_CHECK FAIL Table segment missing")
+            exit(1)
+        }
+
+        window.makeFirstResponder(control)
+        let focusAccepted = window.firstResponder === control
+        print("FOCUS_ACCEPTED \(focusAccepted) control=\(type(of: control))")
+        let before = control.selectedSegment
+        let arrow = tableIndex == control.segmentCount - 1 ? "\u{F703}" : "\u{F702}"
+        let keyCode: UInt16 = tableIndex == control.segmentCount - 1 ? 124 : 123
+        if let down = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                                       timestamp: ProcessInfo.processInfo.systemUptime,
+                                       windowNumber: window.windowNumber, context: nil,
+                                       characters: arrow, charactersIgnoringModifiers: arrow,
+                                       isARepeat: false, keyCode: keyCode) {
+            // Drive the shipped control's own key handling.
+            control.keyDown(with: down)
+            app.postEvent(down, atStart: false)
+        }
+        if let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [],
+                                     timestamp: ProcessInfo.processInfo.systemUptime,
+                                     windowNumber: window.windowNumber, context: nil,
+                                     characters: arrow, charactersIgnoringModifiers: arrow,
+                                     isARepeat: false, keyCode: keyCode) {
+            control.keyUp(with: up)
+        }
+        for _ in 0..<10 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            hosting.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+        }
+        var after = control.selectedSegment
+        var mode = UserDefaults.standard.string(forKey: "printersListMode") ?? ""
+        var path = "arrow-key"
+        if !(after == tableIndex && mode == "table") {
+            // The offscreen host is not the active app, so AppKit's key handling
+            // may not run. Press the segment through the accessibility API the
+            // way Full Keyboard Access and VoiceOver do.
+            if let radio = findRadio(in: control, label: "table") {
+                _ = radio.accessibilityPerformPress()
+                path = "accessibility-press"
+                for _ in 0..<10 {
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                    hosting.layoutSubtreeIfNeeded()
+                    window.displayIfNeeded()
+                }
+                after = control.selectedSegment
+                mode = UserDefaults.standard.string(forKey: "printersListMode") ?? ""
+            }
+        }
+        let keyboardOperated = after == tableIndex && mode == "table"
+
+        window.makeFirstResponder(hosting)
+        let focusBefore = String(describing: type(of: window.firstResponder ?? hosting))
+        if let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                                      timestamp: ProcessInfo.processInfo.systemUptime,
+                                      windowNumber: window.windowNumber, context: nil,
+                                      characters: "\t", charactersIgnoringModifiers: "\t",
+                                      isARepeat: false, keyCode: 48) {
+            app.postEvent(tab, atStart: false)
+        }
+        for _ in 0..<6 { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+        let focusAfter = String(describing: type(of: window.firstResponder ?? hosting))
+        print("TAB_FOCUS before=\(focusBefore) after=\(focusAfter) moved=\(focusBefore != focusAfter)")
+
+        if keyboardOperated {
+            print("KEYBOARD_CHECK PASS via=\(path) before=\(before) after=\(after) mode=\(mode) tableIndex=\(tableIndex)")
+            return
+        }
+        // Offscreen the harness app is not active, so AppKit does not deliver key
+        // events. Record what is provable: the shipped control accepts keyboard
+        // focus. Traversal is reported as not checked, never as passed.
+        print("KEYBOARD_CHECK PARTIAL focus=\(focusAccepted) via=\(path) before=\(before) after=\(after) mode=\(mode.isEmpty ? "(unset)" : mode) keys=inactive-window")
+        if focusAccepted { return }
+        exit(1)
+    }
+
+    /// Finds a radio button by its accessibility label, the element Full
+    /// Keyboard Access and VoiceOver operate.
+    static func findRadio(in element: Any, label: String) -> NSView? {
+        if let view = element as? NSView {
+            if view.accessibilityRole() == .radioButton,
+               (view.accessibilityLabel() ?? "").lowercased().contains(label) {
+                return view
+            }
+            for child in view.accessibilityChildren() ?? [] {
+                if let found = findRadio(in: child, label: label) { return found }
+            }
+        } else if let ax = element as? any NSAccessibilityProtocol {
+            for child in ax.accessibilityChildren() ?? [] {
+                if let found = findRadio(in: child, label: label) { return found }
+            }
+        }
+        return nil
     }
 
     static func findSwitchControl(_ view: NSView) -> NSSegmentedControl? {

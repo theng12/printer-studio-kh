@@ -100,6 +100,8 @@ struct PrinterStudioApp: App {
 final class AppState: ObservableObject {
 
     @Published var printers: [Printer] = []
+    /// Set when CUPS could not be read; the list is unknown, not empty.
+    @Published var printersError: String?
     @Published var detailedPrinters: [Printer] = []
     @Published var sharingEnabled = false
     @Published var watcherInstalled = false
@@ -246,7 +248,8 @@ final class AppState: ObservableObject {
     func refresh() {
         work.async { [weak self] in
             guard let self else { return }
-            let printers = CUPS.listPrinters()
+            let listing = CUPS.listPrintersChecked()
+            let printers = listing.printers
             let sharing = CUPS.isSharingEnabled()
             let usb = Driver.usbDevices()
             let jobs = CUPS.unfinishedJobs()
@@ -271,6 +274,7 @@ final class AppState: ObservableObject {
 
             DispatchQueue.main.async {
                 self.printers = printers
+                self.printersError = listing.error
                 self.sharingEnabled = sharing
                 self.usbDevices = usb
                 self.unfinishedJobs = jobs

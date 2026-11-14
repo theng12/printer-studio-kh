@@ -197,6 +197,71 @@ struct USBGroup: Identifiable {
     let count: Int
 }
 
+struct JobLine: Hashable {
+    let queue: String
+    let id: String
+    let user: String
+    let bytes: Int?
+}
+
+struct JobGroup: Identifiable {
+    let queue: String
+    let count: Int
+    let users: [String]
+    let bytes: Int?
+
+    var id: String { queue }
+}
+
+/// Turns raw `lpstat -W not-completed` lines into something a person can act on.
+enum JobParser {
+    static func parse(_ lines: [String]) -> [JobLine] {
+        lines.compactMap { line in
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            guard let first = parts.first, !first.isEmpty else { return nil }
+            var queue = first
+            var jobID = ""
+            if let dash = first.lastIndex(of: "-") {
+                queue = String(first[..<dash])
+                jobID = String(first[first.index(after: dash)...])
+            }
+            let user = parts.count > 1 ? parts[1] : "unknown"
+            var bytes: Int?
+            if let marker = parts.firstIndex(of: "bytes"), marker > 0 {
+                bytes = Int(parts[marker - 1])
+            }
+            if bytes == nil, parts.count > 2 { bytes = Int(parts[2]) }
+            return JobLine(queue: queue, id: jobID, user: user, bytes: bytes)
+        }
+    }
+
+    /// Groups jobs by queue in first-seen order, with unique users and a total size.
+    static func summarize(_ lines: [String]) -> [JobGroup] {
+        let jobs = parse(lines)
+        var order: [String] = []
+        var counts: [String: Int] = [:]
+        var users: [String: [String]] = [:]
+        var bytes: [String: Int] = [:]
+        for job in jobs {
+            if counts[job.queue] == nil { order.append(job.queue) }
+            counts[job.queue, default: 0] += 1
+            if !(users[job.queue] ?? []).contains(job.user) {
+                users[job.queue, default: []].append(job.user)
+            }
+            if let size = job.bytes { bytes[job.queue, default: 0] += size }
+        }
+        return order.map { queue in
+            JobGroup(queue: queue, count: counts[queue] ?? 0,
+                     users: users[queue] ?? [], bytes: bytes[queue])
+        }
+    }
+
+    static func sizeLabel(_ bytes: Int?) -> String? {
+        guard let bytes else { return nil }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+}
+
 enum USBDeduper {
     /// Groups identical USB devices (same name, vendorID, productID) in stable
     /// first-seen order, carrying a count.

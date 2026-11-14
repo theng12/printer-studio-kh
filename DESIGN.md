@@ -153,18 +153,26 @@ are SF Symbols at 13–16 pt, stroke-consistent, always paired with a text label
 - **Cards** — an adaptive grid (minimum 340 pt) with one measured minimum
   height per row, a quiet border, a state badge, and a metric grid with a fixed
   label column so values line up across cards.
-- **Table** — a fixed header row and aligned columns (Name flexible, Connection
-  170, State 96, Shared 64, Paper 150, Actions). Below its minimum width the
-  table scrolls horizontally instead of clipping.
+- **Table** — one compact line per row: Printer (name, then location and model
+  as 10–11 pt captions), State, Shared, Actions. The State column shows the badge
+  once, never a badge plus plain text. Below its minimum width the table scrolls
+  horizontally instead of clipping.
 - **One primary action per row** — Print test page on a printer, Open to
-  everyone on a blocked queue. Share/Stop sharing, Pause/Resume, Clear jobs and
-  Restrict live in a labelled ⋯ menu on that row.
+  everyone on a blocked queue. Share/Stop sharing, Pause/Resume, Rename…, Paper
+  size and Clear jobs live in a labelled ⋯ menu on that row. Rename is an in-app
+  sheet, never a native prompt; cards keep their inline name field.
+- **Action rows** — buttons pack with one uniform 10 pt gap (`FlowLayout`) and
+  wrap as a group; no adaptive columns with arbitrary holes.
 - **Warnings** — grouped under "Needs attention (n)" and "Suggestions (n)";
   identical lines collapse into one row with ×n.
 - **Deduped rows** — consecutive identical Activity entries and identical USB
   devices collapse into one row with ×n.
+- **Job rows** — "N jobs on <printer> — users · size" with one Clear jobs action;
+  the raw lpstat line stays in the log, not in the UI.
 - **Metric lines** — label in muted, value in body, one value per line; the
   label column never reflows per row.
+- **Failures** — a page that cannot read its source shows a named error and a
+  Retry, never an empty state that reads as "nothing here".
 
 ## Do's and Don'ts
 

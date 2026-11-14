@@ -112,6 +112,44 @@ struct TestListPresentation {
         assertTest(grouped[1].name == "Other" && grouped[1].count == 1, "Distinct USB device remains separate")
         assertTest(grouped[2].productID == "0xe82b" && grouped[2].count == 1, "Same name but different productID is separate")
 
+        // Job lines become a human summary with a queue, users and a size.
+        let rawJobs = [
+            "HP_Laser_107a-42 alice 102400 bytes",
+            "HP_Laser_107a-43 bob 204800 bytes",
+            "Xprinter_Label-7 alice 1024 bytes",
+        ]
+        let parsedJobs = JobParser.parse(rawJobs)
+        assertTest(parsedJobs.count == 3, "Three lpstat lines parse")
+        assertTest(parsedJobs[0].queue == "HP_Laser_107a" && parsedJobs[0].id == "42"
+                   && parsedJobs[0].user == "alice" && parsedJobs[0].bytes == 102400,
+                   "Queue, job id, user and bytes parse from an lpstat line")
+        let jobGroups = JobParser.summarize(rawJobs)
+        assertTest(jobGroups.count == 2, "Jobs group by queue")
+        assertTest(jobGroups[0].queue == "HP_Laser_107a" && jobGroups[0].count == 2,
+                   "Two jobs on one queue carry a count")
+        assertTest(jobGroups[0].users == ["alice", "bob"], "Group users are unique, in first-seen order")
+        assertTest(jobGroups[0].bytes == 307200, "Group bytes add up")
+        assertTest(JobParser.summarize([]).isEmpty, "No jobs summarize to nothing")
+        assertTest(JobParser.sizeLabel(1024)?.contains("KB") == true, "Size label is human-readable")
+
+        // CUPS failure is a named error, not an empty list.
+        let failedResult = CommandResult(status: 1, stdout: "", stderr: "scheduler is not running\nmore")
+        assertTest(CUPS.listingError(failedResult) == "scheduler is not running",
+                   "A failed lpstat names its first stderr line")
+        assertTest(CUPS.listingError(CommandResult(status: 0, stdout: "", stderr: "")) == nil,
+                   "A successful lpstat has no error")
+        assertTest(CUPS.listingError(CommandResult(status: 2, stdout: "", stderr: ""))?.contains("2") == true,
+                   "A silent failure still names the exit status")
+
+        // Network printers read as a name, not a percent-encoded URI.
+        let network = Printer(name: "q", description: "HP Laser 108w",
+                              deviceURI: "ipps://HP%20Laser%20108w._ipps._tcp.local./")
+        assertTest(network.friendlyLocation == "Network · HP Laser 108w",
+                   "IPP URI becomes the advertised printer name")
+        let address = Printer(name: "q", deviceURI: "ipp://192.168.1.5/printers/x")
+        assertTest(address.friendlyLocation == "Network · 192.168.1.5",
+                   "An IP address stays an address")
+
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
     }

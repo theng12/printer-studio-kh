@@ -62,6 +62,16 @@ struct Printer: Identifiable, Hashable {
             let host = rest.split(separator: "/").first.map(String.init) ?? rest
             let cleaned = host.split(separator: ".").first.map(String.init) ?? host
             return "Network · " + (cleaned.removingPercentEncoding ?? cleaned)
+        case .ipp:
+            // ipps://Name._ipps._tcp.local./ — show the advertised name, not the URI.
+            let rest = deviceURI
+                .replacingOccurrences(of: "ipps://", with: "")
+                .replacingOccurrences(of: "ipp://", with: "")
+            let raw = rest.split(separator: "/").first.map(String.init) ?? rest
+            var name = raw.removingPercentEncoding ?? raw
+            if let range = name.range(of: "._") { name = String(name[..<range.lowerBound]) }
+            name = name.trimmingCharacters(in: CharacterSet(charactersIn: "./"))
+            return "Network · " + (name.isEmpty ? displayName : name)
         default:
             return deviceURI
         }

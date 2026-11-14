@@ -78,6 +78,7 @@ struct CardGroupStyle: GroupBoxStyle {
             configuration.content
         }
         .padding(5)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Palette.surface))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.border, lineWidth: 1))
     }
@@ -272,6 +273,31 @@ struct EmptyState: View {
     }
 }
 
+/// A failure with its cause and one way forward. Never used for "no data".
+struct ErrorState: View {
+    let title: String
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.largeTitle)
+                .foregroundStyle(Palette.warning)
+            Text(title).font(.headline)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Retry", action: retry)
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+    }
+}
+
 // MARK: - Reusable pieces
 
 struct StatusCard: View {
@@ -338,30 +364,12 @@ struct OverviewView: View {
                         .foregroundStyle(Palette.muted)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
-                    StatusCard(
-                        title: "PRINTER SHARING",
-                        value: state.sharingEnabled ? "On" : "Off",
-                        symbol: state.sharingEnabled ? "checkmark.circle.fill" : "xmark.circle",
-                        tint: state.sharingEnabled ? Palette.success : Palette.warning)
-                        .frame(minHeight: 80, alignment: .topLeading)
-                    StatusCard(
-                        title: "PRINTERS",
-                        value: "\(state.printers.count)",
-                        symbol: "printer")
-                        .frame(minHeight: 80, alignment: .topLeading)
-                    StatusCard(
-                        title: "QUEUES BLOCKED",
-                        value: "\(state.queuesHeldShut.count)",
-                        symbol: state.queuesHeldShut.isEmpty ? "checkmark.shield" : "exclamationmark.triangle.fill",
-                        tint: state.queuesHeldShut.isEmpty ? Palette.success : Palette.danger)
-                        .frame(minHeight: 80, alignment: .topLeading)
-                    StatusCard(
-                        title: "HP LASER 107a",
-                        value: state.laser107a != nil ? "Connected" : "Not connected",
-                        symbol: state.laser107a != nil ? "cable.connector" : "cable.connector.slash",
-                        tint: state.laser107a != nil ? Palette.success : Palette.muted)
-                        .frame(minHeight: 80, alignment: .topLeading)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) { statusCards }
+                        .frame(minWidth: 620)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        statusCards
+                    }
                 }
 
                 let sections = WarningGrouper.group(adviceItems)
@@ -383,7 +391,7 @@ struct OverviewView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Quick actions").font(.headline)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
+                    FlowLayout(spacing: 10) {
                         Button("Fix shared queues now") { state.fixSharingNow() }
                         Button(state.sharingEnabled ? "Turn off Printer Sharing" : "Turn on Printer Sharing") {
                             state.setSharing(!state.sharingEnabled)
@@ -399,6 +407,32 @@ struct OverviewView: View {
             }
             .padding(24)
         }
+    }
+
+    @ViewBuilder private var statusCards: some View {
+        StatusCard(
+            title: "PRINTER SHARING",
+            value: state.sharingEnabled ? "On" : "Off",
+            symbol: state.sharingEnabled ? "checkmark.circle.fill" : "xmark.circle",
+            tint: state.sharingEnabled ? Palette.success : Palette.warning)
+            .frame(minHeight: 80, alignment: .topLeading)
+        StatusCard(
+            title: "PRINTERS",
+            value: "\(state.printers.count)",
+            symbol: "printer")
+            .frame(minHeight: 80, alignment: .topLeading)
+        StatusCard(
+            title: "QUEUES BLOCKED",
+            value: "\(state.queuesHeldShut.count)",
+            symbol: state.queuesHeldShut.isEmpty ? "checkmark.shield" : "exclamationmark.triangle.fill",
+            tint: state.queuesHeldShut.isEmpty ? Palette.success : Palette.danger)
+            .frame(minHeight: 80, alignment: .topLeading)
+        StatusCard(
+            title: "HP LASER 107a",
+            value: state.laser107a != nil ? "Connected" : "Not connected",
+            symbol: state.laser107a != nil ? "cable.connector" : "cable.connector.slash",
+            tint: state.laser107a != nil ? Palette.success : Palette.muted)
+            .frame(minHeight: 80, alignment: .topLeading)
     }
 
     private var adviceItems: [AdviceItem] {
@@ -456,6 +490,7 @@ struct OverviewView: View {
 struct PrintersView: View {
     @EnvironmentObject var state: AppState
     @AppStorage(PrinterListMode.storageKey) private var modeRaw = PrinterListMode.defaultMode.rawValue
+    @State private var renamingPrinter: Printer?
 
     private var mode: PrinterListMode { PrinterListMode.parse(modeRaw) }
 
@@ -469,7 +504,7 @@ struct PrintersView: View {
             PrinterTableHeader()
             Divider()
             ForEach(state.printers) { printer in
-                PrinterTableRow(printer: printer)
+                PrinterTableRow(printer: printer, onRename: { renamingPrinter = printer })
                 Divider()
             }
         }
@@ -503,8 +538,13 @@ struct PrintersView: View {
                     }
                 }
 
-                if state.printers.isEmpty {
-                    EmptyState(title: "No printers", symbol: "printer.slash",
+                if let error = state.printersError {
+                    ErrorState(title: "Printers could not be read",
+                               message: error,
+                               retry: { state.refreshNow() })
+                        .frame(height: 260)
+                } else if state.printers.isEmpty {
+                    EmptyState(title: "No printers", symbol: "printer",
                                detail: "This Mac has no print queues yet.")
                         .frame(height: 240)
                 } else if mode == .cards {
@@ -523,6 +563,52 @@ struct PrintersView: View {
             }
             .padding(24)
         }
+        .sheet(item: $renamingPrinter) { printer in
+            RenamePrinterSheet(printer: printer)
+        }
+    }
+}
+
+/// Rename lives in the row's overflow in table mode: an in-app sheet, never a
+/// native prompt. Cards keep their inline field.
+private struct RenamePrinterSheet: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    let printer: Printer
+    @State private var name: String
+
+    init(printer: Printer) {
+        self.printer = printer
+        _name = State(initialValue: printer.displayName)
+    }
+
+    private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Rename \(printer.displayName)").font(.headline)
+            TextField("Printer name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Printer name")
+            Text("This name is used when other Macs and devices print to it.")
+                .font(.caption)
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    state.printerNameDrafts[printer.name] = trimmed
+                    state.renamePrinter(printer)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(trimmed.isEmpty || trimmed == printer.displayName)
+            }
+        }
+        .padding(20)
+        .frame(width: 380)
     }
 }
 
@@ -538,6 +624,7 @@ private struct PrinterMetricsGrid: View {
                 Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+                    .help(printer.deviceURI)
             }
             if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
                 GridRow {
@@ -569,6 +656,7 @@ private struct PrinterActions: View {
     let printer: Printer
     let detail: Printer?
     var showPaperMenu = false
+    var onRename: (() -> Void)? = nil
 
     private var resolved: Printer { detail ?? printer }
 
@@ -586,6 +674,9 @@ private struct PrinterActions: View {
                     Button("Open to everyone") { state.openQueue(resolved) }
                 }
                 Button(printer.enabled ? "Pause" : "Resume") { state.toggleEnabled(printer) }
+                if let onRename {
+                    Button("Rename…", action: onRename)
+                }
                 if showPaperMenu, let choices = state.paperChoices[printer.name], !choices.isEmpty {
                     Menu("Paper size") {
                         ForEach(choices, id: \.key) { paper in
@@ -700,49 +791,28 @@ private struct PrinterTableHeader: View {
 private struct PrinterTableRow: View {
     @EnvironmentObject var state: AppState
     let printer: Printer
+    var onRename: (() -> Void)?
 
     private var detail: Printer? {
         state.detailedPrinters.first { $0.name == printer.name }
     }
 
-    private func stateText(_ printer: Printer) -> String {
-        if printer.isStopped { return "Paused" }
-        if printer.isPrinting { return "Printing" }
-        if printer.isIdle { return "Ready" }
-        return printer.state.capitalized
-    }
-
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(printer.displayName).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 6) {
-                    TextField("Name", text: Binding(
-                        get: { state.printerNameDrafts[printer.name] ?? printer.displayName },
-                        set: { state.printerNameDrafts[printer.name] = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .frame(minWidth: 110, maxWidth: 220, alignment: .leading)
-                    .accessibilityLabel("Printer name")
-                    Button("Save name") { state.renamePrinter(printer) }
-                        .controlSize(.small)
-                        .disabled(state.busy || (state.printerNameDrafts[printer.name] ?? printer.displayName) == printer.displayName)
-                }
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(printer.displayName).font(.callout.weight(.medium)).lineLimit(1)
                 Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
                     .font(.caption).foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .help(printer.deviceURI)
                 if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
-                    Text(model).font(.caption2).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+                    Text(model).font(.caption2).foregroundStyle(Palette.muted).lineLimit(1)
                 }
             }
             .frame(minWidth: 170, maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(stateText(printer)).font(.callout)
-                StateBadge(printer: printer)
-            }
-            .frame(width: 88, alignment: .leading)
+            StateBadge(printer: printer)
+                .frame(width: 88, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text((detail?.isShared ?? printer.isShared) ? "Yes" : "No").font(.callout)
@@ -756,11 +826,11 @@ private struct PrinterTableRow: View {
             }
             .frame(width: 56, alignment: .leading)
 
-            PrinterActions(printer: printer, detail: detail, showPaperMenu: true)
+            PrinterActions(printer: printer, detail: detail, showPaperMenu: true, onRename: onRename)
                 .frame(width: 160, alignment: .leading)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
     }
 }
 
@@ -924,9 +994,34 @@ struct SharingView: View {
                 if !state.unfinishedJobs.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Unfinished jobs").font(.headline)
-                        ForEach(StringDeduper.dedupe(state.unfinishedJobs)) { job in
-                            Text(job.display).font(.system(.caption, design: .monospaced))
-                                .fixedSize(horizontal: false, vertical: true)
+                        let groups = JobParser.summarize(state.unfinishedJobs)
+                        if groups.isEmpty {
+                            ForEach(StringDeduper.dedupe(state.unfinishedJobs)) { job in
+                                Text(job.display).font(.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        } else {
+                            ForEach(groups) { group in
+                                let name = state.printers.first { $0.name == group.queue }?.displayName ?? group.queue
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("\(group.count) job\(group.count == 1 ? "" : "s") on \(name)")
+                                            .font(.callout)
+                                        Text([group.users.joined(separator: ", "), JobParser.sizeLabel(group.bytes)]
+                                                .compactMap { $0 }.joined(separator: " · "))
+                                            .font(.caption)
+                                            .foregroundStyle(Palette.muted)
+                                    }
+                                    Spacer()
+                                    if let printer = state.printers.first(where: { $0.name == group.queue }) {
+                                        Button("Clear jobs") { state.clearJobs(on: printer) }
+                                            .controlSize(.small)
+                                            .help("Cancel every unfinished job on \(name)")
+                                    }
+                                }
+                                .padding(10)
+                                .cardSurface(radius: 8)
+                            }
                         }
                     }
                 }
@@ -1011,7 +1106,7 @@ struct SetupView: View {
                         : "Not held — CUPS has the device, so jobs can print.",
                     done: !state.printerHeldByIPPUSB)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
+                FlowLayout(spacing: 10) {
                     Button("Set up the printer") { state.installDriver() }
                         .buttonStyle(.borderedProminent)
                         .disabled(state.busy || !DriverInstaller.hasPayload)
@@ -1133,6 +1228,58 @@ struct StickerSizesView: View {
             : "offers \(offered) sizes, \(ours) of them yours"
     }
 
+    /// The editor fills the card when it fits, so Remove sits on its right edge;
+    /// below its minimum it scrolls rather than clipping.
+    private var stickerTable: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Text("On").frame(width: 30, alignment: .leading)
+                Text("Name").frame(width: 150, alignment: .leading)
+                Text("Width (mm)").frame(width: 80, alignment: .leading)
+                Text("Height (mm)").frame(width: 80, alignment: .leading)
+                Text("Inches").frame(width: 150, alignment: .leading)
+                Spacer(minLength: 0)
+            }
+            .font(.caption)
+            .foregroundStyle(Palette.muted)
+
+            ForEach($state.stickerSizes) { $size in
+                HStack(spacing: 8) {
+                    Toggle("", isOn: $size.enabled)
+                        .labelsHidden()
+                        .frame(width: 30, alignment: .leading)
+                        .help("Include this size")
+                        .accessibilityLabel("Include \(size.name)")
+                    TextField("Name", text: $size.name)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 150)
+                    TextField("mm", value: $size.widthMM, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                    TextField("mm", value: $size.heightMM, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                    Text(size.inchesLabel + " in")
+                        .font(.callout)
+                        .foregroundStyle(Palette.muted)
+                        .frame(width: 150, alignment: .leading)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 0)
+                    Button {
+                        state.removeStickerSize(size.id)
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove this size")
+                    .accessibilityLabel("Remove \(size.name)")
+                }
+            }
+        }
+        .frame(minWidth: 600, alignment: .leading)
+        .padding(6)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -1143,58 +1290,13 @@ struct StickerSizesView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 GroupBox {
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack(spacing: 8) {
-                                Text("On").frame(width: 30, alignment: .leading)
-                                Text("Name").frame(width: 150, alignment: .leading)
-                                Text("Width (mm)").frame(width: 80, alignment: .leading)
-                                Text("Height (mm)").frame(width: 80, alignment: .leading)
-                                Text("Inches").frame(width: 150, alignment: .leading)
-                                Spacer(minLength: 0)
-                            }
-                            .font(.caption)
-                            .foregroundStyle(Palette.muted)
-
-                            ForEach($state.stickerSizes) { $size in
-                                HStack(spacing: 8) {
-                                    Toggle("", isOn: $size.enabled)
-                                        .labelsHidden()
-                                        .frame(width: 30, alignment: .leading)
-                                        .help("Include this size")
-                                        .accessibilityLabel("Include \(size.name)")
-                                    TextField("Name", text: $size.name)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 150)
-                                    TextField("mm", value: $size.widthMM, format: .number)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 80)
-                                    TextField("mm", value: $size.heightMM, format: .number)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 80)
-                                    Text(size.inchesLabel + " in")
-                                        .font(.callout)
-                                        .foregroundStyle(Palette.muted)
-                                        .frame(width: 150, alignment: .leading)
-                                        .textSelection(.enabled)
-                                    Spacer(minLength: 0)
-                                    Button {
-                                        state.removeStickerSize(size.id)
-                                    } label: {
-                                        Image(systemName: "minus.circle")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help("Remove this size")
-                                    .accessibilityLabel("Remove \(size.name)")
-                                }
-                            }
-                        }
-                        .frame(minWidth: 600, alignment: .leading)
-                        .padding(6)
+                    ViewThatFits(in: .horizontal) {
+                        stickerTable.frame(maxWidth: .infinity)
+                        ScrollView(.horizontal, showsIndicators: true) { stickerTable }
                     }
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
+                FlowLayout(spacing: 10) {
                     Button("Add a size") { state.addStickerSize() }
                     Button("Restore defaults") { state.resetStickerSizes() }
                     Button("Apply to printers") { state.applyStickerSizes() }
@@ -1266,6 +1368,13 @@ struct WhatsNewView: View {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var bullets: [String] {
+        notes.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { $0.hasPrefix("- ") ? String($0.dropFirst(2)) : $0 }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
@@ -1273,9 +1382,18 @@ struct WhatsNewView: View {
                 Text("Printer Studio KH \(version)").foregroundStyle(Palette.muted)
             }
             ScrollView {
-                Text(notes)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(bullets, id: \.self) { line in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("•").foregroundStyle(Palette.muted)
+                            Text(line)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .frame(maxWidth: 640, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack {
                 Spacer()
@@ -1377,7 +1495,7 @@ struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
+                    FlowLayout(spacing: 10) {
                         Button("Read Me First") { state.openReadMe() }
                         Button("Refresh") { state.refreshNow() }
                         if let log = URL(string: "file://\(ShareFix.logFile.path)") {

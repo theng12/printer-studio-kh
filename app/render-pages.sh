@@ -8,8 +8,12 @@
 #   app/render-pages.sh [pages|all] [out-dir] [WxH ...]
 #
 # Pages: overview, printers, printers-table, sharing, setup, stickers, activity,
-# settings, whats-new. "all" = every page. "window" renders the full MainWindow.
+# settings, whats-new. "all" = every page; "all-empty" = the empty first-run
+# overview/printers/sharing. "window" renders the full MainWindow; "window-printers"
+# and "window-sharing" render those pages inside the real window.
 # Default sizes: pages 375x900 768x900 1440x900; window 860x580 1024x720 1440x900.
+# "switch-check" drives the Cards/Table control; "keyboard-check" drives it with the
+# keyboard and records Tab focus movement.
 # If WxH arguments are given they override defaults for all targets.
 # Every render is produced in light and dark (-light/-dark suffix).
 
@@ -32,13 +36,16 @@ for arg in "$@"; do
 done
 
 ALL_PAGES=(overview printers printers-table sharing setup stickers activity settings whats-new)
+EMPTY_PAGES=(overview-empty printers-empty sharing-empty)
 
 # Resolve targets.
 TARGETS=()
 if [ "$PAGE_SPEC" = "all" ]; then
   TARGETS=("${ALL_PAGES[@]}")
+elif [ "$PAGE_SPEC" = "all-empty" ]; then
+  TARGETS=("${EMPTY_PAGES[@]}")
 elif [ "$PAGE_SPEC" = "all+window" ] || [ "$PAGE_SPEC" = "all,window" ]; then
-  TARGETS=("${ALL_PAGES[@]}" window)
+  TARGETS=("${ALL_PAGES[@]}" window window-printers window-sharing)
 else
   IFS=',' read -r -a TARGETS <<< "$PAGE_SPEC"
 fi
@@ -189,6 +196,18 @@ if [ "$PAGE_SPEC" = "switch-check" ]; then
   exit "$rc"
 fi
 
+# Keyboard pass: focus the Cards/Table control, drive it with an arrow key, and
+# record whether Tab moves focus. Offscreen; no window is ever shown.
+if [ "$PAGE_SPEC" = "keyboard-check" ]; then
+  set +e
+  PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+    "$BIN" keyboard-check "$OUT_DIR" 2>&1 | tee "$OUT_DIR/keyboard-check.log"
+  rc=${PIPESTATUS[0]}
+  set -e
+  echo "KEYBOARD_CHECK_EXIT $rc"
+  exit "$rc"
+fi
+
 # Contrast probe (independent of renders). It exits non-zero when body or muted
 # drops below 4.5; print the measured line either way so the failure is readable.
 set +e
@@ -257,7 +276,7 @@ for target in "${TARGETS[@]}"; do
   sizes_to_use=()
   if [ ${#EXPLICIT_SIZES[@]} -gt 0 ]; then
     sizes_to_use=("${EXPLICIT_SIZES[@]}")
-  elif [ "$target" = "window" ]; then
+  elif [[ "$target" == window* ]]; then
     sizes_to_use=("${WINDOW_SIZES[@]}")
   else
     sizes_to_use=("${PAGE_SIZES[@]}")
@@ -265,19 +284,21 @@ for target in "${TARGETS[@]}"; do
 
   for size in "${sizes_to_use[@]}"; do
     for appearance in light dark; do
-      if [ "$target" = "window" ]; then
+      if [[ "$target" == window* ]]; then
         PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
-          render_one window main "$size" "$appearance"
+          render_one window "$target" "$size" "$appearance"
       elif [ "$target" = "printers-table" ]; then
-        # printers-table: UI may not read list mode at cb34f18; render anyway and note.
         PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
           render_one page printers-table "$size" "$appearance" table
       elif [ "$target" = "printers" ]; then
         PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
           render_one page printers "$size" "$appearance" cards
-      elif [ "$target" = "whats-new" ]; then
-        PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
-          render_one page whats-new "$size" "$appearance"
+      elif [[ "$target" == *-empty ]]; then
+        PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_RENDER_EMPTY=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+          render_one page "$target" "$size" "$appearance"
+      elif [[ "$target" == *-error ]]; then
+        PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_RENDER_ERROR=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+          render_one page "$target" "$size" "$appearance"
       else
         PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
           render_one page "$target" "$size" "$appearance"
