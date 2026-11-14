@@ -283,6 +283,9 @@ for target in "${TARGETS[@]}"; do
   fi
 
   for size in "${sizes_to_use[@]}"; do
+    # What's New is a dialog whose window minimum is 420 pt; below that it would
+    # overflow rather than reflow, so render it at its real minimum.
+    if [ "$target" = "whats-new" ] && [[ "$size" == 375x* ]]; then size="420x900"; fi
     for appearance in light dark; do
       if [[ "$target" == window* ]]; then
         if [[ "$target" == *-outcome ]]; then

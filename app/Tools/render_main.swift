@@ -214,7 +214,7 @@ struct PageRenderHarness {
             || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_EMPTY"] == "1"
         let isError = opts.target.hasSuffix("-error")
             || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_ERROR"] == "1"
-        let isOutcome = opts.target.hasSuffix("-outcome")
+        let isOutcome = opts.target.hasSuffix("-outcome") || opts.target == "banner-printers"
             || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_OUTCOME"] == "1"
         if baseTarget == "printers-table" {
             UserDefaults.standard.set("table", forKey: "printersListMode")
@@ -238,6 +238,13 @@ struct PageRenderHarness {
         }
 
         let rootView: AnyView = {
+            if baseTarget == "banner-printers" {
+                return AnyView(VStack(spacing: 0) {
+                    ResultBanner(message: state.lastMessage ?? "", ok: state.lastMessageOK) {}
+                    PrintersView()
+                        .environmentObject(state)
+                })
+            }
             if opts.mode == "window" {
                 if opts.target.hasPrefix("window-whats-new") {
                     return AnyView(WhatsNewView().environmentObject(state))
@@ -259,6 +266,10 @@ struct PageRenderHarness {
             .tint(Color.accentColor)
             .groupBoxStyle(CardGroupStyle())
             .environment(\.controlActiveState, .key))
+        // The requested size is authoritative: without this the hosting view
+        // pushes its full content height into the window and a ScrollView page
+        // grows the window instead of clipping.
+        controller.sizingOptions = []
         let hosting = controller.view
         hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
 
@@ -270,10 +281,8 @@ struct PageRenderHarness {
         if isWindowRender {
             window.title = "Printer Studio KH"
             // The real window's content area, with the title bar and toolbar in
-            // the capture. Cap the height so a banner cannot grow the window
-            // beyond the measured size.
-            window.contentMinSize = NSSize(width: opts.width, height: opts.height)
-            window.contentMaxSize = NSSize(width: opts.width, height: opts.height)
+            // the capture. The window may settle taller than the request when a
+            // banner is present; MEASURE reports the actual size.
         }
         let windowAppearance = NSAppearance(named: opts.appearance == "dark" ? .darkAqua : .aqua)
         window.appearance = windowAppearance
@@ -296,8 +305,6 @@ struct PageRenderHarness {
             hosting.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
         }
-        if isWindowRender { window.setContentSize(NSSize(width: opts.width, height: opts.height)) }
-
         // A real window includes its title bar and toolbar; capture the frame view.
         let captureView = isWindowRender ? (window.contentView?.superview ?? hosting) : hosting
         guard let rep = captureView.bitmapImageRepForCachingDisplay(in: captureView.bounds) else {
@@ -326,7 +333,7 @@ struct PageRenderHarness {
         // A result banner spans the detail width by design; sample the page
         // background from the bottom edge for that render.
         let geom = measure(rep: rep, isWindow: isWindowRender, accent: accentFill,
-                           sampleBottom: isWindowRender || opts.target.hasSuffix("-outcome"))
+                           sampleBottom: isWindowRender || opts.target.hasSuffix("-outcome") || opts.target == "banner-printers")
         emitResult(opts: opts, ok: true, error: nil, geom: geom,
                    controls: controlStates(captureView),
                    pixels: (rep.pixelsWide, rep.pixelsHigh))
