@@ -55,6 +55,7 @@ struct WhatsNewSheetHost: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .sheet(isPresented: $showing, onDismiss: { flag.dismissed = true }) {
                 WhatsNewView()
+                    .onPreferenceChange(ProbeFrames.self) { InteractionProbe.frames = $0 }
             }
     }
 }
@@ -291,7 +292,8 @@ struct PageRenderHarness {
             .foregroundStyle(Palette.body)
             .tint(Color.accentColor)
             .groupBoxStyle(CardGroupStyle())
-            .environment(\.controlActiveState, .key))
+            .environment(\.controlActiveState, .key)
+            .onPreferenceChange(ProbeFrames.self) { InteractionProbe.frames = $0 })
         // The requested size is authoritative: without this the hosting view
         // pushes its full content height into the window and a ScrollView page
         // grows the window instead of clipping.
@@ -300,15 +302,21 @@ struct PageRenderHarness {
         hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
 
         let isWindowRender = opts.mode == "window"
-        let window = NSWindow(contentRect: hosting.frame,
-                              styleMask: isWindowRender ? [.titled, .closable, .resizable] : [.borderless],
+        // What's New has no toolbar and keeps the classic titlebar; the main
+        // window matches the macOS 26 look: full-size content with a floating,
+        // transparent titlebar, which is also what stops SwiftUI washing the
+        // page heading under the bar.
+        let floatsTitlebar = isWindowRender && !opts.target.hasPrefix("window-whats-new")
+        var mask: NSWindow.StyleMask = isWindowRender ? [.titled, .closable, .resizable] : [.borderless]
+        if floatsTitlebar { mask.insert(.fullSizeContentView) }
+        let window = NSWindow(contentRect: hosting.frame, styleMask: mask,
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         if isWindowRender {
             window.title = "Printer Studio KH"
-            // The real window's content area, with the title bar and toolbar in
-            // the capture. The window may settle taller than the request when a
-            // banner is present; MEASURE reports the actual size.
+            window.titlebarAppearsTransparent = floatsTitlebar
+            // The real window with its title bar and toolbar in the capture;
+            // MEASURE reports the size actually drawn.
         }
         let windowAppearance = NSAppearance(named: opts.appearance == "dark" ? .darkAqua : .aqua)
         window.appearance = windowAppearance
@@ -320,9 +328,11 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        window.orderFront(nil)
-        // A non-key window draws the inactive selection style; make it key without
-        // activating the app or moving it on screen.
+        // Deliberately never ordered front: cacheDisplay draws an unordered
+        // window in full, and ordering it in would put a test window on the
+        // owner's desktop (AppKit pulls an offscreen frame back onto the screen).
+        // A non-key window draws the inactive selection style; make it key
+        // without activating the app.
         window.makeKey()
 
         // Let SwiftUI/AppKit-backed controls lay out and draw.
@@ -369,8 +379,12 @@ struct PageRenderHarness {
         if isWindowRender {
             let band = Int((window.frame.height - window.contentLayoutRect.height).rounded())
             chrome = band
-            headingTop = accessibilityTop(of: headingLabel(for: opts.target), in: captureView,
-                                          windowFrame: window.frame)
+            // SwiftUI global frames are content coordinates; the content's top
+            // in the captured image comes from the hosting view's own frame.
+            let contentTop = captureView.bounds.height - hosting.frame.maxY
+            if let heading = InteractionProbe.frames["heading"] {
+                headingTop = Int((contentTop + heading.minY).rounded())
+            }
             topWashPct = detailTopWash(rep: rep, chrome: band)
         }
         emitResult(opts: opts, ok: true, error: nil, geom: geom,
@@ -382,45 +396,9 @@ struct PageRenderHarness {
         }
     }
 
-    /// The page heading each window target draws, for the occlusion report.
-    static func headingLabel(for target: String) -> String {
-        switch target {
-        case "window-printers": return "Printers on this Mac"
-        case "window-sharing": return "Printer Sharing"
-        case "window-settings": return "Settings"
-        case "window-setup": return "HP Laser 107a"
-        case "window-stickers": return "Paper & sticker sizes"
-        case "window-activity": return "Activity"
-        case "window-whats-new": return "What's New"
-        default: return "Printer Studio KH"
-        }
-    }
-
-    /// Top of the drawn heading in image coordinates (top-left origin of the
-    /// captured window). The sidebar carries the same word on some screens, so
-    /// the highest match wins. -1 when the text is not in the accessibility tree.
-    static func accessibilityTop(of label: String, in view: NSView, windowFrame: NSRect) -> Int {
-        var tops: [Int] = []
-        func walk(_ element: Any) {
-            if let v = element as? NSView {
-                if (v.accessibilityLabel() ?? "") == label {
-                    tops.append(Int((windowFrame.maxY - v.accessibilityFrame().maxY).rounded()))
-                }
-                for child in v.accessibilityChildren() ?? [] { walk(child) }
-            } else if let ax = element as? any NSAccessibilityProtocol {
-                if (ax.accessibilityLabel() ?? "") == label {
-                    tops.append(Int((windowFrame.maxY - ax.accessibilityFrame().maxY).rounded()))
-                }
-                for child in ax.accessibilityChildren() ?? [] { walk(child) }
-            }
-        }
-        walk(view)
-        return tops.filter { $0 >= 0 }.min() ?? -1
-    }
-
     /// How much the page background just under the window chrome is brightened
-    /// against the same background further down, in percent. macOS 26's toolbar
-    /// fade shows up here as a positive number.
+    /// against the same background further down, in percent: a toolbar fade
+    /// washing the top of the detail area shows up here as a non-zero number.
     static func detailTopWash(rep: NSBitmapImageRep, chrome: Int) -> Double {
         let w = rep.pixelsWide, h = rep.pixelsHigh
         guard w > 60, chrome > 0, h > chrome + 240, let data = rep.bitmapData else { return 0 }
@@ -713,9 +691,8 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        window.orderFront(nil)
-        // A non-key window draws the inactive selection style; make it key without
-        // activating the app or moving it on screen.
+        // Never ordered front: an offscreen frame is pulled back onto the
+        // screen when ordered in. cacheDisplay and event delivery work unordered.
         window.makeKey()
         for _ in 0..<12 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.12))
@@ -859,7 +836,8 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        window.orderFront(nil)
+        // Never ordered front: ordering an offscreen window in pulls it onto
+        // the owner's screen. Unordered windows still draw and take events.
         window.makeKey()
         for _ in 0..<12 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.12))
@@ -1045,7 +1023,8 @@ struct PageRenderHarness {
             .foregroundStyle(Palette.body)
             .tint(Color.accentColor)
             .groupBoxStyle(CardGroupStyle())
-            .environment(\.controlActiveState, .key))
+            .environment(\.controlActiveState, .key)
+            .onPreferenceChange(ProbeFrames.self) { InteractionProbe.frames = $0 })
         controller.sizingOptions = []
         let hosting = controller.view
         hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
@@ -1060,16 +1039,16 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        window.orderFront(nil)
+        // Never ordered front: ordering an offscreen window in pulls it onto
+        // the owner's screen. Unordered windows still draw and take events.
         window.makeKey()
         pump(hosting: hosting, window: window)
 
         // 1 — reach the page through its own sidebar row.
         var nav = isWhatsNew ? "n/a" : "not-found"
         if !isWhatsNew, let title = sidebarTitle(opts.target) {
-            let row = findHit(in: hosting, role: .row, label: title)
-                ?? findHit(in: hosting, label: title)
-            if let row, let frame = row.frame, click(at: frame, on: window) {
+            if let frame = InteractionProbe.frames["nav.\(title)"],
+               clickProbeFrame(frame, on: window, hosting: hosting) {
                 nav = "click"
                 pump(hosting: hosting, window: window)
             }
@@ -1092,27 +1071,17 @@ struct PageRenderHarness {
             }
         case "whats-new":
             let sheet = window.attachedSheet
-            let sheetRoot: NSView = sheet?.contentView ?? hosting
-            if let done = findHit(in: sheetRoot, role: .button, label: "Done") ?? findHit(in: sheetRoot, label: "Done") {
-                if let frame = done.frame, click(at: frame, on: sheet ?? window) {
-                    via = "click"
-                    pump(hosting: hosting, window: window)
-                }
-                if !interactionOutcomeMet(opts.target, state: state, flag: flag) {
-                    if press(done) { via = "accessibility-press" }
-                    pump(hosting: hosting, window: window)
-                }
+            let sheetHosting = sheet?.contentView ?? hosting
+            if let frame = InteractionProbe.frames[probeName(opts.target)],
+               clickProbeFrame(frame, on: sheet ?? window, hosting: sheetHosting) {
+                via = "click"
+                pump(hosting: hosting, window: window)
             }
         default:
-            if let hit = findHit(in: hosting, role: .button, label: control) ?? findHit(in: hosting, label: control) {
-                if let frame = hit.frame, click(at: frame, on: window) {
-                    via = "click"
-                    pump(hosting: hosting, window: window)
-                }
-                if !interactionOutcomeMet(opts.target, state: state, flag: flag) {
-                    if press(hit) { via = "accessibility-press" }
-                    pump(hosting: hosting, window: window)
-                }
+            if let frame = InteractionProbe.frames[probeName(opts.target)],
+               clickProbeFrame(frame, on: window, hosting: hosting) {
+                via = "click"
+                pump(hosting: hosting, window: window)
             }
         }
         let met = interactionOutcomeMet(opts.target, state: state, flag: flag)
@@ -1219,48 +1188,28 @@ struct PageRenderHarness {
         }
     }
 
-    struct Hit {
-        let element: Any
-        let view: NSView?
-        let frame: CGRect?
+    /// The probe name of the control each page drives.
+    static func probeName(_ target: String) -> String {
+        switch target {
+        case "overview": return "control.fixQueues"
+        case "printers": return "control.printTest"
+        case "sharing": return "control.watcher"
+        case "setup": return "control.keepReady"
+        case "stickers": return "control.applySizes"
+        case "activity": return "control.refresh"
+        case "whats-new": return "control.done"
+        default: return ""
+        }
     }
 
-    /// Finds an accessibility element by role and label; SwiftUI's own controls
-    /// are elements rather than NSViews, so both are walked.
-    static func findHit(in root: Any, role: NSAccessibility.Role? = nil, label: String) -> Hit? {
-        func matches(_ text: String?) -> Bool {
-            (text ?? "").range(of: label, options: .caseInsensitive) != nil
+    /// A real mouse click at a probe frame (SwiftUI content coordinates,
+    /// top-left origin) through the window that hosts it.
+    static func clickProbeFrame(_ frame: CGRect, on window: NSWindow, hosting: NSView) -> Bool {
+        guard frame.width > 1, frame.height > 1 else { return false }
+        let point = NSPoint(x: frame.midX, y: hosting.bounds.height - frame.midY)
+        guard point.x >= 0, point.x <= window.frame.width, point.y >= 0, point.y <= window.frame.height else {
+            return false
         }
-        func walk(_ element: Any, view: NSView?) -> Hit? {
-            if let v = element as? NSView {
-                if (role == nil || v.accessibilityRole() == role), matches(v.accessibilityLabel()) {
-                    return Hit(element: v, view: v, frame: v.accessibilityFrame())
-                }
-                for child in v.accessibilityChildren() ?? [] {
-                    if let hit = walk(child, view: nil) { return hit }
-                }
-                for sub in v.subviews {
-                    if let hit = walk(sub, view: sub) { return hit }
-                }
-                return nil
-            }
-            if let ax = element as? any NSAccessibilityProtocol {
-                if (role == nil || ax.accessibilityRole() == role), matches(ax.accessibilityLabel()) {
-                    return Hit(element: element, view: nil, frame: ax.accessibilityFrame())
-                }
-                for child in ax.accessibilityChildren() ?? [] {
-                    if let hit = walk(child, view: nil) { return hit }
-                }
-            }
-            return nil
-        }
-        return walk(root, view: root as? NSView)
-    }
-
-    /// A real mouse click at the element's screen frame through its window.
-    static func click(at screenFrame: CGRect, on window: NSWindow) -> Bool {
-        guard screenFrame.width > 1, screenFrame.height > 1 else { return false }
-        let point = window.convertPoint(fromScreen: NSPoint(x: screenFrame.midX, y: screenFrame.midY))
         guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [],
                                             timestamp: ProcessInfo.processInfo.systemUptime,
                                             windowNumber: window.windowNumber, context: nil,
@@ -1272,18 +1221,6 @@ struct PageRenderHarness {
         window.sendEvent(down)
         window.sendEvent(up)
         return true
-    }
-
-    /// The assistive-technology path, used when an offscreen click does not land.
-    static func press(_ hit: Hit) -> Bool {
-        if let control = hit.view as? NSControl {
-            control.performClick(nil)
-            return true
-        }
-        if let ax = hit.element as? any NSAccessibilityProtocol {
-            return ax.accessibilityPerformPress()
-        }
-        return false
     }
 
     static func findSegments(in root: NSView) -> NSSegmentedControl? {

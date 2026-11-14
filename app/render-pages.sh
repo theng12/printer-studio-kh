@@ -270,6 +270,9 @@ render_one() {
   else
     out=$("$BIN" "$mode" "$target" "$OUT_DIR" "$size" "$appearance" 2>&1) || true
   fi
+  # Banner text and interaction outcomes must reach the log; only MEASURE is
+  # consumed here.
+  printf '%s\n' "$out" | awk '/^(BANNER|INTERACTION) /{print}'
   local measure
   measure=$(printf '%s\n' "$out" | awk '/^MEASURE /{sub(/^MEASURE /,""); print; exit}')
   if [ -z "$measure" ]; then

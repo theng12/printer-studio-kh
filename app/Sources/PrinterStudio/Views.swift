@@ -93,20 +93,6 @@ struct CardGroupStyle: GroupBoxStyle {
     }
 }
 
-/// macOS 26 fades whatever rests under the window's toolbar. At 1440 the page
-/// heading was left a half-washed ghost while smaller windows looked fine
-/// (round-4 finding 1): the pages already start below the chrome, so keep them
-/// fully drawn instead of fading them.
-private struct NoToolbarFade: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.scrollEdgeEffectHidden(true, for: .top)
-        } else {
-            content
-        }
-    }
-}
-
 struct MainWindow: View {
     @EnvironmentObject var state: AppState
     @Environment(\.openWindow) private var openWindow
@@ -128,6 +114,7 @@ struct MainWindow: View {
                 List(selection: $state.screen) {
                     ForEach(Screen.allCases) { item in
                         Label(item.title, systemImage: item.symbol).tag(item)
+                            .probe("nav.\(item.title)")
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -159,7 +146,6 @@ struct MainWindow: View {
             .background(Palette.page)
             .foregroundStyle(Palette.body)
             .groupBoxStyle(CardGroupStyle())
-            .modifier(NoToolbarFade())
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -475,7 +461,7 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Printer Studio KH").font(.largeTitle.weight(.semibold))
+                    Text("Printer Studio KH").font(.largeTitle.weight(.semibold)).probe("heading")
                     Text("Share this Mac's printers with every device on your network — and keep them working.")
                         .foregroundStyle(Palette.muted)
                 }
@@ -509,6 +495,7 @@ struct OverviewView: View {
                     Text("Quick actions").font(.headline)
                     ActionRow {
                         Button("Fix shared queues now") { state.fixSharingNow() }
+                .probe("control.fixQueues")
                             .disabled(!state.sharingEnabled || !state.detailedPrinters.contains(where: \.isShared))
                             .help(state.sharingEnabled
                                   ? "Reopen every shared queue to everyone"
@@ -681,12 +668,12 @@ struct PrintersView: View {
             VStack(alignment: .leading, spacing: 14) {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .center) {
-                        Text("Printers on this Mac").font(.title2.weight(.semibold))
+                        Text("Printers on this Mac").font(.title2.weight(.semibold)).probe("heading")
                         Spacer()
                         if !state.printers.isEmpty { modePicker }
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Printers on this Mac").font(.title2.weight(.semibold))
+                        Text("Printers on this Mac").font(.title2.weight(.semibold)).probe("heading")
                         if !state.printers.isEmpty { modePicker }
                     }
                 }
@@ -834,6 +821,7 @@ private struct PrinterActions: View {
     var body: some View {
         HStack(spacing: 8) {
             Button("Print test page") { state.testPrint(printer) }
+                .probe("control.printTest")
                 .buttonStyle(PrimaryButtonStyle())
                 .controlSize(.small)
                 .help("Print one test page to \(printer.displayName)")
@@ -1034,7 +1022,7 @@ struct SharingView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Printer Sharing").font(.title2.weight(.semibold))
+                Text("Printer Sharing").font(.title2.weight(.semibold)).probe("heading")
                 Text("Other Macs and iOS devices find shared printers over Bonjour. macOS sometimes locks a shared queue to specific users, which makes other machines park jobs with “Job held for authentication”. This screen fixes and prevents that.")
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1109,8 +1097,10 @@ struct SharingView: View {
                             Spacer()
                             if state.watcherInstalled {
                                 Button("Remove") { state.removeWatcher() }
+                .probe("control.watcher")
                             } else {
                                 Button("Install") { state.installWatcher() }
+                .probe("control.watcher")
                             }
                         }
                     }
@@ -1240,7 +1230,7 @@ struct SetupView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("HP Laser 107a").font(.title2.weight(.semibold))
+                Text("HP Laser 107a").font(.title2.weight(.semibold)).probe("heading")
                 Text("This printer is a rebadged Samsung SL-M2026. It speaks Samsung's QPDL language over USB and has no Apple driver, so Printer Studio KH supplies one and then shares the queue to the network.")
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1295,6 +1285,7 @@ struct SetupView: View {
                             .buttonStyle(PrimaryButtonStyle(isDisabled: state.busy))
                             .disabled(state.busy)
                         Button("Keep it ready") { state.releasePrinter() }
+                        .probe("control.keepReady")
                             .help("Sets up automatic release after restarts. Asks for administrator approval once.")
                             .disabled(state.busy || state.automaticUSBRelease)
                         Menu("More") {
@@ -1313,6 +1304,7 @@ struct SetupView: View {
                             .buttonStyle(PrimaryButtonStyle(isDisabled: state.busy || !DriverInstaller.hasPayload))
                             .disabled(state.busy || !DriverInstaller.hasPayload)
                         Button("Keep it ready") { state.releasePrinter() }
+                        .probe("control.keepReady")
                             .help("Sets up automatic release after restarts. Asks for administrator approval once.")
                             .disabled(state.busy || state.automaticUSBRelease)
                         Button("Remove driver") { state.uninstallDriver() }
@@ -1500,7 +1492,7 @@ struct StickerSizesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Paper & sticker sizes").font(.title2.weight(.semibold))
+                Text("Paper & sticker sizes").font(.title2.weight(.semibold)).probe("heading")
 
                 Text("Set the sizes here for AirPrint to read from your shared printer. Width and height follow how the stock feeds into the printer. You can edit any size or turn it off.\n\nCustom sizes apply to label printers within their driver’s limits. A4 and A5 are already standard choices on the HP Laser queue; use that printer’s paper-size menu. A narrow label printer cannot print an A4 or A5 sheet.")
                     .foregroundStyle(Palette.muted)
@@ -1518,6 +1510,7 @@ struct StickerSizesView: View {
                     Button("Add a size") { state.addStickerSize() }
                     Button("Restore defaults") { state.resetStickerSizes() }
                     Button("Apply to printers") { state.applyStickerSizes() }
+                .probe("control.applySizes")
                         .buttonStyle(PrimaryButtonStyle(isDisabled: targets.isEmpty || state.busy))
                         .disabled(targets.isEmpty || state.busy)
                 }
@@ -1598,7 +1591,7 @@ struct WhatsNewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("What's New").font(.title2.weight(.semibold))
+                Text("What's New").font(.title2.weight(.semibold)).probe("heading")
                 Text("Printer Studio KH \(version)").foregroundStyle(Palette.muted)
             }
             ScrollView {
@@ -1617,6 +1610,7 @@ struct WhatsNewView: View {
             HStack {
                 Spacer()
                 Button("Done") { dismiss() }
+                .probe("control.done")
                     .keyboardShortcut(.cancelAction)
             }
         }
@@ -1646,7 +1640,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Settings").font(.title2.weight(.semibold))
+                Text("Settings").font(.title2.weight(.semibold)).probe("heading")
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
@@ -1810,9 +1804,9 @@ struct ActivityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Activity").font(.title2.weight(.semibold))
+                Text("Activity").font(.title2.weight(.semibold)).probe("heading")
                 Spacer()
-                Button("Refresh") { state.refreshNow() }.controlSize(.small)
+                Button("Refresh") { state.refreshNow() }.controlSize(.small).probe("control.refresh")
             }
 
             if state.activity.isEmpty {
