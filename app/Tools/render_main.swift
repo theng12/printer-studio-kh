@@ -847,8 +847,11 @@ struct PageRenderHarness {
         // sample background from a corner known to be page (bottom when a banner
         // spans the top edge)
         let bg = pixel(data: data, x: w - 1, y: sampleBottom ? h - 1 : 0, bpp: bpp, bpr: bpr)
-        let accentRGB = accent.map {
-            (Int($0.redComponent * 255), Int($0.greenComponent * 255), Int($0.blueComponent * 255))
+        let accentRGB = accent.map { color -> (Int, Int, Int) in
+            // Compare in the bitmap's color space, not sRGB: a P3 backing store
+            // stores different component values for the same colour.
+            let c = color.usingColorSpace(rep.colorSpace) ?? color
+            return (Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
         }
 
         var minX = w

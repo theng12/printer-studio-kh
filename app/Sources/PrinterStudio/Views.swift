@@ -298,11 +298,51 @@ struct ErrorState: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Retry", action: retry)
-                .buttonStyle(.borderedProminent)
-                .tint(Palette.accentFill)
+                .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+    }
+}
+
+/// Filled primary button with a measured fill. SwiftUI's `.tint` on a
+/// bordered-prominent button fell back to the system accent in dark mode, where
+/// white text measures about 3.6:1; this keeps the measured pair (4.7:1 dark,
+/// 6.4:1 light) and looks the same in both appearances.
+struct PrimaryButtonStyle: ButtonStyle {
+    /// Pass the call site's disabled condition; the environment isEnabled value
+    /// is not reliable inside a ButtonStyle.
+    var isDisabled = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        PrimaryLabel(configuration: configuration, isDisabled: isDisabled)
+    }
+
+    private struct PrimaryLabel: View {
+        @Environment(\.colorScheme) private var scheme
+        let configuration: ButtonStyleConfiguration
+        let isDisabled: Bool
+
+        // A plain Color, not a dynamic NSColor: offscreen the dynamic fill fell
+        // back to the system accent (white text ~3.6:1 in dark).
+        private var fill: Color {
+            scheme == .dark
+                ? Color(red: 0.12, green: 0.44, blue: 0.88)
+                : Color(red: 0.00, green: 0.35, blue: 0.78)
+        }
+
+        var body: some View {
+            configuration.label
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(fill.opacity(isDisabled ? 0.35 : (configuration.isPressed ? 0.82 : 1)))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
     }
 }
 
@@ -567,6 +607,39 @@ struct PrintersView: View {
         .frame(minWidth: 560, alignment: .leading)
     }
 
+    /// Below the table's minimum width the rows become a compact list so the
+    /// primary action stays visible instead of scrolling off the edge.
+    private var compactPrinterTable: some View {
+        VStack(spacing: 0) {
+            ForEach(state.printers) { printer in
+                let detail = state.detailedPrinters.first { $0.name == printer.name }
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(printer.displayName).font(.callout.weight(.medium)).lineLimit(1)
+                        HStack(spacing: 6) {
+                            StateBadge(printer: printer)
+                            Text((detail?.isShared ?? printer.isShared) ? "Shared" : "Not shared")
+                                .font(.caption)
+                                .foregroundStyle(Palette.muted)
+                        }
+                        Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
+                            .font(.caption2).foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                            .help(printer.deviceURI)
+                    }
+                    Spacer(minLength: 8)
+                    PrinterActions(printer: printer, detail: detail, showPaperMenu: true,
+                                   onRename: { renamingPrinter = printer })
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                Divider()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var modePicker: some View {
         Picker("View", selection: modeBinding) {
             Text("Cards").tag(PrinterListMode.cards.rawValue)
@@ -629,7 +702,7 @@ struct PrintersView: View {
                 } else {
                     ViewThatFits(in: .horizontal) {
                         printerTable.frame(maxWidth: .infinity)
-                        ScrollView(.horizontal, showsIndicators: true) { printerTable }
+                        compactPrinterTable
                     }
                     .cardSurface(radius: 10)
                 }
@@ -736,8 +809,7 @@ private struct PrinterActions: View {
     var body: some View {
         HStack(spacing: 8) {
             Button("Print test page") { state.testPrint(printer) }
-                .buttonStyle(.borderedProminent)
-                .tint(Palette.accentFill)
+                .buttonStyle(PrimaryButtonStyle())
                 .controlSize(.small)
                 .help("Print one test page to \(printer.displayName)")
             Menu {
@@ -961,8 +1033,7 @@ struct SharingView: View {
                                 Button("Turn off") { state.removeAirPrint() }
                             } else {
                                 Button("Turn on") { state.installAirPrint() }
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(Palette.accentFill)
+                                    .buttonStyle(PrimaryButtonStyle())
                             }
                         }
                         if state.labelPrintingNeedsSetup {
@@ -1047,8 +1118,7 @@ struct SharingView: View {
                                 if printer.hasUserACL {
                                     Text("Blocked").font(.caption).foregroundStyle(Palette.danger)
                                     Button("Open to everyone") { state.openQueue(printer) }
-                                        .buttonStyle(.borderedProminent)
-                                        .tint(Palette.accentFill)
+                                        .buttonStyle(PrimaryButtonStyle())
                                         .controlSize(.small)
                                         .help("Open \(printer.displayName) to everyone")
                                 } else {
@@ -1192,8 +1262,7 @@ struct SetupView: View {
                         .foregroundStyle(Palette.success)
                     ActionRow {
                         Button("Print test page") { state.testPrint(printer) }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Palette.accentFill)
+                            .buttonStyle(PrimaryButtonStyle(isDisabled: state.busy))
                             .disabled(state.busy)
                         Button("Keep it ready") { state.releasePrinter() }
                             .help("Sets up automatic release after restarts. Asks for administrator approval once.")
@@ -1211,8 +1280,7 @@ struct SetupView: View {
                 } else {
                     ActionRow {
                         Button("Set up the printer") { state.installDriver() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Palette.accentFill)
+                            .buttonStyle(PrimaryButtonStyle(isDisabled: state.busy || !DriverInstaller.hasPayload))
                             .disabled(state.busy || !DriverInstaller.hasPayload)
                         Button("Keep it ready") { state.releasePrinter() }
                             .help("Sets up automatic release after restarts. Asks for administrator approval once.")
@@ -1415,8 +1483,7 @@ struct StickerSizesView: View {
                     Button("Add a size") { state.addStickerSize() }
                     Button("Restore defaults") { state.resetStickerSizes() }
                     Button("Apply to printers") { state.applyStickerSizes() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Palette.accentFill)
+                        .buttonStyle(PrimaryButtonStyle(isDisabled: targets.isEmpty || state.busy))
                         .disabled(targets.isEmpty || state.busy)
                 }
                 .disabled(state.busy)

@@ -159,8 +159,9 @@ are SF Symbols at 13–16 pt, stroke-consistent, always paired with a text label
   label column so values line up across cards.
 - **Table** — one compact line per row: Printer (name, then location and model
   as 10–11 pt captions), State, Shared, Actions. The State column shows the badge
-  once, never a badge plus plain text. Below its minimum width the table scrolls
-  horizontally instead of clipping.
+  once, never a badge plus plain text. Below its minimum width the rows become a
+  compact list (name, state/shared, location, actions) so the primary action
+  stays visible instead of scrolling off the edge.
 - **One primary action per row** — Print test page on a printer, Open to
   everyone on a blocked queue. Share/Stop sharing, Pause/Resume, Rename…, Paper
   size and Clear jobs live in a labelled ⋯ menu on that row. Rename is an in-app
