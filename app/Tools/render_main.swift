@@ -1004,7 +1004,15 @@ struct PageRenderHarness {
     /// the system command is stubbed by AppState.renderActionsStubbed. Each run
     /// reports how the control was reached and driven, the measured outcome,
     /// and writes an after-image that is measured like every other render.
+    static func step(_ message: String) {
+        if ProcessInfo.processInfo.environment["PRINTER_INTERACTION_DEBUG"] == "1" {
+            print("STEP \(message)")
+            fflush(stdout)
+        }
+    }
+
     static func runInteraction(_ opts: RenderOptions) {
+        step("start \(opts.target)")
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.appearance = NSAppearance(named: .aqua)
@@ -1057,6 +1065,7 @@ struct PageRenderHarness {
         window.orderFront(nil)
         window.makeKey()
         pump(hosting: hosting, window: window)
+        step("laid out; probes=\(InteractionProbe.frames.keys.sorted())")
 
         // 1 — reach the page through its own sidebar row.
         var nav = isWhatsNew ? "n/a" : (opts.target == "stickers" ? "set-at-start" : "not-found")
@@ -1073,6 +1082,7 @@ struct PageRenderHarness {
             pump(hosting: hosting, window: window)
         }
 
+        step("navigated: screen=\(state.screen.map { String(describing: $0) } ?? "nil")")
         // 2 — drive the page's control.
         let before = state.activity.count
         let control = interactionControl(opts.target)
@@ -1102,6 +1112,7 @@ struct PageRenderHarness {
                 }
             }
         }
+        step("driven: via=\(via) banner=\(state.lastMessage ?? "")")
         let met = interactionOutcomeMet(opts.target, state: state, flag: flag)
 
         var obj: [String: Any] = [
