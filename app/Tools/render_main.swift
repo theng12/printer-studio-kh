@@ -1170,7 +1170,7 @@ struct PageRenderHarness {
         case "printers": return "Print test page"
         case "sharing": return "Remove"
         case "setup": return "Keep it ready"
-        case "stickers": return "Apply to printers"
+        case "stickers": return "Add a size"
         case "activity": return "Refresh"
         case "settings": return "Appearance: Dark"
         case "whats-new": return "Done"
@@ -1186,7 +1186,7 @@ struct PageRenderHarness {
         case "printers": return state.lastMessageOK && banner == "Test page sent to HP_Laser_107a."
         case "sharing": return state.lastMessageOK && banner == "Background watcher removed."
         case "setup": return state.lastMessageOK && banner.hasPrefix("Automatic USB release is running")
-        case "stickers": return state.lastMessageOK && banner.hasPrefix("Sizes checked and applied")
+        case "stickers": return state.stickerSizes.count == 4
         case "activity": return state.activity.first?.message == "Refreshing…" && !state.busy
         case "settings": return UserDefaults.standard.string(forKey: "appearance") == "dark"
         case "whats-new": return flag.dismissed
@@ -1226,7 +1226,7 @@ struct PageRenderHarness {
         case "printers": return "control.printTest"
         case "sharing": return "control.watcher"
         case "setup": return "control.keepReady"
-        case "stickers": return "control.applySizes"
+        case "stickers": return "control.addSize"
         case "activity": return "control.refresh"
         case "whats-new": return "control.done"
         default: return ""
