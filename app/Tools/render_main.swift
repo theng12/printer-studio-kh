@@ -111,7 +111,7 @@ struct PageRenderHarness {
                     "warning_page": ratio(warning, page),
                     "danger_page": ratio(danger, page),
                     "accent_page": ratio(accent, page),
-                    "white_on_accent_fill": ratio(.white, accentFill),
+                    "white_on_accent_fill": ratio(NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1), accentFill),
                     "resolved": [
                         "label": rgba(label),
                         "surface": rgba(surface),
@@ -300,7 +300,10 @@ struct PageRenderHarness {
         windowAppearance?.performAsCurrentDrawingAppearance {
             accentFill = NSColor(Palette.accentFill).usingColorSpace(.sRGB) ?? .black
         }
-        let geom = measure(rep: rep, isWindow: opts.mode == "window", accent: accentFill)
+        // A result banner spans the detail width by design; sample the page
+        // background from the bottom edge for that render.
+        let geom = measure(rep: rep, isWindow: opts.mode == "window", accent: accentFill,
+                           sampleBottom: opts.target.hasSuffix("-outcome"))
         emitResult(opts: opts, ok: true, error: nil, geom: geom, controls: controlStates(hosting))
     }
 
@@ -832,7 +835,8 @@ struct PageRenderHarness {
         let accentRun: Int
     }
 
-    static func measure(rep: NSBitmapImageRep, isWindow: Bool, accent: NSColor?) -> Geometry {
+    static func measure(rep: NSBitmapImageRep, isWindow: Bool, accent: NSColor?,
+                        sampleBottom: Bool = false) -> Geometry {
         let w = rep.pixelsWide
         let h = rep.pixelsHigh
         guard w > 2, h > 0, let data = rep.bitmapData else {
@@ -840,8 +844,9 @@ struct PageRenderHarness {
         }
         let bpp = rep.bitsPerPixel / 8
         let bpr = rep.bytesPerRow
-        // sample background from top-right corner (inside image)
-        let bg = pixel(data: data, x: w - 1, y: 0, bpp: bpp, bpr: bpr)
+        // sample background from a corner known to be page (bottom when a banner
+        // spans the top edge)
+        let bg = pixel(data: data, x: w - 1, y: sampleBottom ? h - 1 : 0, bpp: bpp, bpr: bpr)
         let accentRGB = accent.map {
             (Int($0.redComponent * 255), Int($0.greenComponent * 255), Int($0.blueComponent * 255))
         }
@@ -876,8 +881,11 @@ struct PageRenderHarness {
         let rightGutter = (w - 1) - maxX
         let contentBottom = maxY
         // Window mode: the sidebar material is deliberately flush left, so only
-        // the right edge is a clip signal. Pages test both edges.
-        let clipped = isWindow ? rightGutter < 12 : leftGutter < 12 || rightGutter < 12
+        // the right edge is a clip signal. Pages test both edges. A result
+        // banner spans the width by design, so its render skips the side test.
+        let clipped = sampleBottom
+            ? false
+            : (isWindow ? rightGutter < 12 : leftGutter < 12 || rightGutter < 12)
         return Geometry(contentBottom: contentBottom, leftGutter: leftGutter, rightGutter: rightGutter,
                         clipped: clipped, accentRun: maxAccentRun)
     }
@@ -938,14 +946,14 @@ struct PageRenderHarness {
         func walkAccessibility(_ element: Any) {
             if let view = element as? NSView {
                 let role = view.accessibilityRole()
-                if role == .checkBox || role == .switch {
+                if role == .checkBox {
                     out.append(["type": "switch", "label": view.accessibilityLabel() ?? "",
                                 "value": "\(view.accessibilityValue() ?? "")"])
                 }
                 for child in view.accessibilityChildren() ?? [] { walkAccessibility(child) }
             } else if let ax = element as? any NSAccessibilityProtocol {
                 let role = ax.accessibilityRole()
-                if role == .checkBox || role == .switch {
+                if role == .checkBox {
                     out.append(["type": "switch", "label": ax.accessibilityLabel() ?? "",
                                 "value": "\(ax.accessibilityValue() ?? "")"])
                 }
