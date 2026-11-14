@@ -1108,7 +1108,9 @@ struct PageRenderHarness {
                 clickFrame = frame
                 if clickProbeFrame(frame, on: window, hosting: hosting) {
                     via = "click"
+                    step("click sent at \(frame)")
                     pump(hosting: hosting, window: window)
+                    step("pump done")
                 }
             }
         }
