@@ -298,18 +298,24 @@ struct StatusCard: View {
 }
 
 struct AdviceRow: View {
-    let symbol: String
-    let tint: Color
-    let text: String
-    var actionTitle: String?
-    var action: (() -> Void)?
+    let advice: DedupedAdvice
+
+    private var tint: Color {
+        switch advice.tint {
+        case .danger: return Palette.danger
+        case .warning: return Palette.warning
+        case .accent: return Palette.accent
+        case .muted: return Palette.muted
+        case .success: return Palette.success
+        }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: symbol).foregroundStyle(tint).frame(width: 18)
-            Text(text).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Image(systemName: advice.symbol).foregroundStyle(tint).frame(width: 18)
+            Text(advice.displayText).font(.callout).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            if let actionTitle, let action {
+            if let actionTitle = advice.actionTitle, let action = advice.action {
                 Button(actionTitle, action: action).controlSize(.small)
             }
         }
@@ -332,41 +338,52 @@ struct OverviewView: View {
                         .foregroundStyle(Palette.muted)
                 }
 
-                HStack(spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 12)], spacing: 12) {
                     StatusCard(
                         title: "PRINTER SHARING",
                         value: state.sharingEnabled ? "On" : "Off",
                         symbol: state.sharingEnabled ? "checkmark.circle.fill" : "xmark.circle",
                         tint: state.sharingEnabled ? Palette.success : Palette.warning)
+                        .frame(minHeight: 80, alignment: .topLeading)
                     StatusCard(
                         title: "PRINTERS",
                         value: "\(state.printers.count)",
                         symbol: "printer")
+                        .frame(minHeight: 80, alignment: .topLeading)
                     StatusCard(
                         title: "QUEUES BLOCKED",
                         value: "\(state.queuesHeldShut.count)",
                         symbol: state.queuesHeldShut.isEmpty ? "checkmark.shield" : "exclamationmark.triangle.fill",
                         tint: state.queuesHeldShut.isEmpty ? Palette.success : Palette.danger)
+                        .frame(minHeight: 80, alignment: .topLeading)
                     StatusCard(
                         title: "HP LASER 107a",
                         value: state.laser107a != nil ? "Connected" : "Not connected",
                         symbol: state.laser107a != nil ? "cable.connector" : "cable.connector.slash",
                         tint: state.laser107a != nil ? Palette.success : Palette.muted)
+                        .frame(minHeight: 80, alignment: .topLeading)
                 }
 
-                if !advice.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
+                let sections = WarningGrouper.group(adviceItems)
+                if !sections.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("What needs doing").font(.headline)
-                        ForEach(Array(advice.enumerated()), id: \.offset) { _, item in
-                            AdviceRow(symbol: item.symbol, tint: item.tint, text: item.text,
-                                      actionTitle: item.actionTitle, action: item.action)
+                        ForEach(sections) { section in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("\(section.title) (\(section.totalCount))")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Palette.muted)
+                                ForEach(section.items) { item in
+                                    AdviceRow(advice: item)
+                                }
+                            }
                         }
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Quick actions").font(.headline)
-                    HStack(spacing: 10) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
                         Button("Fix shared queues now") { state.fixSharingNow() }
                         Button(state.sharingEnabled ? "Turn off Printer Sharing" : "Turn on Printer Sharing") {
                             state.setSharing(!state.sharingEnabled)
@@ -384,28 +401,20 @@ struct OverviewView: View {
         }
     }
 
-    private struct Advice {
-        let symbol: String
-        let tint: Color
-        let text: String
-        var actionTitle: String?
-        var action: (() -> Void)?
-    }
-
-    private var advice: [Advice] {
-        var items: [Advice] = []
+    private var adviceItems: [AdviceItem] {
+        var items: [AdviceItem] = []
 
         if state.printerHeldByIPPUSB {
-            items.append(Advice(
-                symbol: "exclamationmark.triangle.fill", tint: Palette.danger,
+            items.append(AdviceItem(
+                symbol: "exclamationmark.triangle.fill", tint: .danger, kind: .needsAttention,
                 text: "macOS's IPP-over-USB service has claimed the printer. While it holds the device, CUPS cannot open it: the queue reports “offline” and jobs never print, with nothing logged to explain why. This comes back after a reboot or a replug.",
                 actionTitle: "Release",
                 action: { state.releasePrinter() }))
         }
 
         if !state.sharingEnabled {
-            items.append(Advice(
-                symbol: "wifi.slash", tint: Palette.warning,
+            items.append(AdviceItem(
+                symbol: "wifi.slash", tint: .warning, kind: .needsAttention,
                 text: "Printer Sharing is off, so other devices on your network cannot see this Mac's printers.",
                 actionTitle: "Turn on",
                 action: { state.setSharing(true) }))
@@ -413,28 +422,28 @@ struct OverviewView: View {
 
         if !state.queuesHeldShut.isEmpty {
             let names = state.queuesHeldShut.map(\.displayName).joined(separator: ", ")
-            items.append(Advice(
-                symbol: "lock.fill", tint: Palette.danger,
+            items.append(AdviceItem(
+                symbol: "lock.fill", tint: .danger, kind: .needsAttention,
                 text: "\(names) \(state.queuesHeldShut.count == 1 ? "is" : "are") shared but locked to specific users. Other Macs will report “Job held for authentication”.",
                 actionTitle: "Fix now",
                 action: { state.fixSharingNow() }))
         }
 
         if state.sharingEnabled && !state.watcherInstalled {
-            items.append(Advice(
-                symbol: "clock.arrow.circlepath", tint: Palette.accent,
+            items.append(AdviceItem(
+                symbol: "clock.arrow.circlepath", tint: .accent, kind: .suggestion,
                 text: "The background watcher is not installed. Without it, re-saving the Sharing settings can lock the queues again.",
                 actionTitle: "Install",
                 action: { state.installWatcher() }))
         }
 
         if state.laser107a == nil {
-            items.append(Advice(
-                symbol: "cable.connector", tint: Palette.muted,
+            items.append(AdviceItem(
+                symbol: "cable.connector", tint: .muted, kind: .suggestion,
                 text: "The HP Laser 107a is not plugged in. Connect it by USB and it will appear here automatically."))
         } else if !Driver.isReady {
-            items.append(Advice(
-                symbol: "shippingbox", tint: Palette.warning,
+            items.append(AdviceItem(
+                symbol: "shippingbox", tint: .warning, kind: .needsAttention,
                 text: "The HP Laser 107a is connected but its print driver is not installed yet. Open the “HP Laser 107a” tab."))
         }
 
@@ -446,24 +455,142 @@ struct OverviewView: View {
 
 struct PrintersView: View {
     @EnvironmentObject var state: AppState
+    @AppStorage(PrinterListMode.storageKey) private var modeRaw = PrinterListMode.defaultMode.rawValue
+
+    private var mode: PrinterListMode { PrinterListMode.parse(modeRaw) }
+
+    private var modeBinding: Binding<String> {
+        Binding(get: { mode.rawValue }, set: { modeRaw = $0 })
+    }
+
+    private var modePicker: some View {
+        Picker("View", selection: modeBinding) {
+            Text("Cards").tag(PrinterListMode.cards.rawValue)
+            Text("Table").tag(PrinterListMode.table.rawValue)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 180)
+        .labelsHidden()
+        .help("Choose how to show printers")
+        .accessibilityLabel("Printers view")
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Printers on this Mac").font(.title2.weight(.semibold))
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center) {
+                        Text("Printers on this Mac").font(.title2.weight(.semibold))
+                        Spacer()
+                        modePicker
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Printers on this Mac").font(.title2.weight(.semibold))
+                        modePicker
+                    }
+                }
 
                 if state.printers.isEmpty {
                     EmptyState(title: "No printers", symbol: "printer.slash",
                                detail: "This Mac has no print queues yet.")
                         .frame(height: 240)
-                } else {
-                    ForEach(state.printers) { printer in
-                        PrinterCard(printer: printer)
+                } else if mode == .cards {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 14, alignment: .top)], spacing: 14) {
+                        ForEach(state.printers) { printer in
+                            PrinterCard(printer: printer)
+                        }
                     }
+                } else {
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        VStack(spacing: 0) {
+                            PrinterTableHeader()
+                            Divider()
+                            ForEach(state.printers) { printer in
+                                PrinterTableRow(printer: printer)
+                                Divider()
+                            }
+                        }
+                        .frame(minWidth: 760, alignment: .leading)
+                    }
+                    .cardSurface(radius: 10)
                 }
             }
             .padding(24)
         }
+    }
+}
+
+private struct PrinterMetricsGrid: View {
+    let printer: Printer
+    let detail: Printer?
+    var labelWidth: CGFloat = 80
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+            GridRow {
+                Text("Connection").foregroundStyle(Palette.muted).frame(width: labelWidth, alignment: .leading)
+                Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
+                GridRow {
+                    Text("Model").foregroundStyle(Palette.muted).frame(width: labelWidth, alignment: .leading)
+                    Text(model).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            GridRow {
+                Text("Shared").foregroundStyle(Palette.muted).frame(width: labelWidth, alignment: .leading)
+                Text((detail?.isShared ?? printer.isShared) ? "Yes" : "No")
+            }
+            if let detail, detail.isShared {
+                GridRow {
+                    Text("Access").foregroundStyle(Palette.muted).frame(width: labelWidth, alignment: .leading)
+                    if detail.hasUserACL {
+                        Label("Locked to specific users", systemImage: "lock.fill").foregroundStyle(Palette.danger)
+                    } else {
+                        Label("Open to everyone", systemImage: "lock.open.fill").foregroundStyle(Palette.success)
+                    }
+                }
+            }
+        }
+        .font(.callout)
+    }
+}
+
+private struct PrinterActions: View {
+    @EnvironmentObject var state: AppState
+    let printer: Printer
+    let detail: Printer?
+
+    private var resolved: Printer { detail ?? printer }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("Print test page") { state.testPrint(printer) }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Print one test page to \(printer.displayName)")
+            Menu {
+                Button(resolved.isShared ? "Stop sharing" : "Share") {
+                    state.toggleShared(resolved)
+                }
+                if resolved.isHeldShut {
+                    Button("Open to everyone") { state.openQueue(resolved) }
+                }
+                Button(printer.enabled ? "Pause" : "Resume") { state.toggleEnabled(printer) }
+                Button("Clear jobs") { state.clearJobs(on: printer) }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 16))
+                    .frame(width: 24, height: 24)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("More actions for \(printer.displayName)")
+            .accessibilityLabel("More actions for \(printer.displayName)")
+        }
+        .disabled(state.busy)
     }
 }
 
@@ -480,7 +607,7 @@ struct PrinterCard: View {
             HStack(spacing: 8) {
                 Image(systemName: printer.isStopped ? "printer.fill" : "printer")
                     .foregroundStyle(printer.isStopped ? Palette.warning : Palette.accent)
-                Text(printer.displayName).font(.headline)
+                Text(printer.displayName).font(.headline).lineLimit(1)
                 Spacer()
                 StateBadge(printer: printer)
             }
@@ -499,6 +626,7 @@ struct PrinterCard: View {
             if printer.transport != .usb {
                 Text("This name is for Mac sharing. A network printer’s own AirPrint name is set on the printer.")
                     .font(.caption).foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let choices = state.paperChoices[printer.name], !choices.isEmpty {
@@ -519,50 +647,132 @@ struct PrinterCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
-                GridRow {
-                    Text("Connection").foregroundStyle(Palette.muted)
-                    Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
-                }
-                if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
-                    GridRow {
-                        Text("Model").foregroundStyle(Palette.muted)
-                        Text(model)
-                    }
-                }
-                GridRow {
-                    Text("Shared").foregroundStyle(Palette.muted)
-                    Text((detail?.isShared ?? printer.isShared) ? "Yes" : "No")
-                }
-                if let detail, detail.isShared {
-                    GridRow {
-                        Text("Access").foregroundStyle(Palette.muted)
-                        if detail.hasUserACL {
-                            Label("Locked to specific users", systemImage: "lock.fill").foregroundStyle(Palette.danger)
-                        } else {
-                            Label("Open to everyone", systemImage: "lock.open.fill").foregroundStyle(Palette.success)
-                        }
-                    }
-                }
-            }
-            .font(.callout)
+            PrinterMetricsGrid(printer: printer, detail: detail, labelWidth: 90)
 
-            HStack(spacing: 8) {
-                Button("Print test page") { state.testPrint(printer) }
-                Button((detail?.isShared ?? printer.isShared) ? "Stop sharing" : "Share") {
-                    state.toggleShared(detail ?? printer)
-                }
-                if let detail, detail.isHeldShut {
-                    Button("Open to everyone") { state.openQueue(detail) }
-                }
-                Button(printer.enabled ? "Pause" : "Resume") { state.toggleEnabled(printer) }
-                Button("Clear jobs") { state.clearJobs(on: printer) }
-            }
-            .controlSize(.small)
-            .disabled(state.busy)
+            Spacer(minLength: 0)
+
+            PrinterActions(printer: printer, detail: detail)
         }
         .padding(14)
+        .frame(minHeight: 320, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .cardSurface()
+    }
+}
+
+private struct PrinterTableHeader: View {
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Connection").frame(width: 170, alignment: .leading)
+            Text("State").frame(width: 96, alignment: .leading)
+            Text("Shared").frame(width: 64, alignment: .leading)
+            Text("Paper").frame(width: 150, alignment: .leading)
+            Text("Actions").fixedSize(horizontal: true, vertical: false)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(Palette.muted)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct PrinterTableRow: View {
+    @EnvironmentObject var state: AppState
+    let printer: Printer
+
+    private var detail: Printer? {
+        state.detailedPrinters.first { $0.name == printer.name }
+    }
+
+    private func stateText(_ printer: Printer) -> String {
+        if printer.isStopped { return "Paused" }
+        if printer.isPrinting { return "Printing" }
+        if printer.isIdle { return "Ready" }
+        return printer.state.capitalized
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(printer.displayName).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    TextField("Name", text: Binding(
+                        get: { state.printerNameDrafts[printer.name] ?? printer.displayName },
+                        set: { state.printerNameDrafts[printer.name] = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .frame(minWidth: 120)
+                    .accessibilityLabel("Printer name")
+                    Button("Save name") { state.renamePrinter(printer) }
+                        .controlSize(.small)
+                        .disabled(state.busy || (state.printerNameDrafts[printer.name] ?? printer.displayName) == printer.displayName)
+                }
+                if printer.transport != .usb {
+                    Text("Mac sharing name only. Network printer AirPrint name is set on the printer.")
+                        .font(.caption2).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
+                    Text(model).font(.caption).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 170, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(stateText(printer)).font(.callout)
+                StateBadge(printer: printer)
+            }
+            .frame(width: 96, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text((detail?.isShared ?? printer.isShared) ? "Yes" : "No").font(.callout)
+                if let detail, detail.isShared {
+                    if detail.hasUserACL {
+                        Text("Locked").font(.caption).foregroundStyle(Palette.danger)
+                    } else {
+                        Text("Open").font(.caption).foregroundStyle(Palette.success)
+                    }
+                }
+            }
+            .frame(width: 64, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                if let choices = state.paperChoices[printer.name], !choices.isEmpty {
+                    Picker("Paper", selection: Binding(
+                        get: { state.selectedPaper[printer.name] ?? "" },
+                        set: { state.selectPaper($0, for: printer) }
+                    )) {
+                        if !(choices.contains { $0.key == state.selectedPaper[printer.name] }) {
+                            Text("Choose").tag("")
+                        }
+                        ForEach(choices, id: \.key) { paper in
+                            Text(paper.label).tag(paper.key)
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .disabled(state.busy)
+                    .accessibilityLabel("Paper size for \(printer.displayName)")
+                } else {
+                    Text("—").foregroundStyle(Palette.muted).font(.callout)
+                }
+            }
+            .frame(width: 150, alignment: .leading)
+
+            PrinterActions(printer: printer, detail: detail)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
 
@@ -700,11 +910,21 @@ struct SharingView: View {
                                 if printer.hasUserACL {
                                     Text("Blocked").font(.caption).foregroundStyle(Palette.danger)
                                     Button("Open to everyone") { state.openQueue(printer) }
+                                        .buttonStyle(.borderedProminent)
                                         .controlSize(.small)
+                                        .help("Open \(printer.displayName) to everyone")
                                 } else {
                                     Text("Open to LAN").font(.caption).foregroundStyle(Palette.success)
-                                    Button("Restrict") { state.restrictQueue(printer) }
-                                        .controlSize(.small)
+                                    Menu {
+                                        Button("Restrict") { state.restrictQueue(printer) }
+                                    } label: {
+                                        Image(systemName: "ellipsis.circle")
+                                            .frame(width: 22, height: 22)
+                                    }
+                                    .menuStyle(.borderlessButton)
+                                    .fixedSize()
+                                    .help("More actions for \(printer.displayName)")
+                                    .accessibilityLabel("More actions for \(printer.displayName)")
                                 }
                             }
                             .padding(10)
@@ -716,8 +936,9 @@ struct SharingView: View {
                 if !state.unfinishedJobs.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Unfinished jobs").font(.headline)
-                        ForEach(state.unfinishedJobs, id: \.self) { job in
-                            Text(job).font(.system(.caption, design: .monospaced))
+                        ForEach(StringDeduper.dedupe(state.unfinishedJobs)) { job in
+                            Text(job.display).font(.system(.caption, design: .monospaced))
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -802,7 +1023,7 @@ struct SetupView: View {
                         : "Not held — CUPS has the device, so jobs can print.",
                     done: !state.printerHeldByIPPUSB)
 
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
                     Button("Set up the printer") { state.installDriver() }
                         .buttonStyle(.borderedProminent)
                         .disabled(state.busy || !DriverInstaller.hasPayload)
@@ -830,10 +1051,15 @@ struct SetupView: View {
                 if !state.usbDevices.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("USB devices").font(.headline)
-                        ForEach(state.usbDevices) { device in
+                        ForEach(USBDeduper.group(state.usbDevices)) { device in
                             HStack {
                                 Image(systemName: device.isLaser107a ? "printer.fill" : "cable.connector")
                                 Text(device.name)
+                                if device.count > 1 {
+                                    Text("×\(device.count)")
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(Palette.muted)
+                                }
                                 Spacer()
                                 Text("\(device.vendorID):\(device.productID)")
                                     .font(.system(.caption, design: .monospaced))
@@ -928,55 +1154,60 @@ struct StickerSizesView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 GroupBox {
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack(spacing: 8) {
-                            Text("On").frame(width: 30, alignment: .leading)
-                            Text("Name").frame(width: 150, alignment: .leading)
-                            Text("Width (mm)").frame(width: 80, alignment: .leading)
-                            Text("Height (mm)").frame(width: 80, alignment: .leading)
-                            Text("Inches").frame(width: 150, alignment: .leading)
-                            Spacer()
-                        }
-                        .font(.caption)
-                        .foregroundStyle(Palette.muted)
-
-                        ForEach($state.stickerSizes) { $size in
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 7) {
                             HStack(spacing: 8) {
-                                Toggle("", isOn: $size.enabled)
-                                    .labelsHidden()
-                                    .frame(width: 30, alignment: .leading)
-                                TextField("Name", text: $size.name)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 150)
-                                TextField("mm", value: $size.widthMM, format: .number)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 80)
-                                TextField("mm", value: $size.heightMM, format: .number)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 80)
-                                Text(size.inchesLabel + " in")
-                                    .font(.callout)
-                                    .foregroundStyle(Palette.muted)
-                                    .frame(width: 150, alignment: .leading)
-                                    .textSelection(.enabled)
-                                Spacer()
-                                Button {
-                                    state.removeStickerSize(size.id)
-                                } label: {
-                                    Image(systemName: "minus.circle")
+                                Text("On").frame(width: 30, alignment: .leading)
+                                Text("Name").frame(width: 150, alignment: .leading)
+                                Text("Width (mm)").frame(width: 80, alignment: .leading)
+                                Text("Height (mm)").frame(width: 80, alignment: .leading)
+                                Text("Inches").frame(width: 150, alignment: .leading)
+                                Spacer(minLength: 0)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(Palette.muted)
+
+                            ForEach($state.stickerSizes) { $size in
+                                HStack(spacing: 8) {
+                                    Toggle("", isOn: $size.enabled)
+                                        .labelsHidden()
+                                        .frame(width: 30, alignment: .leading)
+                                        .help("Include this size")
+                                        .accessibilityLabel("Include \(size.name)")
+                                    TextField("Name", text: $size.name)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 150)
+                                    TextField("mm", value: $size.widthMM, format: .number)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 80)
+                                    TextField("mm", value: $size.heightMM, format: .number)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 80)
+                                    Text(size.inchesLabel + " in")
+                                        .font(.callout)
+                                        .foregroundStyle(Palette.muted)
+                                        .frame(width: 150, alignment: .leading)
+                                        .textSelection(.enabled)
+                                    Spacer(minLength: 0)
+                                    Button {
+                                        state.removeStickerSize(size.id)
+                                    } label: {
+                                        Image(systemName: "minus.circle")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Remove this size")
+                                    .accessibilityLabel("Remove \(size.name)")
                                 }
-                                .buttonStyle(.borderless)
-                                .help("Remove this size")
                             }
                         }
+                        .frame(minWidth: 600, alignment: .leading)
+                        .padding(6)
                     }
-                    .padding(6)
                 }
 
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
                     Button("Add a size") { state.addStickerSize() }
                     Button("Restore defaults") { state.resetStickerSizes() }
-                    Spacer()
                     Button("Apply to printers") { state.applyStickerSizes() }
                         .buttonStyle(.borderedProminent)
                         .disabled(targets.isEmpty || state.busy)
@@ -1156,21 +1387,23 @@ struct SettingsView: View {
                     .padding(6)
                 }
 
-                HStack(spacing: 10) {
-                    Button("Read Me First") { state.openReadMe() }
-                    Button("Refresh") { state.refreshNow() }
-                    if let log = URL(string: "file://\(ShareFix.logFile.path)") {
-                        Button("Show Log") { NSWorkspace.shared.open(log) }
+                VStack(alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], alignment: .leading, spacing: 10) {
+                        Button("Read Me First") { state.openReadMe() }
+                        Button("Refresh") { state.refreshNow() }
+                        if let log = URL(string: "file://\(ShareFix.logFile.path)") {
+                            Button("Show Log") { NSWorkspace.shared.open(log) }
+                        }
+                        Button("Copy Error Report") { state.copyErrorReport() }
+                            .disabled(state.reportFeedback == "Generating…")
                     }
-                    Button("Copy Error Report") { state.copyErrorReport() }
-                        .disabled(state.reportFeedback == "Generating…")
+                    .disabled(state.busy)
                     if let feedback = state.reportFeedback {
                         Text(feedback)
                             .font(.caption)
                             .foregroundStyle(feedback.contains("Failed") ? Palette.danger : Palette.muted)
                     }
                 }
-                .disabled(state.busy)
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
@@ -1252,12 +1485,12 @@ struct ActivityView: View {
             if state.activity.isEmpty {
                 EmptyState(title: "Nothing yet", symbol: "list.bullet.rectangle")
             } else {
-                List(state.activity) { entry in
+                List(ActivityDeduper.condense(state.activity)) { entry in
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: entry.kind.symbol)
                             .foregroundStyle(color(for: entry.kind))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.message)
+                            Text(entry.displayMessage)
                                 .font(.callout)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(entry.timestamp)
