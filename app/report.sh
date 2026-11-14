@@ -15,7 +15,7 @@ OUT="$ROOT/../dist/printer-studio-report"
 SOURCES=()
 while IFS= read -r file; do
   case "$(basename "$file")" in
-    App.swift|Views.swift) continue ;;   # SwiftUI and @main; the CLI needs neither
+    App.swift|Views.swift|RenderFixtures.swift) continue ;;   # SwiftUI and @main; the CLI needs neither
   esac
   SOURCES+=("$file")
 done < <(find "$ROOT/Sources/PrinterStudio" -name '*.swift' | sort)

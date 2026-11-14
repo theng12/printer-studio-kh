@@ -6,7 +6,7 @@ OUT="${1:-$ROOT/../_trash/test-label-media-$(/bin/date +%Y%m%d-%H%M%S)-$$}"
 OUT="$(cd "$OUT" && pwd -P)"
 SOURCES=()
 while IFS= read -r file; do
-  case "$(/usr/bin/basename "$file")" in App.swift|Views.swift) continue ;; esac
+  case "$(/usr/bin/basename "$file")" in App.swift|Views.swift|RenderFixtures.swift) continue ;; esac
   SOURCES+=("$file")
 done < <(/usr/bin/find "$ROOT/Sources/PrinterStudio" -name '*.swift' | /usr/bin/sort)
 /usr/bin/swiftc -parse-as-library -swift-version 5 "${SOURCES[@]}" "$ROOT/Tools/TestLabelRoute.swift" -o "$OUT/check-ppds"

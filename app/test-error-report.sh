@@ -14,7 +14,7 @@ echo "==> Gathering sources for TestErrorReport ($ARCH)"
 SOURCES=()
 while IFS= read -r file; do
   case "$(basename "$file")" in
-    App.swift|Views.swift) continue ;;
+    App.swift|Views.swift|RenderFixtures.swift) continue ;;
   esac
   SOURCES+=("$file")
 done < <(find "$ROOT/Sources/PrinterStudio" -name '*.swift' | sort)
