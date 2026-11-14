@@ -1062,6 +1062,7 @@ struct PageRenderHarness {
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
         // Ordered in but fully transparent: SwiftUI only delivers clicks to an
         // ordered, key window, and alpha 0 keeps it off the owner's desktop.
+        window.animationBehavior = .none
         window.alphaValue = 0
         window.orderFront(nil)
         window.makeKey()
