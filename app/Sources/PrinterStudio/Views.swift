@@ -1508,6 +1508,7 @@ struct StickerSizesView: View {
 
                 ActionRow {
                     Button("Add a size") { state.addStickerSize() }
+                    .probe("control.addSize")
                     Button("Restore defaults") { state.resetStickerSizes() }
                     Button("Apply to printers") { state.applyStickerSizes() }
                 .probe("control.applySizes")
