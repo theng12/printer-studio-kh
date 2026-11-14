@@ -1103,6 +1103,7 @@ struct PageRenderHarness {
             "ok": state.lastMessageOK,
             "activity_before": before,
             "activity_after": state.activity.count,
+            "probes": InteractionProbe.frames.keys.sorted(),
             "result": met ? "PASS" : "FAIL",
         ]
         switch opts.target {
