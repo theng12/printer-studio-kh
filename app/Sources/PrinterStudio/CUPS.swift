@@ -223,8 +223,4 @@ enum CUPS {
     static func cancelAllJobs(on name: String) -> CommandResult {
         Shell.run(Tool.lprm, ["-a", "-P", name])
     }
-
-    static func cancelJob(_ id: String) -> CommandResult {
-        Shell.run(Tool.lprm, [id])
-    }
 }

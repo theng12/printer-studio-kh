@@ -338,7 +338,7 @@ struct OverviewView: View {
                         .foregroundStyle(Palette.muted)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                     StatusCard(
                         title: "PRINTER SHARING",
                         value: state.sharingEnabled ? "On" : "Off",
@@ -463,6 +463,19 @@ struct PrintersView: View {
         Binding(get: { mode.rawValue }, set: { modeRaw = $0 })
     }
 
+    /// The table fills the page when it fits and scrolls only below its minimum.
+    private var printerTable: some View {
+        VStack(spacing: 0) {
+            PrinterTableHeader()
+            Divider()
+            ForEach(state.printers) { printer in
+                PrinterTableRow(printer: printer)
+                Divider()
+            }
+        }
+        .frame(minWidth: 560, alignment: .leading)
+    }
+
     private var modePicker: some View {
         Picker("View", selection: modeBinding) {
             Text("Cards").tag(PrinterListMode.cards.rawValue)
@@ -501,16 +514,9 @@ struct PrintersView: View {
                         }
                     }
                 } else {
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        VStack(spacing: 0) {
-                            PrinterTableHeader()
-                            Divider()
-                            ForEach(state.printers) { printer in
-                                PrinterTableRow(printer: printer)
-                                Divider()
-                            }
-                        }
-                        .frame(minWidth: 760, alignment: .leading)
+                    ViewThatFits(in: .horizontal) {
+                        printerTable.frame(maxWidth: .infinity)
+                        ScrollView(.horizontal, showsIndicators: true) { printerTable }
                     }
                     .cardSurface(radius: 10)
                 }
@@ -562,6 +568,7 @@ private struct PrinterActions: View {
     @EnvironmentObject var state: AppState
     let printer: Printer
     let detail: Printer?
+    var showPaperMenu = false
 
     private var resolved: Printer { detail ?? printer }
 
@@ -579,6 +586,21 @@ private struct PrinterActions: View {
                     Button("Open to everyone") { state.openQueue(resolved) }
                 }
                 Button(printer.enabled ? "Pause" : "Resume") { state.toggleEnabled(printer) }
+                if showPaperMenu, let choices = state.paperChoices[printer.name], !choices.isEmpty {
+                    Menu("Paper size") {
+                        ForEach(choices, id: \.key) { paper in
+                            Button {
+                                state.selectPaper(paper.key, for: printer)
+                            } label: {
+                                if (state.selectedPaper[printer.name] ?? "") == paper.key {
+                                    Label(paper.label, systemImage: "checkmark")
+                                } else {
+                                    Text(paper.label)
+                                }
+                            }
+                        }
+                    }
+                }
                 Button("Clear jobs") { state.clearJobs(on: printer) }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -663,12 +685,10 @@ struct PrinterCard: View {
 private struct PrinterTableHeader: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Connection").frame(width: 170, alignment: .leading)
-            Text("State").frame(width: 96, alignment: .leading)
-            Text("Shared").frame(width: 64, alignment: .leading)
-            Text("Paper").frame(width: 150, alignment: .leading)
-            Text("Actions").fixedSize(horizontal: true, vertical: false)
+            Text("Printer").frame(maxWidth: .infinity, alignment: .leading)
+            Text("State").frame(width: 88, alignment: .leading)
+            Text("Shared").frame(width: 56, alignment: .leading)
+            Text("Actions").frame(width: 160, alignment: .leading)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(Palette.muted)
@@ -703,35 +723,26 @@ private struct PrinterTableRow: View {
                     ))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-                    .frame(minWidth: 120)
+                    .frame(minWidth: 110, maxWidth: 220, alignment: .leading)
                     .accessibilityLabel("Printer name")
                     Button("Save name") { state.renamePrinter(printer) }
                         .controlSize(.small)
                         .disabled(state.busy || (state.printerNameDrafts[printer.name] ?? printer.displayName) == printer.displayName)
                 }
-                if printer.transport != .usb {
-                    Text("Mac sharing name only. Network printer AirPrint name is set on the printer.")
-                        .font(.caption2).foregroundStyle(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 2) {
                 Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
-                    .font(.callout)
+                    .font(.caption).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
-                    Text(model).font(.caption).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+                    Text(model).font(.caption2).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(width: 170, alignment: .leading)
+            .frame(minWidth: 170, maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(stateText(printer)).font(.callout)
                 StateBadge(printer: printer)
             }
-            .frame(width: 96, alignment: .leading)
+            .frame(width: 88, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text((detail?.isShared ?? printer.isShared) ? "Yes" : "No").font(.callout)
@@ -743,33 +754,10 @@ private struct PrinterTableRow: View {
                     }
                 }
             }
-            .frame(width: 64, alignment: .leading)
+            .frame(width: 56, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 4) {
-                if let choices = state.paperChoices[printer.name], !choices.isEmpty {
-                    Picker("Paper", selection: Binding(
-                        get: { state.selectedPaper[printer.name] ?? "" },
-                        set: { state.selectPaper($0, for: printer) }
-                    )) {
-                        if !(choices.contains { $0.key == state.selectedPaper[printer.name] }) {
-                            Text("Choose").tag("")
-                        }
-                        ForEach(choices, id: \.key) { paper in
-                            Text(paper.label).tag(paper.key)
-                        }
-                    }
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .disabled(state.busy)
-                    .accessibilityLabel("Paper size for \(printer.displayName)")
-                } else {
-                    Text("—").foregroundStyle(Palette.muted).font(.callout)
-                }
-            }
-            .frame(width: 150, alignment: .leading)
-
-            PrinterActions(printer: printer, detail: detail)
-                .fixedSize(horizontal: true, vertical: false)
+            PrinterActions(printer: printer, detail: detail, showPaperMenu: true)
+                .frame(width: 160, alignment: .leading)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -1027,7 +1015,8 @@ struct SetupView: View {
                     Button("Set up the printer") { state.installDriver() }
                         .buttonStyle(.borderedProminent)
                         .disabled(state.busy || !DriverInstaller.hasPayload)
-                    Button("Keep ready after restarts") { state.releasePrinter() }
+                    Button("Keep it ready") { state.releasePrinter() }
+                        .help("Sets up automatic release after restarts. Asks for administrator approval once.")
                         .disabled(state.busy || state.automaticUSBRelease)
                     Button("Remove driver") { state.uninstallDriver() }
                         .disabled(state.busy || !Driver.isFilterInstalled)

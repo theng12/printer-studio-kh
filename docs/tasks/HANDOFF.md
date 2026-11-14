@@ -21,6 +21,20 @@ Every installed background job now runs from a named `.app` bundle. The launchd 
 
 Migration: AirPrint and ShareFix rewrite their agents at app launch (no admin prompt), copy the user helper into `~/Library/Application Support/PrinterStudio/` and retire the old shell scripts to `_trash/`. A booted-out job is given time to unload before it is restarted, so an upgrade never leaves the AirPrint helper off. The USB daemon needs the existing one-time admin prompt, so its old-style install reports as needing setup and migrates on the next enable. The native Bonjour API replaces the persistent `dns-sd -R` children; transient lookups still use `dns-sd`.
 
+## Release state — 1.0.20 (2026-11-14)
+
+- Product source for 1.0.20 is the release commit that bumps `CFBundleShortVersionString` to
+  **1.0.20** / build **21**. It contains `cb34f18` (one combined helper agent, SMAppService login
+  item, measured neutral ramp) and the Fleet UI list standard.
+- Release record: `/Users/you/Developer/_orchestra/printer-lead/release-120-20261114/` —
+  `PLAN.md`, `ACCEPTANCE.md`, `COMPLETENESS.md`, `CRITIC-120.md`, `gate-120.log`,
+  `pages/` and `window/` renders, `installed-readback-120.json`, `served-readback-120.json`.
+- Page acceptance is offscreen (`app/render-pages.sh`): every page at 375/768/1440 and the window
+  at 860/1024/1440, light and dark, with geometry and a corrected alpha-chain contrast probe.
+- Still unproven in this record: SMAppService at a real login and the Login Items row (needs a
+  logout/reboot), iPhone discovery, a real paper label, and live clicks in the shipped app.
+- 1.0.19 remains the installed version on the development Mac until an idle-Mac install of 1.0.20.
+
 ## Release state — 2026-11-09
 
 - Product source: `e510375e29f9447836dc1049ecb822d20cff2cf6`, merged and pushed to main.

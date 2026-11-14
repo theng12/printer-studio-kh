@@ -145,6 +145,27 @@ are SF Symbols at 13–16 pt, stroke-consistent, always paired with a text label
 - **Activity rows** — timestamped lines, secondary color, warnings and errors in
   orange and red with their reason stated.
 
+## Lists and rows (Fleet standard, 1.0.20)
+
+- **View switch** — a list that has two useful shapes carries a Cards | Table
+  segmented control in its header and remembers the choice
+  (`printersListMode`); Cards is where every install starts.
+- **Cards** — an adaptive grid (minimum 340 pt) with one measured minimum
+  height per row, a quiet border, a state badge, and a metric grid with a fixed
+  label column so values line up across cards.
+- **Table** — a fixed header row and aligned columns (Name flexible, Connection
+  170, State 96, Shared 64, Paper 150, Actions). Below its minimum width the
+  table scrolls horizontally instead of clipping.
+- **One primary action per row** — Print test page on a printer, Open to
+  everyone on a blocked queue. Share/Stop sharing, Pause/Resume, Clear jobs and
+  Restrict live in a labelled ⋯ menu on that row.
+- **Warnings** — grouped under "Needs attention (n)" and "Suggestions (n)";
+  identical lines collapse into one row with ×n.
+- **Deduped rows** — consecutive identical Activity entries and identical USB
+  devices collapse into one row with ×n.
+- **Metric lines** — label in muted, value in body, one value per line; the
+  label column never reflows per row.
+
 ## Do's and Don'ts
 
 - Do keep one accent, one type family, and semantic system colors.

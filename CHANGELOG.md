@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.20 — 2026-11-14
+- Background work now runs as one helper instead of two, so Login Items shows Printer Studio KH and one Printer Studio KH Helper.
+- Installing the background watcher no longer turns Printer Sharing on for you.
+- Printers can be shown as cards or a table, and the app remembers which you chose.
+- Each printer has one main button — Print test page — and share, pause, resume, clear jobs and access changes live in the ••• menu on that row.
+- Warnings are grouped under “Needs attention” or “Suggestions” with a count, and identical log lines are shown once with ×N.
+- Cards line up at the same height with labelled values, columns stay aligned, and the light and dark contrast is measured rather than guessed.
+
 ## 1.0.19 — 2026-11-13
 - Opening the app now shows its window straight away; the menu-bar icon is still there for quick actions.
 - The window can be reopened from the application menu with Command-O or from the menu-bar menu after it is closed.
