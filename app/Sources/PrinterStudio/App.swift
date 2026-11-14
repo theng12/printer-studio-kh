@@ -134,7 +134,9 @@ final class AppState: ObservableObject {
 
     @Published var busy = false
     @Published var busyMessage = ""
-    @Published var lastError: String?
+    /// The last action's result, shown on the page where it happened until dismissed.
+    @Published var lastMessage: String?
+    @Published var lastMessageOK = true
     @Published var reportFeedback: String?
 
     /// Which sidebar screen is showing. This lives here rather than in a
@@ -233,12 +235,22 @@ final class AppState: ObservableObject {
     }
 
     private func report(_ result: CommandResult, success: String) {
+        let message: String
+        let ok: Bool
         if result.ok {
-            log(success, kind: .success)
+            message = success
+            ok = true
         } else if result.status == -128 {
-            log("Cancelled.", kind: .warning)
+            message = "Cancelled."
+            ok = false
         } else {
-            log(result.combined.isEmpty ? "Command failed." : result.combined, kind: .error)
+            message = result.combined.isEmpty ? "Command failed." : result.combined
+            ok = false
+        }
+        log(message, kind: ok ? .success : .error)
+        DispatchQueue.main.async {
+            self.lastMessage = message
+            self.lastMessageOK = ok
         }
     }
 

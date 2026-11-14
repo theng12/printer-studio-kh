@@ -1,12 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// The app's surface ramp and status colours.
+/// The app's surface ramp, status colours and one accent.
 ///
-/// Every value is a SwiftUI semantic colour, so Light and Dark follow macOS.
+/// Surface values are SwiftUI semantic colours, so Light and Dark follow macOS.
 /// The opacity steps below are measured, not eyeballed: body ink over the
 /// window background gives the page, and a measured fraction of body ink gives
 /// the muted text.
+///
+/// Status and accent are explicit pairs because the system green/orange/red are
+/// too light for small light-mode text on white (measured 2.0–3.5:1). Each has a
+/// dark light-mode variant for text and a bright dark-mode variant; the filled
+/// primary button uses `accentFill`, which carries white text at >= 4.5:1 in
+/// both appearances.
 enum Palette {
     /// Body text.
     static let body = Color(nsColor: .labelColor)
@@ -21,9 +27,21 @@ enum Palette {
     /// on the page, 4.92:1 and 6.06:1 on the surface.
     static let muted = body.opacity(0.66)
 
-    /// The one accent, for primary actions and selection.
-    static let accent = Color.accentColor
-    static let success = Color.green
-    static let warning = Color.orange
-    static let danger = Color.red
+    /// Links, icons and text accents: >= 4.5:1 on the page in both appearances.
+    static let accent = pair(light: (0.00, 0.35, 0.78), dark: (0.44, 0.70, 1.00))
+    /// Filled primary buttons: white text >= 4.5:1 in both appearances.
+    static let accentFill = pair(light: (0.00, 0.35, 0.78), dark: (0.12, 0.44, 0.88))
+    /// State text on a 15% tint of itself or on the page/surface.
+    static let success = pair(light: (0.00, 0.42, 0.20), dark: (0.30, 0.85, 0.55))
+    static let warning = pair(light: (0.55, 0.30, 0.00), dark: (1.00, 0.68, 0.25))
+    static let danger = pair(light: (0.68, 0.10, 0.08), dark: (1.00, 0.42, 0.38))
+
+    private static func pair(light: (CGFloat, CGFloat, CGFloat),
+                             dark: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let c = isDark ? dark : light
+            return NSColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
+    }
 }

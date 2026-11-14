@@ -285,8 +285,13 @@ for target in "${TARGETS[@]}"; do
   for size in "${sizes_to_use[@]}"; do
     for appearance in light dark; do
       if [[ "$target" == window* ]]; then
-        PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
-          render_one window "$target" "$size" "$appearance"
+        if [[ "$target" == *-outcome ]]; then
+          PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_RENDER_OUTCOME=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+            render_one window "$target" "$size" "$appearance"
+        else
+          PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+            render_one window "$target" "$size" "$appearance"
+        fi
       elif [ "$target" = "printers-table" ]; then
         PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
           render_one page printers-table "$size" "$appearance" table

@@ -94,9 +94,13 @@ hairlines and quiet card outlines, **muted** (body ink at 66%) for captions and
 supporting text, and **body** (`label`) for body text. The page sits 1.19:1
 (Light) and 1.25:1 (Dark) from the surface, so cards read as a layer; body
 measures 13.08:1 and 10.04:1, and muted 4.71:1 and 5.32:1 on the page — all at
-or above the 4.5:1 floor. One **accent** (`accentColor`) is used for primary
-actions and selection; **success** (green), **warning** (orange) and **danger**
-(red) are for state only, and never carry a state without a text label.
+or above the 4.5:1 floor. One **accent** is used for links, icons, primary
+actions and selection. The system green/orange/red are too light for small
+light-mode text (measured 2.0–3.5:1), so `DesignTokens.swift` defines explicit
+light/dark pairs: **success**, **warning** and **danger** for state text on a
+15% tint or on the page, **accent** for accent text, and **accentFill** for
+filled primary buttons. The acceptance probe measures every pair and fails below
+4.5:1 in either appearance; state never appears without a text label.
 
 ## Typography
 
@@ -161,8 +165,12 @@ are SF Symbols at 13–16 pt, stroke-consistent, always paired with a text label
   everyone on a blocked queue. Share/Stop sharing, Pause/Resume, Rename…, Paper
   size and Clear jobs live in a labelled ⋯ menu on that row. Rename is an in-app
   sheet, never a native prompt; cards keep their inline name field.
-- **Action rows** — buttons pack with one uniform 10 pt gap (`FlowLayout`) and
-  wrap as a group; no adaptive columns with arbitrary holes.
+- **Action rows** — buttons sit in one row with a uniform 10 pt gap; when the row
+  does not fit it becomes a stacked column (`ActionRow`), so the height reserved
+  is the height drawn and the next card never covers a control.
+- **Action results** — the last action's success or failure appears as a banner
+  at the top of the page where it happened, with its message and a dismiss
+  control; the Activity page keeps the history.
 - **Warnings** — grouped under "Needs attention (n)" and "Suggestions (n)";
   identical lines collapse into one row with ×n.
 - **Deduped rows** — consecutive identical Activity entries and identical USB

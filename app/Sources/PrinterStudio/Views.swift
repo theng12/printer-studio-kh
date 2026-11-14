@@ -114,18 +114,25 @@ struct MainWindow: View {
             .background(SidebarMaterial())
             .navigationSplitViewColumnWidth(min: 240, ideal: 248, max: 260)
         } detail: {
-            Group {
-                switch state.screen ?? .overview {
-                case .overview: OverviewView()
-                case .printers: PrintersView()
-                case .sharing: SharingView()
-                case .setup: SetupView()
-                case .activity: ActivityView()
-                case .stickers: StickerSizesView()
-                case .settings: SettingsView()
+            VStack(spacing: 0) {
+                if let message = state.lastMessage {
+                    ResultBanner(message: message, ok: state.lastMessageOK) {
+                        state.lastMessage = nil
+                    }
                 }
+                Group {
+                    switch state.screen ?? .overview {
+                    case .overview: OverviewView()
+                    case .printers: PrintersView()
+                    case .sharing: SharingView()
+                    case .setup: SetupView()
+                    case .activity: ActivityView()
+                    case .stickers: StickerSizesView()
+                    case .settings: SettingsView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.page)
             .foregroundStyle(Palette.body)
             .groupBoxStyle(CardGroupStyle())
@@ -292,9 +299,54 @@ struct ErrorState: View {
                 .fixedSize(horizontal: false, vertical: true)
             Button("Retry", action: retry)
                 .buttonStyle(.borderedProminent)
+                .tint(Palette.accentFill)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+    }
+}
+
+/// The result of the last action, on the page where it happened, until dismissed.
+struct ResultBanner: View {
+    let message: String
+    let ok: Bool
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? Palette.success : Palette.danger)
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss this result")
+            .accessibilityLabel("Dismiss result")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background((ok ? Palette.success : Palette.danger).opacity(0.10))
+        .overlay(Rectangle().fill(Palette.border).frame(height: 1), alignment: .bottom)
+    }
+}
+
+/// One row of actions with one uniform gap; when the row does not fit it
+/// becomes a stacked column, so the height reserved is the height drawn.
+struct ActionRow<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) { content }
+            VStack(alignment: .leading, spacing: 10) { content }
+        }
     }
 }
 
@@ -391,8 +443,12 @@ struct OverviewView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Quick actions").font(.headline)
-                    FlowLayout(spacing: 10) {
+                    ActionRow {
                         Button("Fix shared queues now") { state.fixSharingNow() }
+                            .disabled(!state.sharingEnabled || !state.detailedPrinters.contains(where: \.isShared))
+                            .help(state.sharingEnabled
+                                  ? "Reopen every shared queue to everyone"
+                                  : "Turn on Printer Sharing first")
                         Button(state.sharingEnabled ? "Turn off Printer Sharing" : "Turn on Printer Sharing") {
                             state.setSharing(!state.sharingEnabled)
                         }
@@ -530,11 +586,11 @@ struct PrintersView: View {
                     HStack(alignment: .center) {
                         Text("Printers on this Mac").font(.title2.weight(.semibold))
                         Spacer()
-                        modePicker
+                        if !state.printers.isEmpty { modePicker }
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Printers on this Mac").font(.title2.weight(.semibold))
-                        modePicker
+                        if !state.printers.isEmpty { modePicker }
                     }
                 }
 
@@ -544,9 +600,26 @@ struct PrintersView: View {
                                retry: { state.refreshNow() })
                         .frame(height: 260)
                 } else if state.printers.isEmpty {
-                    EmptyState(title: "No printers", symbol: "printer",
-                               detail: "This Mac has no print queues yet.")
-                        .frame(height: 240)
+                    VStack(spacing: 12) {
+                        Image(systemName: "printer")
+                            .font(.largeTitle)
+                            .foregroundStyle(Palette.muted)
+                        Text("No printers").font(.headline)
+                        Text("This Mac has no print queues yet. Add one in Printers & Scanners, then refresh.")
+                            .font(.callout)
+                            .foregroundStyle(Palette.muted)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ActionRow {
+                            Button("Refresh") { state.refreshNow() }
+                            Button("Open Printers & Scanners") {
+                                ExternalLinks.openPrinterSettings()
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
                 } else if mode == .cards {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 14, alignment: .top)], spacing: 14) {
                         ForEach(state.printers) { printer in
@@ -664,6 +737,7 @@ private struct PrinterActions: View {
         HStack(spacing: 8) {
             Button("Print test page") { state.testPrint(printer) }
                 .buttonStyle(.borderedProminent)
+                .tint(Palette.accentFill)
                 .controlSize(.small)
                 .help("Print one test page to \(printer.displayName)")
             Menu {
@@ -888,6 +962,7 @@ struct SharingView: View {
                             } else {
                                 Button("Turn on") { state.installAirPrint() }
                                     .buttonStyle(.borderedProminent)
+                                    .tint(Palette.accentFill)
                             }
                         }
                         if state.labelPrintingNeedsSetup {
@@ -950,6 +1025,10 @@ struct SharingView: View {
                         Spacer()
                         Button("Fix all now") { state.fixSharingNow() }
                             .controlSize(.small)
+                            .disabled(!state.sharingEnabled || state.detailedPrinters.filter(\.isShared).isEmpty)
+                            .help(state.sharingEnabled
+                                  ? "Reopen every shared queue to everyone"
+                                  : "Turn on Printer Sharing first")
                     }
 
                     let shared = state.detailedPrinters.filter(\.isShared)
@@ -969,6 +1048,7 @@ struct SharingView: View {
                                     Text("Blocked").font(.caption).foregroundStyle(Palette.danger)
                                     Button("Open to everyone") { state.openQueue(printer) }
                                         .buttonStyle(.borderedProminent)
+                                        .tint(Palette.accentFill)
                                         .controlSize(.small)
                                         .help("Open \(printer.displayName) to everyone")
                                 } else {
@@ -1106,17 +1186,42 @@ struct SetupView: View {
                         : "Not held — CUPS has the device, so jobs can print.",
                     done: !state.printerHeldByIPPUSB)
 
-                FlowLayout(spacing: 10) {
-                    Button("Set up the printer") { state.installDriver() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(state.busy || !DriverInstaller.hasPayload)
-                    Button("Keep it ready") { state.releasePrinter() }
-                        .help("Sets up automatic release after restarts. Asks for administrator approval once.")
-                        .disabled(state.busy || state.automaticUSBRelease)
-                    Button("Remove driver") { state.uninstallDriver() }
-                        .disabled(state.busy || !Driver.isFilterInstalled)
-                    if state.busy {
-                        ProgressView().controlSize(.small)
+                if setupComplete, let printer = setupPrinter {
+                    Text("The printer is set up and ready.")
+                        .font(.callout)
+                        .foregroundStyle(Palette.success)
+                    ActionRow {
+                        Button("Print test page") { state.testPrint(printer) }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Palette.accentFill)
+                            .disabled(state.busy)
+                        Button("Keep it ready") { state.releasePrinter() }
+                            .help("Sets up automatic release after restarts. Asks for administrator approval once.")
+                            .disabled(state.busy || state.automaticUSBRelease)
+                        Menu("More") {
+                            Button("Set up again") { state.installDriver() }
+                                .disabled(state.busy || !DriverInstaller.hasPayload)
+                            Button("Remove driver") { state.uninstallDriver() }
+                                .disabled(state.busy || !Driver.isFilterInstalled)
+                        }
+                        if state.busy {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                } else {
+                    ActionRow {
+                        Button("Set up the printer") { state.installDriver() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Palette.accentFill)
+                            .disabled(state.busy || !DriverInstaller.hasPayload)
+                        Button("Keep it ready") { state.releasePrinter() }
+                            .help("Sets up automatic release after restarts. Asks for administrator approval once.")
+                            .disabled(state.busy || state.automaticUSBRelease)
+                        Button("Remove driver") { state.uninstallDriver() }
+                            .disabled(state.busy || !Driver.isFilterInstalled)
+                        if state.busy {
+                            ProgressView().controlSize(.small)
+                        }
                     }
                 }
 
@@ -1165,6 +1270,16 @@ struct SetupView: View {
     }
 
     private var queueExists: Bool { queueName != nil }
+
+    private var setupComplete: Bool {
+        state.laser107a != nil && Driver.isReady && queueExists
+            && state.sharingEnabled && !state.printerHeldByIPPUSB
+    }
+
+    private var setupPrinter: Printer? {
+        guard let queueName else { return nil }
+        return state.printers.first { $0.name == queueName }
+    }
 }
 
 struct SetupStep: View {
@@ -1296,11 +1411,12 @@ struct StickerSizesView: View {
                     }
                 }
 
-                FlowLayout(spacing: 10) {
+                ActionRow {
                     Button("Add a size") { state.addStickerSize() }
                     Button("Restore defaults") { state.resetStickerSizes() }
                     Button("Apply to printers") { state.applyStickerSizes() }
                         .buttonStyle(.borderedProminent)
+                        .tint(Palette.accentFill)
                         .disabled(targets.isEmpty || state.busy)
                 }
                 .disabled(state.busy)
@@ -1495,7 +1611,7 @@ struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    FlowLayout(spacing: 10) {
+                    ActionRow {
                         Button("Read Me First") { state.openReadMe() }
                         Button("Refresh") { state.refreshNow() }
                         if let log = URL(string: "file://\(ShareFix.logFile.path)") {

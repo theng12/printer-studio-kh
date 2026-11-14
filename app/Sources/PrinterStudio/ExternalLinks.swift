@@ -15,4 +15,14 @@ enum ExternalLinks {
         }
         return NSWorkspace.shared.open(url)
     }
+
+    /// Opens the system pane where a person adds a printer. A local Apple URL
+    /// scheme, not a web address.
+    @discardableResult
+    static func openPrinterSettings() -> Bool {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Print-Scan-Settings.extension") else {
+            return false
+        }
+        return NSWorkspace.shared.open(url)
+    }
 }

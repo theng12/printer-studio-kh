@@ -92,18 +92,37 @@ struct PageRenderHarness {
                 let mutedOnPage = composite(foreground: withAlpha(label, 0.66 * labelAlpha), over: page)
                 let mutedOnSurface = composite(foreground: withAlpha(label, 0.66 * labelAlpha), over: surface)
                 let borderOnPage = composite(foreground: separator, over: page)
+                let success = resolved(NSColor(Palette.success))
+                let warning = resolved(NSColor(Palette.warning))
+                let danger = resolved(NSColor(Palette.danger))
+                let accent = resolved(NSColor(Palette.accent))
+                let accentFill = resolved(NSColor(Palette.accentFill))
+                let successBadge = composite(foreground: withAlpha(success, 0.15), over: surface)
+                let warningBadge = composite(foreground: withAlpha(warning, 0.15), over: surface)
                 results[name] = [
                     "page_surface": ratio(page, surface),
                     "body_page": ratio(bodyOnPage, page),
                     "muted_page": ratio(mutedOnPage, page),
                     "muted_surface": ratio(mutedOnSurface, surface),
                     "border_page": ratio(borderOnPage, page),
+                    "success_badge": ratio(success, successBadge),
+                    "warning_badge": ratio(warning, warningBadge),
+                    "success_page": ratio(success, page),
+                    "warning_page": ratio(warning, page),
+                    "danger_page": ratio(danger, page),
+                    "accent_page": ratio(accent, page),
+                    "white_on_accent_fill": ratio(.white, accentFill),
                     "resolved": [
                         "label": rgba(label),
                         "surface": rgba(surface),
                         "separator": rgba(separator),
                         "window_background": rgba(windowBG),
                         "page": rgba(page),
+                        "success": rgba(success),
+                        "warning": rgba(warning),
+                        "danger": rgba(danger),
+                        "accent": rgba(accent),
+                        "accent_fill": rgba(accentFill),
                     ],
                 ]
             }
@@ -118,11 +137,17 @@ struct PageRenderHarness {
         func value(_ appearance: String, _ key: String) -> Double {
             (results[appearance]?[key] as? Double) ?? 0
         }
-        let bodyOK = value("light", "body_page") >= 4.5 && value("dark", "body_page") >= 4.5
-        let mutedOK = value("light", "muted_page") >= 4.5 && value("dark", "muted_page") >= 4.5
-            && value("light", "muted_surface") >= 4.5 && value("dark", "muted_surface") >= 4.5
-        if !bodyOK || !mutedOK {
-            fputs("CONTRAST_FAIL body>=4.5 and muted>=4.5 required\n", stderr)
+        let textKeys = ["body_page", "muted_page", "muted_surface", "success_badge",
+                        "warning_badge", "success_page", "warning_page", "danger_page",
+                        "accent_page", "white_on_accent_fill"]
+        var failing: [String] = []
+        for appearance in ["light", "dark"] {
+            for key in textKeys where value(appearance, key) < 4.5 {
+                failing.append("\(appearance).\(key)=\(value(appearance, key))")
+            }
+        }
+        if !failing.isEmpty {
+            fputs("CONTRAST_FAIL below 4.5: \(failing.joined(separator: ", "))\n", stderr)
             exit(1)
         }
     }
@@ -176,10 +201,13 @@ struct PageRenderHarness {
         let baseTarget = opts.target
             .replacingOccurrences(of: "-empty", with: "")
             .replacingOccurrences(of: "-error", with: "")
+            .replacingOccurrences(of: "-outcome", with: "")
         let isEmpty = opts.target.hasSuffix("-empty")
             || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_EMPTY"] == "1"
         let isError = opts.target.hasSuffix("-error")
             || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_ERROR"] == "1"
+        let isOutcome = opts.target.hasSuffix("-outcome")
+            || ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_OUTCOME"] == "1"
         if baseTarget == "printers-table" {
             UserDefaults.standard.set("table", forKey: "printersListMode")
         } else if baseTarget == "printers" {
@@ -191,6 +219,8 @@ struct PageRenderHarness {
             applyErrorFixture(state)
         } else if isEmpty {
             applyEmptyFixture(state)
+        } else if isOutcome {
+            applyOutcomeFixture(state)
         }
         if opts.mode == "page" {
             applyPageSelection(state: state, page: baseTarget, printersListMode: opts.printersListMode)
@@ -266,8 +296,12 @@ struct PageRenderHarness {
             exit(1)
         }
 
-        let geom = measure(rep: rep, isWindow: opts.mode == "window")
-        emitResult(opts: opts, ok: true, error: nil, geom: geom)
+        var accentFill = NSColor.black
+        windowAppearance?.performAsCurrentDrawingAppearance {
+            accentFill = NSColor(Palette.accentFill).usingColorSpace(.sRGB) ?? .black
+        }
+        let geom = measure(rep: rep, isWindow: opts.mode == "window", accent: accentFill)
+        emitResult(opts: opts, ok: true, error: nil, geom: geom, controls: controlStates(hosting))
     }
 
     static func outputName(_ opts: RenderOptions) -> String {
@@ -276,10 +310,16 @@ struct PageRenderHarness {
 
     static func applyWindowSelection(state: AppState, target: String) {
         switch target {
-        case "window-printers": state.screen = .printers
-        case "window-sharing": state.screen = .sharing
+        case let value where value.hasPrefix("window-printers"): state.screen = .printers
+        case let value where value.hasPrefix("window-sharing"): state.screen = .sharing
         default: state.screen = .overview
         }
+    }
+
+    /// An action failure as the window shows it: the result banner on the page.
+    static func applyOutcomeFixture(_ state: AppState) {
+        state.lastMessage = "Test page failed — The printer is not responding."
+        state.lastMessageOK = false
     }
 
     /// A CUPS read that failed: the page must name the cause and offer Retry.
@@ -447,7 +487,7 @@ struct PageRenderHarness {
         // 2 shared queues (hp107 shared, hp108 shared) - reflected in printer flags above
         state.busy = false
         state.busyMessage = ""
-        state.lastError = nil
+        state.lastMessage = nil
         state.reportFeedback = nil
         state.screen = .overview
         return state
@@ -787,34 +827,50 @@ struct PageRenderHarness {
         let leftGutter: Int
         let rightGutter: Int
         let clipped: Bool
+        /// Tallest solid run of the primary-button colour. A button that is
+        /// covered by a following card leaves only a short strip.
+        let accentRun: Int
     }
 
-    static func measure(rep: NSBitmapImageRep, isWindow: Bool) -> Geometry {
+    static func measure(rep: NSBitmapImageRep, isWindow: Bool, accent: NSColor?) -> Geometry {
         let w = rep.pixelsWide
         let h = rep.pixelsHigh
         guard w > 2, h > 0, let data = rep.bitmapData else {
-            return Geometry(contentBottom: 0, leftGutter: 0, rightGutter: 0, clipped: false)
+            return Geometry(contentBottom: 0, leftGutter: 0, rightGutter: 0, clipped: false, accentRun: 0)
         }
         let bpp = rep.bitsPerPixel / 8
         let bpr = rep.bytesPerRow
         // sample background from top-right corner (inside image)
         let bg = pixel(data: data, x: w - 1, y: 0, bpp: bpp, bpr: bpr)
+        let accentRGB = accent.map {
+            (Int($0.redComponent * 255), Int($0.greenComponent * 255), Int($0.blueComponent * 255))
+        }
 
         var minX = w
         var maxX = -1
         var maxY = -1
-        for y in 0..<h {
-            for x in 0..<w {
+        var maxAccentRun = 0
+        for x in 0..<w {
+            var run = 0
+            for y in 0..<h {
                 let p = pixel(data: data, x: x, y: y, bpp: bpp, bpr: bpr)
                 if !same(p, bg) {
                     if x < minX { minX = x }
                     if x > maxX { maxX = x }
                     if y > maxY { maxY = y }
                 }
+                if let a = accentRGB,
+                   abs(Int(p.0) - a.0) <= 14, abs(Int(p.1) - a.1) <= 14,
+                   abs(Int(p.2) - a.2) <= 14, p.3 > 200 {
+                    run += 1
+                    if run > maxAccentRun { maxAccentRun = run }
+                } else {
+                    run = 0
+                }
             }
         }
         if maxX < 0 {
-            return Geometry(contentBottom: 0, leftGutter: w, rightGutter: w, clipped: false)
+            return Geometry(contentBottom: 0, leftGutter: w, rightGutter: w, clipped: false, accentRun: 0)
         }
         let leftGutter = minX
         let rightGutter = (w - 1) - maxX
@@ -822,7 +878,8 @@ struct PageRenderHarness {
         // Window mode: the sidebar material is deliberately flush left, so only
         // the right edge is a clip signal. Pages test both edges.
         let clipped = isWindow ? rightGutter < 12 : leftGutter < 12 || rightGutter < 12
-        return Geometry(contentBottom: contentBottom, leftGutter: leftGutter, rightGutter: rightGutter, clipped: clipped)
+        return Geometry(contentBottom: contentBottom, leftGutter: leftGutter, rightGutter: rightGutter,
+                        clipped: clipped, accentRun: maxAccentRun)
     }
 
     static func pixel(data: UnsafeMutablePointer<UInt8>, x: Int, y: Int, bpp: Int, bpr: Int) -> (UInt8, UInt8, UInt8, UInt8) {
@@ -843,7 +900,8 @@ struct PageRenderHarness {
                abs(Int(a.3) - Int(b.3)) <= tol
     }
 
-    static func emitResult(opts: RenderOptions, ok: Bool, error: String?, geom: Geometry?) {
+    static func emitResult(opts: RenderOptions, ok: Bool, error: String?, geom: Geometry?,
+                           controls: [[String: String]]? = nil) {
         var obj: [String: Any] = [
             "page": opts.mode == "window" ? "window" : opts.target,
             "width": opts.width,
@@ -857,10 +915,45 @@ struct PageRenderHarness {
             obj["right_gutter_px"] = g.rightGutter
             obj["left_gutter_px"] = g.leftGutter
             obj["clipped"] = g.clipped
+            obj["accent_run_px"] = g.accentRun
         }
+        if let controls, !controls.isEmpty { obj["controls"] = controls }
         if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
            let s = String(data: data, encoding: .utf8) {
             print("MEASURE \(s)")
         }
+    }
+
+    /// The state of switches and segmented controls, so a render can be checked
+    /// against its fixture instead of relying on the inactive-window drawing.
+    static func controlStates(_ view: NSView) -> [[String: String]] {
+        var out: [[String: String]] = []
+        if let toggle = view as? NSSwitch {
+            out.append(["type": "switch", "label": toggle.accessibilityLabel() ?? "",
+                        "value": toggle.state == .on ? "on" : "off"])
+        } else if let segment = view as? NSSegmentedControl {
+            out.append(["type": "segmented", "label": segment.accessibilityLabel() ?? "",
+                        "value": "\(segment.selectedSegment)"])
+        }
+        func walkAccessibility(_ element: Any) {
+            if let view = element as? NSView {
+                let role = view.accessibilityRole()
+                if role == .checkBox || role == .switch {
+                    out.append(["type": "switch", "label": view.accessibilityLabel() ?? "",
+                                "value": "\(view.accessibilityValue() ?? "")"])
+                }
+                for child in view.accessibilityChildren() ?? [] { walkAccessibility(child) }
+            } else if let ax = element as? any NSAccessibilityProtocol {
+                let role = ax.accessibilityRole()
+                if role == .checkBox || role == .switch {
+                    out.append(["type": "switch", "label": ax.accessibilityLabel() ?? "",
+                                "value": "\(ax.accessibilityValue() ?? "")"])
+                }
+                for child in ax.accessibilityChildren() ?? [] { walkAccessibility(child) }
+            }
+        }
+        walkAccessibility(view)
+        for child in view.subviews { out.append(contentsOf: controlStates(child)) }
+        return out
     }
 }
