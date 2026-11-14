@@ -1024,8 +1024,15 @@ struct PageRenderHarness {
         let state = makeFixtureState()
         let flag = DismissFlag()
         let wanted = screenFor(opts.target)
-        // Start elsewhere so the sidebar row itself has to work.
-        state.screen = isWhatsNew || wanted == .overview ? .settings : .overview
+        // Start elsewhere so the sidebar row itself has to work. The sticker
+        // page is the exception: inserting it during a List-selection update
+        // aborts the offscreen host (AttributeGraph precondition), so it opens
+        // at start-up and only its layout is measured.
+        if opts.target == "stickers" {
+            state.screen = .stickers
+        } else {
+            state.screen = isWhatsNew || wanted == .overview ? .settings : .overview
+        }
 
         let root: AnyView = isWhatsNew
             ? AnyView(WhatsNewSheetHost(flag: flag))
@@ -1061,8 +1068,8 @@ struct PageRenderHarness {
         step("laid out; probes=\(InteractionProbe.frames.keys.sorted())")
 
         // 1 — reach the page through its own sidebar row.
-        var nav = isWhatsNew ? "n/a" : "not-found"
-        if !isWhatsNew, let title = sidebarTitle(opts.target) {
+        var nav = isWhatsNew ? "n/a" : (opts.target == "stickers" ? "set-at-start" : "not-found")
+        if !isWhatsNew, opts.target != "stickers", let title = sidebarTitle(opts.target) {
             if let frame = InteractionProbe.frames["nav.\(title)"],
                clickProbeFrame(frame, on: window, hosting: hosting) {
                 nav = "click"
@@ -1115,7 +1122,11 @@ struct PageRenderHarness {
         }
         step("driven: via=\(via) banner=\(state.lastMessage ?? "")")
         var met = interactionOutcomeMet(opts.target, state: state, flag: flag)
-        if opts.target == "stickers" { met = met && nav == "click" }
+        if opts.target == "stickers" {
+            met = state.screen == .stickers
+                && InteractionProbe.frames["control.addSize"] != nil
+                && InteractionProbe.frames["control.applySizes"] != nil
+        }
 
         var obj: [String: Any] = [
             "page": opts.target,
@@ -1128,10 +1139,10 @@ struct PageRenderHarness {
             "activity_after": state.activity.count,
             "probes": InteractionProbe.frames.keys.sorted(),
             "click_frame": clickFrame.map { [Int($0.minX), Int($0.minY), Int($0.width), Int($0.height)] } ?? [],
-            "result": met ? "PASS" : "FAIL",
+            "result": opts.target == "stickers" ? (met ? "LIMITED" : "FAIL") : (met ? "PASS" : "FAIL"),
         ]
         if opts.target == "stickers" {
-            obj["limited"] = "offscreen host aborts AttributeGraph on any sticker-list mutation; the nav click is the driven interaction"
+            obj["limited"] = "offscreen host aborts AttributeGraph when the sticker page is inserted or its list mutated; only its laid-out action controls are measured"
         }
         switch opts.target {
         case "settings": obj["appearance"] = UserDefaults.standard.string(forKey: "appearance") ?? ""
@@ -1191,7 +1202,7 @@ struct PageRenderHarness {
         case "printers": return state.lastMessageOK && banner == "Test page sent to HP_Laser_107a."
         case "sharing": return state.lastMessageOK && banner == "Background watcher removed."
         case "setup": return state.lastMessageOK && banner.hasPrefix("Automatic USB release is running")
-        case "stickers": return state.screen == .stickers
+
         case "activity": return state.activity.first?.message == "Refreshing…" && !state.busy
         case "settings": return UserDefaults.standard.string(forKey: "appearance") == "dark"
         case "whats-new": return flag.dismissed
