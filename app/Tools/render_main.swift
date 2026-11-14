@@ -691,8 +691,11 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        // Never ordered front: an offscreen frame is pulled back onto the
-        // screen when ordered in. cacheDisplay and event delivery work unordered.
+        // Ordered in but fully transparent: SwiftUI delivers clicks only to an
+        // ordered, key window; alpha 0 keeps it off the owner's desktop, and a
+        // presented sheet is made transparent the same way.
+        window.alphaValue = 0
+        window.orderFront(nil)
         window.makeKey()
         for _ in 0..<12 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.12))
@@ -836,8 +839,10 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        // Never ordered front: ordering an offscreen window in pulls it onto
-        // the owner's screen. Unordered windows still draw and take events.
+        // Ordered in but fully transparent: SwiftUI only delivers clicks to an
+        // ordered, key window, and alpha 0 keeps it off the owner's desktop.
+        window.alphaValue = 0
+        window.orderFront(nil)
         window.makeKey()
         for _ in 0..<12 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.12))
@@ -1039,8 +1044,10 @@ struct PageRenderHarness {
         window.contentViewController = controller
         window.setContentSize(NSSize(width: opts.width, height: opts.height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-        // Never ordered front: ordering an offscreen window in pulls it onto
-        // the owner's screen. Unordered windows still draw and take events.
+        // Ordered in but fully transparent: SwiftUI only delivers clicks to an
+        // ordered, key window, and alpha 0 keeps it off the owner's desktop.
+        window.alphaValue = 0
+        window.orderFront(nil)
         window.makeKey()
         pump(hosting: hosting, window: window)
 
@@ -1070,6 +1077,7 @@ struct PageRenderHarness {
                 pump(hosting: hosting, window: window)
             }
         case "whats-new":
+            window.attachedSheet?.alphaValue = 0
             let sheet = window.attachedSheet
             let sheetHosting = sheet?.contentView ?? hosting
             if let frame = InteractionProbe.frames[probeName(opts.target)],
