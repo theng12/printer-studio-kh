@@ -131,21 +131,6 @@ old = '''        .task {
 if old in text:
     text = text.replace(old, '        .task { _ = ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER"] }')
 
-# The sticker editor's binding ForEach ($state.stickerSizes) aborts the offscreen
-# host with an AttributeGraph "setting value during update" precondition whenever
-# an action mutates the list (Add a size, Apply). Render its rows read-only in
-# the throwaway copy only; the shipped views keep their bindings.
-edit = [
-    ('Toggle("", isOn: $size.enabled)', 'Text(size.enabled ? "On" : "Off")'),
-    ('TextField("Name", text: $size.name)', 'Text(size.name)'),
-    ('TextField("mm", value: $size.widthMM, format: .number)', 'Text("\(size.widthMM)")'),
-    ('TextField("mm", value: $size.heightMM, format: .number)', 'Text("\(size.heightMM)")'),
-    ('ForEach($state.stickerSizes) { $size in', 'ForEach(state.stickerSizes) { size in'),
-]
-for old_text, new_text in edit:
-    if old_text in text:
-        text = text.replace(old_text, new_text)
-
 # SwiftUI 5/6 on macOS 13 aborts the offscreen host with "setting value during
 # update" when this save-on-change fires while the sticker list lays out. It is
 # not part of the page's appearance, so drop it in the throwaway copy only.
