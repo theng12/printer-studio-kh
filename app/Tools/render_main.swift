@@ -1048,8 +1048,9 @@ struct PageRenderHarness {
         controller.sizingOptions = []
         let hosting = controller.view
         hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
+        let titled = isWhatsNew || ProcessInfo.processInfo.environment["PRINTER_INTERACTION_TITLED"] == "1"
         let window = NSWindow(contentRect: hosting.frame,
-                              styleMask: isWhatsNew ? [.titled, .closable, .resizable] : [.borderless],
+                              styleMask: titled ? [.titled, .closable, .resizable] : [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         if let light = NSAppearance(named: .aqua) {
