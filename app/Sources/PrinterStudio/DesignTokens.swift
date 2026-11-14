@@ -31,6 +31,9 @@ enum Palette {
     static let accent = pair("PrinterAccent", light: (0.00, 0.35, 0.78), dark: (0.44, 0.70, 1.00))
     /// Filled primary buttons: white text >= 4.5:1 in both appearances.
     static let accentFill = pair("PrinterAccentFill", light: (0.00, 0.35, 0.78), dark: (0.12, 0.44, 0.88))
+    /// Input and control outlines: >= 3:1 against the surface (WCAG 1.4.11).
+    static let controlBorder = pair("PrinterControlBorder",
+                                    light: (0.48, 0.48, 0.50), dark: (0.58, 0.58, 0.60))
     /// State text on a 15% tint of itself or on the page/surface.
     static let success = pair("PrinterSuccess", light: (0.00, 0.42, 0.20), dark: (0.30, 0.85, 0.55))
     static let warning = pair("PrinterWarning", light: (0.55, 0.30, 0.00), dark: (1.00, 0.68, 0.25))

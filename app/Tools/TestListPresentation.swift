@@ -151,24 +151,28 @@ struct TestListPresentation {
                    "An IP address stays an address")
 
         // Action outcomes are chosen in one place and shown on the page.
+        let action = OutcomeMessage.actionLabel("Sending one test page to HP Laser 107a…")
+        assertTest(action == "Sending one test page to HP Laser 107a",
+                   "The busy label becomes the action name")
         let okOutcome = OutcomeMessage.outcome(
             for: CommandResult(status: 0, stdout: "", stderr: ""),
-            success: "Test page sent to HP Laser 107a.")
+            success: "Test page sent to HP Laser 107a.", action: action)
         assertTest(okOutcome.message == "Test page sent to HP Laser 107a." && okOutcome.ok
                    && okOutcome.kind == .success, "A successful action reports its success message")
         let cancelOutcome = OutcomeMessage.outcome(
-            for: CommandResult(status: -128, stdout: "", stderr: ""), success: "unused")
-        assertTest(cancelOutcome.message == "Cancelled." && !cancelOutcome.ok
-                   && cancelOutcome.kind == .warning, "A cancelled action is a warning, not an error")
+            for: CommandResult(status: -128, stdout: "", stderr: ""), success: "unused", action: action)
+        assertTest(cancelOutcome.message == "\(action) cancelled." && !cancelOutcome.ok
+                   && cancelOutcome.kind == .warning, "A cancelled action names the action and is a warning")
         let failOutcome = OutcomeMessage.outcome(
             for: CommandResult(status: 1, stdout: "", stderr: "The printer is not responding."),
-            success: "unused")
-        assertTest(failOutcome.message == "The printer is not responding." && !failOutcome.ok
-                   && failOutcome.kind == .error, "A failed action surfaces its own reason")
+            success: "unused", action: action)
+        assertTest(failOutcome.message == "Sending one test page to HP Laser 107a failed — The printer is not responding."
+                   && !failOutcome.ok && failOutcome.kind == .error,
+                   "A failure names the action, the printer and the cause")
         let silentFail = OutcomeMessage.outcome(
-            for: CommandResult(status: 2, stdout: "", stderr: ""), success: "unused")
-        assertTest(silentFail.message == "Command failed." && !silentFail.ok,
-                   "A silent failure still says something failed")
+            for: CommandResult(status: 2, stdout: "", stderr: ""), success: "unused", action: action)
+        assertTest(silentFail.message == "\(action) failed — the command failed" && !silentFail.ok,
+                   "A silent failure still names the action and says it failed")
 
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }

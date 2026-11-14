@@ -198,14 +198,22 @@ struct USBGroup: Identifiable {
 }
 
 /// What the page shows for the last action. Pure so it is testable without
-/// running a command.
+/// running a command. Failures name the action (and its printer, when the
+/// action does) and the cause.
 enum OutcomeMessage {
-    static func outcome(for result: CommandResult, success: String)
+    static func actionLabel(_ busyMessage: String) -> String {
+        var label = busyMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if label.hasSuffix("…") { label = String(label.dropLast()) }
+        return label.isEmpty ? "The action" : label
+    }
+
+    static func outcome(for result: CommandResult, success: String, action: String)
         -> (message: String, ok: Bool, kind: LogEntry.Kind) {
         if result.ok { return (success, true, .success) }
-        if result.status == -128 { return ("Cancelled.", false, .warning) }
+        if result.status == -128 { return ("\(action) cancelled.", false, .warning) }
         let text = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (text.isEmpty ? "Command failed." : text, false, .error)
+        let cause = text.isEmpty ? "the command failed" : text
+        return ("\(action) failed — \(cause)", false, .error)
     }
 }
 

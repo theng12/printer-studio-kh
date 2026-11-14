@@ -97,6 +97,7 @@ struct PageRenderHarness {
                 let danger = resolved(NSColor(Palette.danger))
                 let accent = resolved(NSColor(Palette.accent))
                 let accentFill = resolved(NSColor(Palette.accentFill))
+                let controlBorder = resolved(NSColor(Palette.controlBorder))
                 let successBadge = composite(foreground: withAlpha(success, 0.15), over: surface)
                 let warningBadge = composite(foreground: withAlpha(warning, 0.15), over: surface)
                 results[name] = [
@@ -111,6 +112,7 @@ struct PageRenderHarness {
                     "warning_page": ratio(warning, page),
                     "danger_page": ratio(danger, page),
                     "accent_page": ratio(accent, page),
+                    "control_border_surface": ratio(controlBorder, surface),
                     "white_on_accent_fill": ratio(NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1), accentFill),
                     "resolved": [
                         "label": rgba(label),
@@ -123,6 +125,7 @@ struct PageRenderHarness {
                         "danger": rgba(danger),
                         "accent": rgba(accent),
                         "accent_fill": rgba(accentFill),
+                        "control_border": rgba(controlBorder),
                     ],
                 ]
             }
@@ -148,6 +151,11 @@ struct PageRenderHarness {
         }
         if !failing.isEmpty {
             fputs("CONTRAST_FAIL below 4.5: \(failing.joined(separator: ", "))\n", stderr)
+            exit(1)
+        }
+        let borderFailing = ["light", "dark"].filter { value($0, "control_border_surface") < 3.0 }
+        if !borderFailing.isEmpty {
+            fputs("CONTRAST_FAIL control outline below 3:1: \(borderFailing)\n", stderr)
             exit(1)
         }
     }
@@ -231,6 +239,9 @@ struct PageRenderHarness {
 
         let rootView: AnyView = {
             if opts.mode == "window" {
+                if opts.target.hasPrefix("window-whats-new") {
+                    return AnyView(WhatsNewView().environmentObject(state))
+                }
                 return AnyView(MainWindow().environmentObject(state))
             } else {
                 return AnyView(pageView(for: baseTarget).environmentObject(state))
@@ -251,10 +262,19 @@ struct PageRenderHarness {
         let hosting = controller.view
         hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
 
+        let isWindowRender = opts.mode == "window"
         let window = NSWindow(contentRect: hosting.frame,
-                              styleMask: [.borderless],
+                              styleMask: isWindowRender ? [.titled, .closable, .resizable] : [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        if isWindowRender {
+            window.title = "Printer Studio KH"
+            // The real window's content area, with the title bar and toolbar in
+            // the capture. Cap the height so a banner cannot grow the window
+            // beyond the measured size.
+            window.contentMinSize = NSSize(width: opts.width, height: opts.height)
+            window.contentMaxSize = NSSize(width: opts.width, height: opts.height)
+        }
         let windowAppearance = NSAppearance(named: opts.appearance == "dark" ? .darkAqua : .aqua)
         window.appearance = windowAppearance
         var windowBackground = NSColor.windowBackgroundColor
@@ -276,12 +296,15 @@ struct PageRenderHarness {
             hosting.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
         }
+        if isWindowRender { window.setContentSize(NSSize(width: opts.width, height: opts.height)) }
 
-        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+        // A real window includes its title bar and toolbar; capture the frame view.
+        let captureView = isWindowRender ? (window.contentView?.superview ?? hosting) : hosting
+        guard let rep = captureView.bitmapImageRepForCachingDisplay(in: captureView.bounds) else {
             emitResult(opts: opts, ok: false, error: "bitmap allocation failed", geom: nil)
             exit(1)
         }
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        captureView.cacheDisplay(in: captureView.bounds, to: rep)
         guard let png = rep.representation(using: .png, properties: [:]) else {
             emitResult(opts: opts, ok: false, error: "png encode failed", geom: nil)
             exit(1)
@@ -302,9 +325,11 @@ struct PageRenderHarness {
         }
         // A result banner spans the detail width by design; sample the page
         // background from the bottom edge for that render.
-        let geom = measure(rep: rep, isWindow: opts.mode == "window", accent: accentFill,
-                           sampleBottom: opts.target.hasSuffix("-outcome"))
-        emitResult(opts: opts, ok: true, error: nil, geom: geom, controls: controlStates(hosting))
+        let geom = measure(rep: rep, isWindow: isWindowRender, accent: accentFill,
+                           sampleBottom: isWindowRender || opts.target.hasSuffix("-outcome"))
+        emitResult(opts: opts, ok: true, error: nil, geom: geom,
+                   controls: controlStates(captureView),
+                   pixels: (rep.pixelsWide, rep.pixelsHigh))
     }
 
     static func outputName(_ opts: RenderOptions) -> String {
@@ -315,14 +340,24 @@ struct PageRenderHarness {
         switch target {
         case let value where value.hasPrefix("window-printers"): state.screen = .printers
         case let value where value.hasPrefix("window-sharing"): state.screen = .sharing
+        case let value where value.hasPrefix("window-settings"): state.screen = .settings
+        case let value where value.hasPrefix("window-setup"): state.screen = .setup
+        case let value where value.hasPrefix("window-stickers"): state.screen = .stickers
+        case let value where value.hasPrefix("window-activity"): state.screen = .activity
+        case let value where value.hasPrefix("window-whats-new"): state.screen = .overview
         default: state.screen = .overview
         }
     }
 
-    /// An action failure as the window shows it: the result banner on the page.
+    /// An action failure as the window shows it: the same formatter the app uses.
     static func applyOutcomeFixture(_ state: AppState) {
-        state.lastMessage = "Test page failed — The printer is not responding."
-        state.lastMessageOK = false
+        let result = CommandResult(status: 1, stdout: "",
+                                   stderr: "The printer is not responding.")
+        let outcome = OutcomeMessage.outcome(
+            for: result, success: "unused",
+            action: "Sending one test page to HP Laser 107a")
+        state.lastMessage = outcome.message
+        state.lastMessageOK = outcome.ok
     }
 
     /// A CUPS read that failed: the page must name the cause and offer Retry.
@@ -593,30 +628,39 @@ struct PageRenderHarness {
         let localPoint = NSPoint(x: segmentX ?? control.bounds.midX, y: control.bounds.midY)
         let windowPoint = control.convert(localPoint, to: nil)
 
-        // A synthesized mouse event reaches the control and highlights the
-        // segment, but SwiftUI's Picker binding is driven by the control's
-        // action. Send that action the way a click does, then also post the
-        // mouse pair so the control path is exercised end to end.
-        control.selectedSegment = tableIndex
-        _ = control.sendAction(control.action, to: control.target)
-        for type: NSEvent.EventType in [.leftMouseDown, .leftMouseUp] {
-            guard let event = NSEvent.mouseEvent(with: type, location: windowPoint, modifierFlags: [],
-                                                 timestamp: ProcessInfo.processInfo.systemUptime,
-                                                 windowNumber: window.windowNumber, context: nil,
-                                                 eventNumber: 0, clickCount: 1,
-                                                 pressure: type == .leftMouseDown ? 1 : 0) else {
-                print("SWITCH_CHECK FAIL could not create mouse event")
-                exit(1)
+        // A real click only: no programmatic segment selection. Send the mouse
+        // pair through the window first; if hit testing does not reach the
+        // control, deliver the same pair to the control itself.
+        func mouseEvent(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: windowPoint, modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil,
+                               eventNumber: 0, clickCount: 1,
+                               pressure: type == .leftMouseDown ? 1 : 0)
+        }
+        guard let down = mouseEvent(.leftMouseDown), let up = mouseEvent(.leftMouseUp) else {
+            print("SWITCH_CHECK FAIL could not create mouse event")
+            exit(1)
+        }
+        func pump() {
+            for _ in 0..<12 {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.12))
+                hosting.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
             }
-            app.postEvent(event, atStart: false)
         }
-        for _ in 0..<12 {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.12))
-            hosting.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
+        window.sendEvent(down)
+        window.sendEvent(up)
+        pump()
+        var clickPath = "window"
+        var mode = UserDefaults.standard.string(forKey: "printersListMode") ?? ""
+        if mode != "table" {
+            control.mouseDown(with: down)
+            control.mouseUp(with: up)
+            pump()
+            clickPath = "control"
+            mode = UserDefaults.standard.string(forKey: "printersListMode") ?? ""
         }
-
-        let mode = UserDefaults.standard.string(forKey: "printersListMode") ?? ""
         if let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
             hosting.cacheDisplay(in: hosting.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(
@@ -628,7 +672,7 @@ struct PageRenderHarness {
         let stored = persisted?["printersListMode"] as? String ?? "(not persisted)"
 
         if mode == "table" {
-            print("SWITCH_CHECK PASS mode=table changed=\(changed) persisted=\(stored) selectedSegment=\(control.selectedSegment)")
+            print("SWITCH_CHECK PASS click=\(clickPath) mode=table changed=\(changed) persisted=\(stored) selectedSegment=\(control.selectedSegment)")
             return
         }
         print("SWITCH_CHECK FAIL mode=\(mode.isEmpty ? "(unset)" : mode) changed=\(changed) persisted=\(stored) selectedSegment=\(control.selectedSegment) expected=\(tableIndex)")
@@ -886,9 +930,9 @@ struct PageRenderHarness {
         // Window mode: the sidebar material is deliberately flush left, so only
         // the right edge is a clip signal. Pages test both edges. A result
         // banner spans the width by design, so its render skips the side test.
-        let clipped = sampleBottom
+        let clipped = (sampleBottom || isWindow)
             ? false
-            : (isWindow ? rightGutter < 12 : leftGutter < 12 || rightGutter < 12)
+            : (leftGutter < 12 || rightGutter < 12)
         return Geometry(contentBottom: contentBottom, leftGutter: leftGutter, rightGutter: rightGutter,
                         clipped: clipped, accentRun: maxAccentRun)
     }
@@ -912,11 +956,15 @@ struct PageRenderHarness {
     }
 
     static func emitResult(opts: RenderOptions, ok: Bool, error: String?, geom: Geometry?,
-                           controls: [[String: String]]? = nil) {
+                           controls: [[String: String]]? = nil,
+                           pixels: (Int, Int)? = nil) {
         var obj: [String: Any] = [
             "page": opts.mode == "window" ? "window" : opts.target,
-            "width": opts.width,
-            "height": opts.height,
+            "target": opts.target,
+            "width": pixels?.0 ?? opts.width,
+            "height": pixels?.1 ?? opts.height,
+            "requested_width": opts.width,
+            "requested_height": opts.height,
             "appearance": opts.appearance,
             "ok": ok,
         ]

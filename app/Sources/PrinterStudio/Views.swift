@@ -66,6 +66,15 @@ private extension View {
         background(RoundedRectangle(cornerRadius: radius).fill(Palette.surface))
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Palette.border, lineWidth: 1))
     }
+
+    /// An editable field with a measured 3:1 outline (WCAG 1.4.11), keeping the
+    /// native focus ring.
+    func fieldSurface(radius: CGFloat = 6) -> some View {
+        padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: radius).fill(Palette.surface))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Palette.controlBorder, lineWidth: 1))
+    }
 }
 
 /// Groups use the same surface and border as the standalone cards. The 5 pt
@@ -734,7 +743,8 @@ private struct RenamePrinterSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Rename \(printer.displayName)").font(.headline)
             TextField("Printer name", text: $name)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .fieldSurface()
                 .accessibilityLabel("Printer name")
             Text("This name is used when other Macs and devices print to it.")
                 .font(.caption)
@@ -876,7 +886,8 @@ struct PrinterCard: View {
                     get: { state.printerNameDrafts[printer.name] ?? printer.displayName },
                     set: { state.printerNameDrafts[printer.name] = $0 }
                 ))
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .fieldSurface()
                 .accessibilityLabel("Printer name")
                 Button("Save name") { state.renamePrinter(printer) }
                     .disabled(state.busy || (state.printerNameDrafts[printer.name] ?? printer.displayName) == printer.displayName)
@@ -1012,6 +1023,7 @@ struct SharingView: View {
                 Text("Other Macs and iOS devices find shared printers over Bonjour. macOS sometimes locks a shared queue to specific users, which makes other machines park jobs with “Job held for authentication”. This screen fixes and prevents that.")
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 680, alignment: .leading)
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
@@ -1198,6 +1210,8 @@ struct SharingView: View {
                 Spacer(minLength: 0)
             }
             .padding(24)
+            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .disabled(state.busy)
     }
@@ -1215,6 +1229,7 @@ struct SetupView: View {
                 Text("This printer is a rebadged Samsung SL-M2026. It speaks Samsung's QPDL language over USB and has no Apple driver, so Printer Studio KH supplies one and then shares the queue to the network.")
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 680, alignment: .leading)
 
                 SetupStep(
                     number: 1,
@@ -1301,6 +1316,7 @@ struct SetupView: View {
                             .font(.caption)
                             .foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 680, alignment: .leading)
                     }
                     .padding(6)
                 }
@@ -1434,13 +1450,16 @@ struct StickerSizesView: View {
                         .help("Include this size")
                         .accessibilityLabel("Include \(size.name)")
                     TextField("Name", text: $size.name)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
+                .fieldSurface()
                         .frame(width: 150)
                     TextField("mm", value: $size.widthMM, format: .number)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
+                .fieldSurface()
                         .frame(width: 80)
                     TextField("mm", value: $size.heightMM, format: .number)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
+                .fieldSurface()
                         .frame(width: 80)
                     Text(size.inchesLabel + " in")
                         .font(.callout)
@@ -1471,6 +1490,7 @@ struct StickerSizesView: View {
                 Text("Set the sizes here for AirPrint to read from your shared printer. Width and height follow how the stock feeds into the printer. You can edit any size or turn it off.\n\nCustom sizes apply to label printers within their driver’s limits. A4 and A5 are already standard choices on the HP Laser queue; use that printer’s paper-size menu. A narrow label printer cannot print an A4 or A5 sheet.")
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 680, alignment: .leading)
 
                 GroupBox {
                     ViewThatFits(in: .horizontal) {
@@ -1526,6 +1546,8 @@ struct StickerSizesView: View {
                 }
             }
             .padding(24)
+            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
             .onChange(of: state.stickerSizes) { _ in
                 state.saveStickerSizes()
             }
@@ -1614,14 +1636,15 @@ struct SettingsView: View {
                                isOn: Binding(get: { state.startsAtLogin },
                                              set: { state.setStartAtLogin($0) }))
                             .toggleStyle(.switch)
+                        Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
+                            .font(.caption).foregroundStyle(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
                         Toggle("Keep the USB printer ready after restarts",
                                isOn: Binding(get: { state.automaticUSBRelease },
                                              set: { state.setAutomaticUSBRelease($0) }))
                             .toggleStyle(.switch)
                             .disabled(state.busy)
                         Text("Automatic USB release needs administrator approval once. It runs at boot and after a replug, without opening this app or saving a password.")
-                            .font(.caption).foregroundStyle(Palette.muted)
-                        Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
                             .font(.caption).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1716,6 +1739,8 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
             .padding(24)
+            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 

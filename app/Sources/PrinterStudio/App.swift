@@ -184,15 +184,15 @@ final class AppState: ObservableObject {
         // enabled item after an app move so launchd keeps the current path.
         if !UserDefaults.standard.bool(forKey: "loginItemConfigured") || LoginItem.isEnabled {
             let result = LoginItem.enable()
-            report(result, success: "Printer Studio KH will open at login.")
+            report(result, success: "Printer Studio KH will open at login.", action: "Turning on start at login")
             if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
         }
         work.async {
             let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
-            if !result.ok { self.report(result, success: "") }
+            if !result.ok { self.report(result, success: "", action: "Refreshing the AirPrint bridge") }
             // Upgrades an older shell-based watcher without an admin prompt.
             let watcher = ShareFix.migrateWatcherIfNeeded()
-            if !watcher.ok { self.report(watcher, success: "") }
+            if !watcher.ok { self.report(watcher, success: "", action: "Upgrading the background watcher") }
             DispatchQueue.main.async { self.refresh() }
         }
         refresh()
@@ -234,8 +234,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func report(_ result: CommandResult, success: String) {
-        let outcome = OutcomeMessage.outcome(for: result, success: success)
+    private func report(_ result: CommandResult, success: String, action: String) {
+        let outcome = OutcomeMessage.outcome(for: result, success: success, action: action)
         log(outcome.message, kind: outcome.kind)
         DispatchQueue.main.async {
             self.lastMessage = outcome.message
@@ -316,7 +316,8 @@ final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 self.busy = false
                 self.busyMessage = ""
-                self.report(result, success: success)
+                self.report(result, success: success,
+                            action: OutcomeMessage.actionLabel(message))
                 self.refresh()
             }
         }
@@ -494,7 +495,8 @@ final class AppState: ObservableObject {
         if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
         report(result, success: enabled
                ? "Printer Studio KH will open at login."
-               : "Printer Studio KH will no longer open at login.")
+               : "Printer Studio KH will no longer open at login.",
+               action: enabled ? "Turning on start at login" : "Turning off start at login")
         refresh()
     }
 
