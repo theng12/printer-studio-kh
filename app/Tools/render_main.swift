@@ -1070,6 +1070,7 @@ struct PageRenderHarness {
         let before = state.activity.count
         let control = interactionControl(opts.target)
         var via = "not-found"
+        var clickFrame: CGRect? = nil
         switch opts.target {
         case "settings":
             if let seg = findSegments(in: hosting), let dark = segmentIndex(seg, "dark") {
@@ -1086,10 +1087,12 @@ struct PageRenderHarness {
                 pump(hosting: hosting, window: window)
             }
         default:
-            if let frame = InteractionProbe.frames[probeName(opts.target)],
-               clickProbeFrame(frame, on: window, hosting: hosting) {
-                via = "click"
-                pump(hosting: hosting, window: window)
+            if let frame = InteractionProbe.frames[probeName(opts.target)] {
+                clickFrame = frame
+                if clickProbeFrame(frame, on: window, hosting: hosting) {
+                    via = "click"
+                    pump(hosting: hosting, window: window)
+                }
             }
         }
         let met = interactionOutcomeMet(opts.target, state: state, flag: flag)
@@ -1104,6 +1107,7 @@ struct PageRenderHarness {
             "activity_before": before,
             "activity_after": state.activity.count,
             "probes": InteractionProbe.frames.keys.sorted(),
+            "click_frame": clickFrame.map { [Int($0.minX), Int($0.minY), Int($0.width), Int($0.height)] } ?? [],
             "result": met ? "PASS" : "FAIL",
         ]
         switch opts.target {

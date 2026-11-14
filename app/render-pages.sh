@@ -222,6 +222,18 @@ if [ "$PAGE_SPEC" = "keyboard-check" ]; then
   exit "$rc"
 fi
 
+# A single page's interaction, for debugging: interaction-<page>.
+if [[ "$PAGE_SPEC" == interaction-* ]]; then
+  page="${PAGE_SPEC#interaction-}"
+  set +e
+  PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+    "$BIN" interaction "$page" "$OUT_DIR" 2>&1
+  rc=$?
+  set -e
+  echo "INTERACTION_BATCH_EXIT $rc"
+  exit "$rc"
+fi
+
 # Page interactions: one driven control per page, each asserting its own
 # outcome (banner text, activity row, stored setting) and failing otherwise.
 if [ "$PAGE_SPEC" = "interaction" ]; then
