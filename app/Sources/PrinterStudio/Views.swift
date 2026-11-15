@@ -1719,7 +1719,7 @@ struct SettingsView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Announcement").font(.headline)
-                        Picker("Announcement", selection: $voiceRaw) {
+                        Picker("Voice", selection: $voiceRaw) {
                             ForEach(VoiceClip.allCases) { clip in
                                 Text(clip.title).tag(clip.rawValue)
                             }
@@ -1743,18 +1743,20 @@ struct SettingsView: View {
                         }
                         if state.announcementVoice == .custom {
                             VStack(alignment: .leading, spacing: 8) {
-                                HStack(spacing: 10) {
+                                ActionRow {
                                     Button("Choose a recording…") { choosingRecording = true }
                                         .probe("control.chooseRecording")
                                     Button("Use the English clip instead") {
                                         state.announcementVoice = .english
                                     }
+                                    .probe("control.useEnglishClip")
                                     if customExists {
                                         Button("Remove my recording", role: .destructive) {
                                             try? FileManager.default.removeItem(at: VoiceClip.customURL())
                                             customExists = false
                                             state.announcementVoice = .english
                                         }
+                                        .probe("control.removeRecording")
                                     }
                                 }
                                 Text(customExists

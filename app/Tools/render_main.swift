@@ -256,6 +256,15 @@ struct PageRenderHarness {
         } else if baseTarget == "printers" {
             UserDefaults.standard.set("cards", forKey: "printersListMode")
         }
+        // The custom-recording state draws the widest button row on Settings;
+        // it is reachable, so the narrow-width render has to cover it.
+        if ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_CUSTOM_VOICE"] == "1" {
+            UserDefaults.standard.set(true, forKey: "notifyOnJobReceived")
+            UserDefaults.standard.set("custom", forKey: "announcementVoice")
+            let url = VoiceClip.customURL()
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? Data(repeating: 0, count: 64).write(to: url)
+        }
 
         let state = makeFixtureState()
         if isError {
@@ -417,11 +426,24 @@ struct PageRenderHarness {
             topWashPct = detailTopWash(rep: rep, chrome: band)
             sidebarPx = sidebarTextPixels(rep: rep, chrome: band)
         }
+        // The Settings action row wraps when its labels cannot fit; reporting
+        // the button frames says which layout was chosen, so a compressed row
+        // (the defect the 375 render missed twice) is visible in the numbers.
+        var actionRow: [[String: Any]] = []
+        if opts.target == "settings" {
+            for name in ["control.chooseRecording", "control.useEnglishClip", "control.removeRecording"] {
+                if let f = InteractionProbe.frames[name] {
+                    actionRow.append(["name": name, "x": Int(f.minX.rounded()),
+                                      "y": Int(f.minY.rounded()),
+                                      "w": Int(f.width.rounded()), "h": Int(f.height.rounded())])
+                }
+            }
+        }
         emitResult(opts: opts, ok: true, error: nil, geom: geom,
                    controls: controlStates(captureView),
                    pixels: (rep.pixelsWide, rep.pixelsHigh),
                    chrome: chrome, headingTop: headingTop, topWashPct: topWashPct,
-                   sidebarPx: sidebarPx)
+                   sidebarPx: sidebarPx, actionRow: actionRow)
         if opts.target == "banner-printers" {
             emitBanner(state: state, rep: rep, capture: captureView)
         }
@@ -1674,7 +1696,8 @@ struct PageRenderHarness {
                            controls: [[String: String]]? = nil,
                            pixels: (Int, Int)? = nil,
                            chrome: Int? = nil, headingTop: Int? = nil, topWashPct: Double? = nil,
-                           sidebarPx: Int? = nil) {
+                           sidebarPx: Int? = nil,
+                           actionRow: [[String: Any]]? = nil) {
         var obj: [String: Any] = [
             "page": opts.mode == "window" ? "window" : opts.target,
             "target": opts.target,
@@ -1698,6 +1721,7 @@ struct PageRenderHarness {
         if let headingTop { obj["heading_top_px"] = headingTop }
         if let topWashPct { obj["top_wash_pct"] = (topWashPct * 10).rounded() / 10 }
         if let sidebarPx { obj["sidebar_px"] = sidebarPx }
+        if let actionRow, !actionRow.isEmpty { obj["action_row"] = actionRow }
         if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
            let s = String(data: data, encoding: .utf8) {
             print("MEASURE \(s)")
