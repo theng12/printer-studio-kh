@@ -145,6 +145,10 @@ final class AppState: ObservableObject {
     @Published var lastMessageOK = true
     @Published var reportFeedback: String?
 
+    /// Set while an update hold pauses new work, so the menu bar says what is happening.
+    @Published var holdNotice: String?
+    private var holdServer: HoldServer?
+
     /// Off unless the person turns it on: a chime and a line the moment a job
     /// lands in the queue, so a phone print is acknowledged in about a second
     /// instead of waiting out the printer's warm-up in silence. The voice is
@@ -172,8 +176,13 @@ final class AppState: ObservableObject {
     private let work = DispatchQueue(label: "com.theng12.printerstudio.work", qos: .userInitiated)
 
     init() {
+        // The update hold exists in every real run; a smoke run takes a free port so a packaged
+        // launch test never collides with the copy the owner is using.
+        let smoke = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SIGNING_SMOKE"]
+        let holdPort = startUpdateHold(port: smoke == nil ? MaintenanceHold.defaultPort : 0)
+
         // Packaged launch tests must not touch login items, preferences or printer services.
-        if let receipt = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SIGNING_SMOKE"] {
+        if let receipt = smoke {
             DispatchQueue.main.async {
                 do {
                     let data = try JSONSerialization.data(withJSONObject: [
@@ -181,6 +190,7 @@ final class AppState: ObservableObject {
                         "bundleID": Bundle.main.bundleIdentifier ?? "unknown",
                         "pid": ProcessInfo.processInfo.processIdentifier,
                         "ready": true,
+                        "holdPort": holdPort.map(Int.init) ?? -1,
                     ])
                     try data.write(to: URL(fileURLWithPath: receipt), options: .atomic)
                 } catch {
@@ -222,6 +232,34 @@ final class AppState: ObservableObject {
             DispatchQueue.main.async { self.refresh() }
         }
         refresh()
+    }
+
+    // MARK: Update hold
+
+    /// Starts the loopback hold the installer calls before replacing this app. A port that cannot
+    /// be taken is said out loud: the installer then refuses to replace a running copy.
+    private func startUpdateHold(port: UInt16) -> UInt16? {
+        let server = HoldServer(port: port, onHeld: { [weak self] inFlight, seconds in
+            let notice = MaintenanceHold.heldNotice(inFlight: inFlight, seconds: seconds)
+            DispatchQueue.main.async {
+                self?.holdNotice = notice
+                self?.log(notice)
+            }
+        }, onResumed: { [weak self] in
+            DispatchQueue.main.async {
+                self?.holdNotice = nil
+                self?.log(MaintenanceHold.resumedNotice, kind: .success)
+            }
+        })
+        guard let bound = server.start() else {
+            if port != 0 {
+                log("The update hold could not start on port \(port). An update will be refused while Printer Studio KH is open.",
+                    kind: .warning)
+            }
+            return nil
+        }
+        holdServer = server
+        return bound
     }
 
     // MARK: Derived
@@ -413,8 +451,15 @@ final class AppState: ObservableObject {
         ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER"] == "1"
     }
 
-    /// Runs a shell action off the main thread, then refreshes.
+    /// Runs a shell action off the main thread, then refreshes. While an update hold stands nothing
+    /// new starts: the person is told in plain words instead of watching a button do nothing.
     private func perform(_ message: String, _ body: @escaping () -> CommandResult, success: String) {
+        guard let claim = MaintenanceHold.shared.claim(message) else {
+            log(MaintenanceHold.refusal, kind: .warning)
+            lastMessage = MaintenanceHold.refusal
+            lastMessageOK = false
+            return
+        }
         busy = true
         busyMessage = message
         log(message)
@@ -422,6 +467,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             let result = self.renderActionsStubbed ? CommandResult(status: 0, stdout: "", stderr: "") : body()
             DispatchQueue.main.async {
+                MaintenanceHold.shared.settle(claim)
                 self.busy = false
                 self.busyMessage = ""
                 self.report(result, success: success,
@@ -680,6 +726,10 @@ struct MenuBarContent: View {
 
     var body: some View {
         Text(state.statusSummary)
+
+        if let notice = state.holdNotice {
+            Text(notice)
+        }
 
         Divider()
 

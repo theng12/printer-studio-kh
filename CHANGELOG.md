@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.31 — 2026-11-15
+- Printer Studio KH can now be updated while it is open without cutting off what it is doing. Before an update starts, it stops taking new actions, gives the action already running up to 20 seconds to finish, and tells the installer whether replacing it right now is safe. Nothing is cancelled.
+- If an update is started and then abandoned, Printer Studio KH carries on by itself after two minutes. Quitting and reopening it always starts it working normally; there is no switch to turn back on.
+- While it is paused for an update the menu bar says so, and an action you click is refused in plain words instead of doing nothing.
+
 ## 1.0.30 — 2026-11-15
 - A shared USB printer is now announced to iPhone and iPad using the sharing state read from CUPS, including the Brother queue that was being skipped.
 - New, off by default: Tell me when a job arrives. A chime acknowledges a new job as it reaches the Mac; it does not mean the printer has started putting ink on paper.
