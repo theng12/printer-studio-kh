@@ -258,12 +258,15 @@ struct PageRenderHarness {
         }
         // The custom-recording state draws the widest button row on Settings;
         // it is reachable, so the narrow-width render has to cover it.
-        if ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_CUSTOM_VOICE"] == "1" {
+        if let custom = ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_CUSTOM_VOICE"],
+           custom == "1" || custom == "missing" {
             UserDefaults.standard.set(true, forKey: "notifyOnJobReceived")
             UserDefaults.standard.set("custom", forKey: "announcementVoice")
-            let url = VoiceClip.customURL()
-            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? Data(repeating: 0, count: 64).write(to: url)
+            if custom == "1" {
+                let url = VoiceClip.customURL()
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? Data(repeating: 0, count: 64).write(to: url)
+            }
         }
 
         let state = makeFixtureState()

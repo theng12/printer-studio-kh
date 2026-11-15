@@ -76,6 +76,17 @@ mkdir -p "$WORK/Sources/PrinterStudio" "$WORK/Tools"
 cp "$ROOT_DIR/app/Sources/PrinterStudio/"*.swift "$WORK/Sources/PrinterStudio/"
 cp "$ROOT_DIR/app/Tools/render_main.swift" "$WORK/Tools/"
 
+# Foundation caches the real home even when HOME is changed. Redirect the
+# copied recording helper explicitly so fixtures never touch the owner's clip.
+python3 - "$WORK/Sources/PrinterStudio/VoiceClip.swift" "$WORK/home" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+old = 'let base = home ?? FileManager.default.homeDirectoryForCurrentUser'
+text = p.read_text()
+assert text.count(old) == 1, 'custom recording home boundary changed'
+p.write_text(text.replace(old, 'let base = home ?? URL(fileURLWithPath: ' + json.dumps(sys.argv[2]) + ')'))
+PY
+
 # Strip @main from the app entry so the harness is the entry point.
 python3 - "$WORK/Sources/PrinterStudio/App.swift" <<'PY'
 import pathlib, sys
