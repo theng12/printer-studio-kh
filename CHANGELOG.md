@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.29 — 2026-11-15
+- Settings fits in a narrow window again. The voice picker is a menu now, so the page no longer needs more width than it has.
+- If a chosen announcement cannot be played, the Activity log says which one and that the plain chime was used instead, rather than going quiet while the card still says the voice is on.
+- The voice picker is greyed out until job alerts are on, and the card now says that instead of leaving you to work it out.
+
 ## 1.0.28 — 2026-11-15
 - Picking a language for the job announcement now actually changes what you hear. Before this, the choice was remembered but only took effect after restarting the app.
 - A recording that is too long is refused on the Settings page itself, not only in the Activity log.
