@@ -1,8 +1,12 @@
 # Changelog
 
 ## 1.0.30 — 2026-11-15
-- In a narrow window, the buttons under "Announcement" now stack instead of squeezing, so "Choose a recording…", "Use the English clip instead" and "Remove my recording" are readable in full.
-- The voice menu no longer repeats the card's own heading; it reads "Voice".
+- A shared USB printer is now announced to iPhone and iPad using the sharing state read from CUPS, including the Brother queue that was being skipped.
+- New, off by default: Tell me when a job arrives. A chime acknowledges a new job as it reaches the Mac; it does not mean the printer has started putting ink on paper.
+- The announcement can use the plain chime, built-in English, Khmer or Chinese, or your own recording of five seconds or less. Picking a voice takes effect immediately; a recording that is too long is refused on Settings with the reason.
+- If the chosen recording cannot play, Activity names it and says that the plain chime was used instead.
+- Settings fits narrow windows: the voice choice is a menu, and the recording buttons stack when needed so their full labels remain readable. The voice menu says why it is disabled until job alerts are on, and Remove my recording appears only when a recording exists.
+- Appearance changes repaint the whole window, pages use the available width, Settings cards have headings, and What's New uses plain text without stray asterisks.
 
 ## 1.0.29 — 2026-11-15
 - Settings fits in a narrow window again. The voice picker is a menu now, so the page no longer needs more width than it has.
