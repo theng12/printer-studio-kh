@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.27 — 2026-11-15
+- Every card on the Settings page now carries a heading, so Job alerts no longer sits untitled beside Appearance and About.
+- Release notes no longer show raw asterisks where emphasis was meant. The notes are plain text, so they are written plainly.
+
 ## 1.0.26 — 2026-11-15
 - The job announcement can now speak instead of chime. Settings → Announcement offers English, Khmer, Chinese, or your own recording. The three voices are built in and made with the studio's own local voice model, so an install never needs a network to hear them.
 - Your own recording has to be 5 seconds or less. A longer one is refused with the reason, never silently trimmed.
