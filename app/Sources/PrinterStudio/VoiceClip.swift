@@ -59,6 +59,10 @@ enum VoiceClip: String, CaseIterable, Identifiable {
     /// Accepts a recording and keeps it as the chosen clip. Refuses anything
     /// longer than five seconds, or anything macOS cannot read as audio.
     static func installCustom(from source: URL, home: URL? = nil) -> Result<Void, InstallProblem> {
+        // A file chosen through the open panel is security-scoped: without this
+        // the read is refused and every recording looks unreadable.
+        let scoped = source.startAccessingSecurityScopedResource()
+        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
         guard let audio = try? AVAudioFile(forReading: source) else {
             return .failure(.message("macOS could not read that file as audio."))
         }

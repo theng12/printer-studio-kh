@@ -105,6 +105,25 @@ struct TestVoiceClip {
             fatalError("a 4.0 second recording was refused: \(problem.said)")
         }
 
+        // With no recording yet, the custom slot must fall back to the plain
+        // chime and say so — never promise a language clip that is not there.
+        let emptyHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ps-empty-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: emptyHome) }
+        precondition(!FileManager.default.fileExists(atPath: VoiceClip.customURL(home: emptyHome).path))
+        precondition(VoiceClip.custom.bundled == nil, "the custom slot has no bundled clip")
+        print("PASS: with no recording the custom slot falls back to the chime, not a language")
+
+        // Each language names its own bundled clip, so a stored choice can never
+        // silently play a different language. The files themselves are checked
+        // against the package, not here: this binary runs outside the app bundle
+        // and has no resources to find.
+        precondition(VoiceClip.english.bundled != VoiceClip.khmer.bundled)
+        precondition(VoiceClip.khmer.bundled != VoiceClip.chinese.bundled)
+        precondition(VoiceClip.english.bundled != VoiceClip.chinese.bundled)
+        print("PASS: each language names its own clip")
+
         try FileManager.default.removeItem(at: dir)
     }
 }

@@ -1727,6 +1727,12 @@ struct SettingsView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .disabled(!state.notifyOnJobReceived)
+                        .onChange(of: voiceRaw) { raw in
+                            // The player reads `state`, so the picker has to write
+                            // there; binding only UserDefaults meant a language
+                            // choice did nothing until the next launch.
+                            state.announcementVoice = VoiceClip.stored(raw)
+                        }
                         .probe("control.announcementVoice")
                         if state.announcementVoice == .custom {
                             VStack(alignment: .leading, spacing: 8) {
@@ -1736,7 +1742,7 @@ struct SettingsView: View {
                                     Button("Use the English clip instead") {
                                         state.announcementVoice = .english
                                     }
-                                    if !customExists {
+                                    if customExists {
                                         Button("Remove my recording", role: .destructive) {
                                             try? FileManager.default.removeItem(at: VoiceClip.customURL())
                                             customExists = false
@@ -1746,7 +1752,7 @@ struct SettingsView: View {
                                 }
                                 Text(customExists
                                      ? "Using your recording. It must be \(Int(VoiceClip.maxCustomSeconds)) seconds or less; a longer one is refused, never trimmed."
-                                     : "No recording chosen yet, so this falls back to the English clip. A recording has to be \(Int(VoiceClip.maxCustomSeconds)) seconds or less — anything longer is refused, not trimmed.")
+                                     : "No recording yet, so this falls back to the plain chime. A recording has to be \(Int(VoiceClip.maxCustomSeconds)) seconds or less — anything longer is refused, not trimmed.")
                                     .font(.caption).foregroundStyle(Palette.muted)
                                     .prose()
                             }
@@ -1772,6 +1778,10 @@ struct SettingsView: View {
                         state.announcementVoice = .custom
                         state.log("Using your recording for the announcement.", kind: .success)
                     case let .failure(problem):
+                        // The Activity log is another screen; a refusal has to
+                        // appear where the person is standing.
+                        state.lastMessage = problem.said
+                        state.lastMessageOK = false
                         state.log(problem.said, kind: .error)
                     }
                 }
