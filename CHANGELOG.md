@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.30 — 2026-11-15
+- In a narrow window, the buttons under "Announcement" now stack instead of squeezing, so "Choose a recording…", "Use the English clip instead" and "Remove my recording" are readable in full.
+- The voice menu no longer repeats the card's own heading; it reads "Voice".
+
 ## 1.0.29 — 2026-11-15
 - Settings fits in a narrow window again. The voice picker is a menu now, so the page no longer needs more width than it has.
 - If a chosen announcement cannot be played, the Activity log says which one and that the plain chime was used instead, rather than going quiet while the card still says the voice is on.
