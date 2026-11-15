@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.28 — 2026-11-15
+- Picking a language for the job announcement now actually changes what you hear. Before this, the choice was remembered but only took effect after restarting the app.
+- A recording that is too long is refused on the Settings page itself, not only in the Activity log.
+- The remove button for your own recording appears only when there is a recording to remove.
+
 ## 1.0.27 — 2026-11-15
 - Every card on the Settings page now carries a heading, so Job alerts no longer sits untitled beside Appearance and About.
 - Release notes no longer show raw asterisks where emphasis was meant. The notes are plain text, so they are written plainly.
