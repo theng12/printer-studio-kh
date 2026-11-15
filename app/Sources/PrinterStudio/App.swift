@@ -254,13 +254,19 @@ final class AppState: ObservableObject {
     // MARK: Job watch
 
     /// Says so out loud with the chosen clip, or the plain chime when the person
-    /// picked "Sound only" or a recording that is no longer there.
+    /// picked "Sound only" or a recording that is no longer there. A clip that
+    /// will not load falls back out loud: the card still says the voice is in
+    /// use, so silence here would be a lie.
     private func announce() {
-        if let url = announcementVoice.url, let player = try? AVAudioPlayer(contentsOf: url) {
-            announcer = player
-            player.prepareToPlay()
-            player.play()
-            return
+        if let url = announcementVoice.url {
+            if let player = try? AVAudioPlayer(contentsOf: url) {
+                announcer = player
+                player.prepareToPlay()
+                player.play()
+                return
+            }
+            log("Could not play the \(announcementVoice.title) announcement at \(url.lastPathComponent); used the plain chime instead.",
+                kind: .warning)
         }
         NSSound(named: NSSound.Name(VoiceClip.chimeName))?.play()
     }

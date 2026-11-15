@@ -1724,8 +1724,10 @@ struct SettingsView: View {
                                 Text(clip.title).tag(clip.rawValue)
                             }
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+                        // A menu, not segments: five segments set a page minimum
+                        // width that clipped Settings below 480 pt, which the
+                        // pre-feature baseline did not.
+                        .pickerStyle(.menu)
                         .disabled(!state.notifyOnJobReceived)
                         .onChange(of: voiceRaw) { raw in
                             // The player reads `state`, so the picker has to write
@@ -1734,6 +1736,11 @@ struct SettingsView: View {
                             state.announcementVoice = VoiceClip.stored(raw)
                         }
                         .probe("control.announcementVoice")
+                        if !state.notifyOnJobReceived {
+                            Text("Turn on \u{201C}Tell me when a job arrives\u{201D} above to choose a voice.")
+                                .font(.caption).foregroundStyle(Palette.muted)
+                                .prose()
+                        }
                         if state.announcementVoice == .custom {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 10) {
