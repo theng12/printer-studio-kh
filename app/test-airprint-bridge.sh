@@ -36,6 +36,13 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
+# A queue's PPD options, which is all lpoptions prints. Sharing is a CUPS
+# attribute, so a fixture can reproduce the Brother's real answer here: no
+# shared flag at all.
+if [ -f "$PRINTER_STUDIO_FIXTURES/lpoptions-$queue" ]; then
+  cat "$PRINTER_STUDIO_FIXTURES/lpoptions-$queue"
+  exit
+fi
 printf 'printer-is-shared=true\n'
 MOCK
 cat > "$OUT/tools/hostname" <<'MOCK'
@@ -53,6 +60,12 @@ MOCK
 cat > "$OUT/tools/ipptool" <<'MOCK'
 #!/bin/bash
 queue="${2##*/}"
+[ ! -f "$PRINTER_STUDIO_FIXTURES/ipptool-failure-$queue" ] || exit 1
+if [ -f "$PRINTER_STUDIO_FIXTURES/shared-$queue" ]; then
+  cat "$PRINTER_STUDIO_FIXTURES/shared-$queue"
+else
+  printf 'printer-is-shared (boolean) = true\n'
+fi
 if [ -f "$PRINTER_STUDIO_FIXTURES/uuid-$queue" ]; then
   cat "$PRINTER_STUDIO_FIXTURES/uuid-$queue"
 else
@@ -207,4 +220,42 @@ printf 'PASS: missing confirmed AirPrint subtype keeps every bridge entry\n'
 /usr/bin/sed 's/ native$/ (AirPrint)/' "$OUT/native-browse.saved" > "$OUT/native-browse"
 check_native_plan 4
 printf 'PASS: bridge copies alone never count as native coverage\n'
+# Sharing is a CUPS attribute, not a PPD option (owner's Brother HL-L2370DN).
+# That queue is shared, while `lpoptions -p Brother_HL_L2370DN_series` prints only
+# discovery/device/model fields — the old detection read lpoptions and dropped it
+# before the bridge ever saw it. A fresh fixtures dir keeps this independent of
+# the runs above.
+ATTR="$OUT/sharing-attribute"
+/bin/mkdir -p "$ATTR"
+export PRINTER_STUDIO_FIXTURES="$ATTR"
+printf '_share_printers=1\n' > "$ATTR/sharing"
+printf '%s\n' \
+  'printer-make-and-model=Brother HL-L2370DN series-AirPrint' \
+  'device-uri=ippusb://Brother%20HL-L2370DN%20series._ipp._tcp.local/?uuid=2a48000-80ce-11db-8c00-3c2af470c7c4' \
+  'printer-info=Brother HL-L2370DN series' \
+  'printer-state=3' > "$ATTR/lpoptions-Brother_HL_L2370DN_series"
+printf 'printer-is-shared (boolean) = true\n' > "$ATTR/shared-Brother_HL_L2370DN_series"
+# The reverse shape: CUPS holds the queue unshared, its PPD still carries a stale
+# flag. The scheduler's answer must win.
+printf 'printer-is-shared (boolean) = false\n' > "$ATTR/shared-HP_Laser_108w"
+printf 'printer-is-shared=true\n' > "$ATTR/lpoptions-HP_Laser_108w"
+# An unreadable attribute query must never be read as "shared" or as "not shared".
+touch "$ATTR/ipptool-failure-TSC_TTP_244_Pro"
+
+run_list
+! /usr/bin/grep -q 'printer-is-shared' "$ATTR/lpoptions-Brother_HL_L2370DN_series" \
+  || { printf 'FAIL: the Brother fixture must carry no shared flag in lpoptions\n' >&2; exit 1; }
+/usr/bin/grep -qx 'rp=printers/Brother_HL_L2370DN_series' "$OUT/plan" \
+  || { printf 'FAIL: a CUPS-shared queue was dropped because lpoptions had no flag\n' >&2; exit 1; }
+printf 'PASS: a CUPS-shared queue is advertised even though lpoptions carries no shared flag\n'
+! /usr/bin/grep -q 'rp=printers/HP_Laser_108w' "$OUT/plan" \
+  || { printf 'FAIL: a stale lpoptions flag advertised a queue CUPS holds unshared\n' >&2; exit 1; }
+printf 'PASS: the scheduler answer outranks a stale lpoptions flag\n'
+! /usr/bin/grep -q 'rp=printers/TSC_TTP_244_Pro' "$OUT/plan" \
+  || { printf 'FAIL: an unreadable sharing attribute still advertised the queue\n' >&2; exit 1; }
+/usr/bin/grep -q 'could not read whether TSC_TTP_244_Pro is shared' "$OUT/plan.err" \
+  || { printf 'FAIL: an unreadable sharing attribute was skipped silently\n' >&2; exit 1; }
+printf 'PASS: an unreadable sharing attribute is skipped and said out loud, never guessed\n'
+export PRINTER_STUDIO_FIXTURES="$OUT"
+
 printf 'Artifacts retained: %s\n' "$OUT"

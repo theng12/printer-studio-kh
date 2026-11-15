@@ -31,7 +31,8 @@ printf '%s\n' 'printer-is-shared=true'
 MOCK
 cat > "$OUT/tools/ipptool" <<'MOCK'
 #!/bin/bash
-printf '%s\n' ' printer-uuid = urn:uuid:11111111-2222-3333-4444-555555555555'
+# Sharing is read from the scheduler's attributes, not from lpoptions.
+printf '%s\n' ' printer-is-shared (boolean) = true' ' printer-uuid = urn:uuid:11111111-2222-3333-4444-555555555555'
 MOCK
 # The browse shows our service twice, then it is gone: the helper must react.
 cat > "$OUT/tools/dns-sd" <<'MOCK'

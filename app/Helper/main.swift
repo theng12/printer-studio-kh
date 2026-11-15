@@ -145,10 +145,33 @@ func attributeUUID(_ attributes: String) -> String? {
     return nil
 }
 
-func queueUUID(_ queue: String) -> String? {
+/// The scheduler's own attributes for a queue; nil when the query failed, which
+/// is unknown — never "not shared".
+func queueAttributes(_ queue: String) -> String? {
     let attributes = run(ipptool, ["-tv", "ipp://localhost/printers/\(queue)",
                                    "get-printer-attributes.test"])
-    if attributes.ok, let uuid = attributeUUID(attributes.stdout) { return uuid }
+    return attributes.ok ? attributes.stdout : nil
+}
+
+/// Sharing as CUPS records it. `lpoptions` prints PPD options only, so a queue
+/// shared through CUPS attributes — every IPP-over-USB queue, the owner's
+/// Brother HL-L2370DN among them — carries no flag there and was dropped before
+/// it could be bridged. nil means the query failed or said nothing: unknown.
+func isSharedQueue(_ queue: String) -> Bool? {
+    guard let attributes = queueAttributes(queue) else { return nil }
+    for line in outputLines(attributes) {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("printer-is-shared") else { continue }
+        guard let equals = trimmed.range(of: " = ") else { continue }
+        let value = trimmed[equals.upperBound...].trimmingCharacters(in: .whitespaces).lowercased()
+        if value == "true" { return true }
+        if value == "false" { return false }
+    }
+    return nil
+}
+
+func queueUUID(_ queue: String) -> String? {
+    if let attributes = queueAttributes(queue), let uuid = attributeUUID(attributes) { return uuid }
     note("AirPrint: no valid CUPS printer-uuid for \(queue); keeping its legacy advertisement.")
     return nil
 }
@@ -280,9 +303,13 @@ func sharedPrinters() -> [String] {
         let fields = line.split(whereSeparator: \.isWhitespace)
         guard fields.count >= 2, fields[0] == "printer" else { continue }
         let queue = String(fields[1])
-        guard run(lpoptions, ["-p", queue]).stdout.contains("printer-is-shared=true") else {
+        // CUPS's own answer, not a PPD option: lpoptions reports no sharing flag
+        // for an IPP-over-USB queue, which is how the Brother went missing.
+        guard let isShared = isSharedQueue(queue) else {
+            note("AirPrint: could not read whether \(queue) is shared; leaving it unadvertised.")
             continue
         }
+        guard isShared else { continue }
         if nativeAirprint(queue) {
             note("AirPrint: \(queue) already has a matching local AirPrint service; no bridge twin.")
         } else {
@@ -498,12 +525,10 @@ func runShareFix() {
         let queue = String(fields[1])
         // A real queue name never contains a path separator.
         guard !queue.isEmpty, !queue.contains("/"), !queue.contains(":") else { continue }
-        let attributes = run(ipptool, ["-tv", "ipp://localhost/printers/\(queue)",
-                                       "get-printer-attributes.test"])
-        guard attributes.ok,
-              attributes.stdout.contains("printer-is-shared (boolean) = true") else { continue }
+        guard let attributes = queueAttributes(queue),
+              attributes.contains("printer-is-shared (boolean) = true") else { continue }
         // Only act when a per-user ACL is actually present.
-        guard attributes.stdout.lowercased().contains("requesting-user-name-allowed") else {
+        guard attributes.lowercased().contains("requesting-user-name-allowed") else {
             continue
         }
         let result = run(lpadmin, ["-p", queue, "-u", "allow:all"])
