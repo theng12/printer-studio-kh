@@ -1702,6 +1702,7 @@ struct SettingsView: View {
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
+                        Text("Job alerts").font(.headline)
                         Toggle("Tell me when a job arrives",
                                isOn: Binding(get: { state.notifyOnJobReceived },
                                              set: { state.notifyOnJobReceived = $0 }))
