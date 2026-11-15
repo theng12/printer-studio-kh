@@ -93,12 +93,13 @@ struct CardGroupStyle: GroupBoxStyle {
     }
 }
 
-/// One page scaffold: the same leading edge and one 980 pt column on every
-/// page, so 1440 does not look like seven different apps (round-5 finding 6).
+/// One page scaffold: the same leading edge and the same 24 pt padding on every
+/// page, filling the window. It used to stop at 980 pt, which kept the pages
+/// consistent but left a wide empty band on a big screen — cards, grids, tables
+/// and logs now reach the edge. Prose keeps a readable measure through `prose()`.
 private struct PageScaffold: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(24)
     }
@@ -106,6 +107,13 @@ private struct PageScaffold: ViewModifier {
 
 extension View {
     func pageScaffold() -> some View { modifier(PageScaffold()) }
+
+    /// A paragraph, not a page: full-width body text at 1400 pt is worse than
+    /// the empty space it replaces, so prose wraps at a comfortable measure.
+    func prose() -> some View {
+        fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 680, alignment: .leading)
+    }
 }
 
 struct MainWindow: View {
@@ -321,7 +329,7 @@ struct ErrorState: View {
                 .font(.callout)
                 .foregroundStyle(Palette.muted)
                 .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                .prose()
             Button("Retry", action: retry)
                 .buttonStyle(PrimaryButtonStyle())
         }
@@ -383,7 +391,7 @@ struct ResultBanner: View {
                 .foregroundStyle(ok ? Palette.success : Palette.danger)
             Text(message)
                 .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
+                .prose()
             Spacer(minLength: 8)
             Button(action: dismiss) {
                 Image(systemName: "xmark")
@@ -456,7 +464,7 @@ struct AdviceRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: advice.symbol).foregroundStyle(tint).frame(width: 18)
-            Text(advice.displayText).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Text(advice.displayText).font(.callout).prose()
             Spacer(minLength: 8)
             if let actionTitle = advice.actionTitle, let action = advice.action {
                 Button(actionTitle, action: action).controlSize(.small)
@@ -708,7 +716,7 @@ struct PrintersView: View {
                             .font(.callout)
                             .foregroundStyle(Palette.muted)
                             .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .prose()
                         ActionRow {
                             Button("Refresh") { state.refreshNow() }
                             Button("Open Printers & Scanners") {
@@ -766,7 +774,7 @@ private struct RenamePrinterSheet: View {
             Text("This name is used when other Macs and devices print to it.")
                 .font(.caption)
                 .foregroundStyle(Palette.muted)
-                .fixedSize(horizontal: false, vertical: true)
+                .prose()
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -796,7 +804,7 @@ private struct PrinterMetricsGrid: View {
                 Text("Connection").foregroundStyle(Palette.muted).frame(width: labelWidth, alignment: .leading)
                 Label(printer.friendlyLocation, systemImage: printer.transport.symbol)
                     .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .prose()
                     .help(printer.deviceURI)
             }
             if let model = detail?.makeAndModel ?? (printer.makeAndModel.isEmpty ? nil : printer.makeAndModel) {
@@ -914,7 +922,7 @@ struct PrinterCard: View {
             if printer.transport != .usb {
                 Text("This name is for Mac sharing. A network printer’s own AirPrint name is set on the printer.")
                     .font(.caption).foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .prose()
             }
 
             if let choices = state.paperChoices[printer.name], !choices.isEmpty {
@@ -932,7 +940,7 @@ struct PrinterCard: View {
                 .disabled(state.busy)
                 Text("Use the stock loaded in the printer. Reopen the phone or Mac print dialog after changing it; choose the same size there. Test page uses this size and prints one page.")
                     .font(.caption).foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .prose()
             }
 
             PrinterMetricsGrid(printer: printer, detail: detail, labelWidth: 90)
@@ -1040,8 +1048,7 @@ struct SharingView: View {
                 Text("Printer Sharing").font(.title2.weight(.semibold)).probe("heading")
                 Text("Other Macs and iOS devices find shared printers over Bonjour. macOS sometimes locks a shared queue to specific users, which makes other machines park jobs with “Job held for authentication”. This screen fixes and prevents that.")
                     .foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 680, alignment: .leading)
+                    .prose()
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
@@ -1056,7 +1063,7 @@ struct SharingView: View {
                                      ? "Enabled — every shared printer is announced as its name followed by (AirPrint). iPhone visibility is not checked until you see the printers on your phone."
                                      : "Off. Turn on to announce every shared printer to iPhone and iPad.")
                                     .font(.caption).foregroundStyle(Palette.muted)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .prose()
                             }
                             Spacer()
                             if state.airPrintInstalled && state.sharingEnabled {
@@ -1070,7 +1077,7 @@ struct SharingView: View {
                             HStack {
                                 Text("Label printing needs a one-time driver update. After setup, test one label from your iPhone.")
                                     .font(.caption).foregroundStyle(Palette.muted)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .prose()
                                 Spacer()
                                 Button("Set up label printing") { state.setupLabelPrinting() }
                                     .disabled(state.busy)
@@ -1079,12 +1086,12 @@ struct SharingView: View {
                         if state.labelQueues.contains(where: { $0.isLabel }) {
                             Text("iPhone output is not checked by this app. Test one label from your iPhone after setup.")
                                 .font(.caption2).foregroundStyle(Palette.muted)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .prose()
                         }
                         if state.airPrintInstalled {
                             Text("Jobs go through this Mac's print service and the printer's driver. Turning on Printer Sharing may ask for administrator approval.")
                                 .font(.caption2).foregroundStyle(Palette.muted)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .prose()
                         }
                     }
                     .padding(6)
@@ -1180,7 +1187,7 @@ struct SharingView: View {
                         if groups.isEmpty {
                             ForEach(StringDeduper.dedupe(state.unfinishedJobs)) { job in
                                 Text(job.display).font(.caption)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .prose()
                             }
                         } else {
                             ForEach(groups) { group in
@@ -1246,8 +1253,7 @@ struct SetupView: View {
                 Text("HP Laser 107a").font(.title2.weight(.semibold)).probe("heading")
                 Text("This printer is a rebadged Samsung SL-M2026. It speaks Samsung's QPDL language over USB and has no Apple driver, so Printer Studio KH supplies one and then shares the queue to the network.")
                     .foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 680, alignment: .leading)
+                    .prose()
 
                 SetupStep(
                     number: 1,
@@ -1335,8 +1341,7 @@ struct SetupView: View {
                         Text("The earlier attempt built a QPDL encoder from scratch. It produced streams the printer accepted without any error, but it never fed paper. The cause is now known: this engine rejects a page whose band width is not exactly one of a fixed set of values, and it fails silently rather than reporting an error. The supported splix driver contains that table, which is why the app uses it instead of a hand-written encoder.")
                             .font(.caption)
                             .foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 680, alignment: .leading)
+                            .prose()
                     }
                     .padding(6)
                 }
@@ -1407,7 +1412,7 @@ struct SetupStep: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.callout.weight(.medium))
                 Text(detail).font(.caption).foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .prose()
             }
             Spacer()
         }
@@ -1509,8 +1514,7 @@ struct StickerSizesView: View {
 
                 Text("Set the sizes here for AirPrint to read from your shared printer. Width and height follow how the stock feeds into the printer. You can edit any size or turn it off.\n\nCustom sizes apply to label printers within their driver’s limits. A4 and A5 are already standard choices on the HP Laser queue; use that printer’s paper-size menu. A narrow label printer cannot print an A4 or A5 sheet.")
                     .foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 680, alignment: .leading)
+                    .prose()
 
                 GroupBox {
                     ViewThatFits(in: .horizontal) {
@@ -1537,7 +1541,7 @@ struct StickerSizesView: View {
                             Text("No label printer found yet. Install its driver and add it in System Settings > Printers & Scanners, then come back — the list updates itself.")
                                 .font(.callout)
                                 .foregroundStyle(Palette.muted)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .prose()
                         } else {
                             ForEach(targets, id: \.self) { queue in
                                 VStack(alignment: .leading, spacing: 2) {
@@ -1553,7 +1557,7 @@ struct StickerSizesView: View {
                                     Text(PageSizeInstaller.queueSummary(queue: queue, sizes: state.stickerSizes))
                                         .font(.caption)
                                         .foregroundStyle(Palette.muted)
-                                        .fixedSize(horizontal: false, vertical: true)
+                                        .prose()
                                         .textSelection(.enabled)
                                         .padding(.leading, 24)
                                 }
@@ -1561,7 +1565,7 @@ struct StickerSizesView: View {
                             Text("Apply adds only sizes supported by each label printer’s driver. macOS asks for administrator approval. Reopen the iPhone or iPad print dialog afterward; the choices shown can vary by app and iOS version.")
                                 .font(.caption)
                                 .foregroundStyle(Palette.muted)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .prose()
                         }
                     }
                     .padding(6)
@@ -1612,7 +1616,7 @@ struct WhatsNewView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text("•").foregroundStyle(Palette.muted)
                             Text(line)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .prose()
                                 .textSelection(.enabled)
                         }
                     }
@@ -1662,8 +1666,7 @@ struct SettingsView: View {
                             .toggleStyle(.switch)
                         Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
                             .font(.caption).foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 680, alignment: .leading)
+                            .prose()
                         Toggle("Keep the USB printer ready after restarts",
                                isOn: Binding(get: { state.automaticUSBRelease },
                                              set: { state.setAutomaticUSBRelease($0) }))
@@ -1671,7 +1674,7 @@ struct SettingsView: View {
                             .disabled(state.busy)
                         Text("Automatic USB release needs administrator approval once. It runs at boot and after a replug, without opening this app or saving a password.")
                             .font(.caption).foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .prose()
                     }
                     .padding(6)
                 }
@@ -1688,10 +1691,11 @@ struct SettingsView: View {
                         .labelsHidden()
                         Text("System follows macOS and is where every install starts.")
                             .font(.caption).foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .prose()
                     }
                     .padding(6)
                 }
+                .probe("card.appearance")
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
@@ -1748,7 +1752,7 @@ struct SettingsView: View {
                         Text("Remove from this Mac").font(.headline)
                         Text("Stops the background helpers, unloads their launchd jobs, removes the login item and moves the app to the Trash. Your settings and saved sticker sizes stay, and the printer queues and driver are left alone.")
                             .font(.caption).foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .prose()
                         Button("Remove Printer Studio KH…") { confirmingRemoval = true }
                             .confirmationDialog("Remove Printer Studio KH from this Mac?",
                                                 isPresented: $confirmingRemoval) {
@@ -1800,7 +1804,7 @@ struct SettingsRow: View {
             }
             Text(value)
                 .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+                .prose()
             Spacer(minLength: 0)
         }
         .font(.callout)
@@ -1830,7 +1834,7 @@ struct ActivityView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(entry.displayMessage)
                                 .font(.callout)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .prose()
                             Text(entry.timestamp)
                                 .font(.caption2)
                                 .foregroundStyle(Palette.muted)

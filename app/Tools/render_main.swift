@@ -26,6 +26,9 @@ struct RenderOptions {
         if args[1] == "keyboard-check" {
             return RenderOptions(mode: "keyboard-check", target: "printers", outDir: args.count > 2 ? args[2] : "", width: 1024, height: 720, appearance: "light", printersListMode: nil)
         }
+        if args[1] == "theme-check" {
+            return RenderOptions(mode: "theme-check", target: "settings", outDir: args.count > 2 ? args[2] : "", width: 1024, height: 720, appearance: "system", printersListMode: nil)
+        }
         if args[1] == "interaction" {
             return RenderOptions(mode: "interaction", target: args.count > 2 ? args[2] : "", outDir: args.count > 3 ? args[3] : "", width: 1024, height: 720, appearance: "light", printersListMode: nil)
         }
@@ -79,7 +82,7 @@ struct PageRenderHarness {
         }
 
         guard let opts = RenderOptions.parse(CommandLine.arguments) else {
-            fputs("usage: render-page <page|window|contrast|switch-check|keyboard-check> <target> <outdir> <WxH> <light|dark> [printersListMode]\n", stderr)
+            fputs("usage: render-page <page|window|contrast|switch-check|keyboard-check|theme-check> <target> <outdir> <WxH> <light|dark> [printersListMode]\n", stderr)
             exit(2)
         }
         if opts.mode == "contrast" {
@@ -92,6 +95,10 @@ struct PageRenderHarness {
         }
         if opts.mode == "keyboard-check" {
             runKeyboardCheck(opts)
+            return
+        }
+        if opts.mode == "theme-check" {
+            runThemeCheck(opts)
             return
         }
         if opts.mode == "interaction" {
@@ -702,6 +709,192 @@ struct PageRenderHarness {
         state.reportFeedback = nil
         state.screen = .overview
         return state
+    }
+
+    // MARK: - Theme check
+
+    /// The owner's defect: picking Light or Dark left the page and the cards in
+    /// two different schemes. Every Palette surface is a dynamic AppKit colour,
+    /// which resolves against the window's real NSAppearance — so this pins the
+    /// Mac's appearance, drives the app's own `Appearance.apply`, and measures
+    /// the pixels the real window drew. The window keeps `appearance` nil, as
+    /// the shipped app's windows do: setting it here would hide the very
+    /// disagreement this checks for.
+    static func runThemeCheck(_ opts: RenderOptions) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        try? FileManager.default.createDirectory(atPath: opts.outDir, withIntermediateDirectories: true)
+        UserDefaults.standard.removeObject(forKey: "appearance")
+
+        var failures: [String] = []
+        for system in ["light", "dark"] {
+            // The Mac's own appearance, pinned so both directions are covered.
+            app.appearance = NSAppearance(named: system == "dark" ? .darkAqua : .aqua)
+            let first: Appearance = system == "dark" ? .light : .dark
+            UserDefaults.standard.set(first.rawValue, forKey: "appearance")
+            Appearance.apply(first)                     // launch, before any window
+            let (window, hosting) = makeThemeWindow(opts: opts)
+            pump(hosting: hosting, window: window)
+
+            // Launch, then the owner's case — changed with the window open — then
+            // System, which must follow whatever macOS resolved.
+            for (label, choice) in [("launch", first),
+                                    ("switch", first == .light ? Appearance.dark : Appearance.light),
+                                    ("system", Appearance.system)] {
+                UserDefaults.standard.set(choice.rawValue, forKey: "appearance")
+                Appearance.apply(choice)
+                pump(hosting: hosting, window: window)
+                if let problem = reportTheme(label: label, system: system, choice: choice,
+                                             window: window, hosting: hosting, outDir: opts.outDir) {
+                    failures.append("\(system)/\(label): \(problem)")
+                }
+            }
+        }
+        if failures.isEmpty {
+            print("THEME_CHECK PASS")
+            return
+        }
+        print("THEME_CHECK FAIL \(failures.joined(separator: " | "))")
+        exit(1)
+    }
+
+    static func makeThemeWindow(opts: RenderOptions) -> (NSWindow, NSView) {
+        let state = makeFixtureState()
+        state.screen = .settings
+        let controller = NSHostingController(rootView: MainWindow()
+            .environmentObject(state)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onPreferenceChange(ProbeFrames.self) { InteractionProbe.frames = $0 })
+        controller.sizingOptions = []
+        let hosting = controller.view
+        hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
+        // Borderless: no titlebar or toolbar means no chrome band and no safe
+        // area, so a SwiftUI probe frame maps straight onto the captured bitmap.
+        // The window still draws its own dynamic background, which is the
+        // surface this check exists to compare with the cards.
+        let mask: NSWindow.StyleMask = [.borderless]
+        let contentRect = NSWindow.contentRect(forFrameRect: NSRect(x: 0, y: 0,
+                                                                    width: CGFloat(opts.width),
+                                                                    height: CGFloat(opts.height)),
+                                               styleMask: mask)
+        let window = NSWindow(contentRect: contentRect, styleMask: mask,
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        // The dynamic system colour, resolved by AppKit against whatever
+        // appearance is in force — exactly as in the shipped app.
+        window.backgroundColor = .windowBackgroundColor
+        window.contentViewController = controller
+        window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+        window.alphaValue = 0.01
+        window.orderFront(nil)
+        window.makeKey()
+        return (window, hosting)
+    }
+
+    /// Measures the drawn page and the drawn card, prints them, and returns what
+    /// is wrong with them (nil when the two agree on the scheme the choice needs).
+    static func reportTheme(label: String, system: String, choice: Appearance,
+                            window: NSWindow, hosting: NSView, outDir: String) -> String? {
+        guard let cardFrame = InteractionProbe.frames["card.appearance"] else {
+            return "no card.appearance probe: the Settings page never laid out"
+        }
+        let capture = window.contentView?.superview ?? hosting
+        guard let rep = capture.bitmapImageRepForCachingDisplay(in: capture.bounds) else {
+            return "bitmap allocation failed"
+        }
+        capture.cacheDisplay(in: capture.bounds, to: rep)
+        let name = "theme-\(label)-system-\(system).png"
+        try? rep.representation(using: .png, properties: [:])?
+            .write(to: URL(fileURLWithPath: outDir).appendingPathComponent(name))
+
+        // Probe frames and the chrome band are points; the captured bitmap is at
+        // the backing scale, so every edge is converted before it is sampled.
+        let scale = capture.bounds.width > 0 ? CGFloat(rep.pixelsWide) / capture.bounds.width : 1
+        func px(_ points: CGFloat) -> Int { Int((points * scale).rounded()) }
+        // The captured frame view starts with the window chrome, so the card
+        // shifts down by that band.
+        let chrome = capture.bounds.height - hosting.frame.maxY
+        let card = modalColor(rep: rep, x: px(cardFrame.minX + 3), y: px(chrome + cardFrame.minY + 3),
+                              w: px(cardFrame.width - 6), h: px(cardFrame.height - 6))
+        // The page: the full-width gap between this card and the next one, so
+        // the sample shares the card's scroll offset and never lands on a card,
+        // the sidebar or the window chrome.
+        let page = modalColor(rep: rep, x: px(cardFrame.minX + 40), y: px(chrome + cardFrame.maxY + 5),
+                              w: px(200), h: px(8))
+
+        let pageLum = luminance(page), cardLum = luminance(card)
+        let pageScheme = pageLum >= 0.5 ? "light" : "dark"
+        let cardScheme = cardLum >= 0.5 ? "light" : "dark"
+        let separation = ratio(page, card)
+        // With System the app follows the Mac, so the answer is whatever the
+        // window actually resolved — reported, never assumed.
+        let effective = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? "dark" : "light"
+        let wanted = choice == .system ? effective : (choice == .dark ? "dark" : "light")
+
+        var problems: [String] = []
+        if pageScheme != cardScheme {
+            problems.append("mixed schemes: page \(pageScheme) (\(hex(page))), card \(cardScheme) (\(hex(card)))")
+        }
+        if pageScheme != wanted { problems.append("page is \(pageScheme), the choice needs \(wanted)") }
+        if cardScheme != wanted { problems.append("card is \(cardScheme), the choice needs \(wanted)") }
+        if separation < 1.05 {
+            problems.append("page and card do not separate: \(separation):1")
+        }
+
+        let obj: [String: Any] = [
+            "case": label, "system": system, "choice": choice.rawValue,
+            "needed": wanted, "window_effective": effective,
+            "page_hex": hex(page), "card_hex": hex(card),
+            "page_luminance": (pageLum * 1000).rounded() / 1000,
+            "card_luminance": (cardLum * 1000).rounded() / 1000,
+            "page_scheme": pageScheme, "card_scheme": cardScheme, "scale": scale,
+            "card_rect": [px(cardFrame.minX + 3), px(chrome + cardFrame.minY + 3),
+                          px(cardFrame.width - 6), px(cardFrame.height - 6)],
+            "page_rect": [px(cardFrame.minX + 40), px(chrome + cardFrame.maxY + 5), px(200), px(8)],
+            "page_card_ratio": separation, "image": name,
+            "result": problems.isEmpty ? "PASS" : "FAIL",
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
+           let s = String(data: data, encoding: .utf8) {
+            print("THEME \(s)")
+        }
+        return problems.isEmpty ? nil : problems.joined(separator: "; ")
+    }
+
+    /// The colour that covers most of the rectangle: a card's fill or the page
+    /// behind it, regardless of what text and hairlines sit on top.
+    static func modalColor(rep: NSBitmapImageRep, x: Int, y: Int, w: Int, h: Int) -> (UInt8, UInt8, UInt8) {
+        let width = rep.pixelsWide, height = rep.pixelsHigh
+        guard let data = rep.bitmapData, w > 0, h > 0 else { return (0, 0, 0) }
+        let bpp = rep.bitsPerPixel / 8, bpr = rep.bytesPerRow
+        var counts: [UInt32: Int] = [:]
+        for row in max(0, y)..<min(y + h, height) {
+            for column in max(0, x)..<min(x + w, width) {
+                let p = pixel(data: data, x: column, y: row, bpp: bpp, bpr: bpr)
+                let key = UInt32(p.0) << 16 | UInt32(p.1) << 8 | UInt32(p.2)
+                counts[key, default: 0] += 1
+            }
+        }
+        guard let best = counts.max(by: { $0.value < $1.value })?.key else { return (0, 0, 0) }
+        return (UInt8((best >> 16) & 0xff), UInt8((best >> 8) & 0xff), UInt8(best & 0xff))
+    }
+
+    static func luminance(_ c: (UInt8, UInt8, UInt8)) -> Double {
+        func lin(_ v: UInt8) -> Double {
+            let s = Double(v) / 255
+            return s <= 0.04045 ? s / 12.92 : pow((s + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * lin(c.0) + 0.7152 * lin(c.1) + 0.0722 * lin(c.2)
+    }
+
+    static func ratio(_ a: (UInt8, UInt8, UInt8), _ b: (UInt8, UInt8, UInt8)) -> Double {
+        let l1 = luminance(a), l2 = luminance(b)
+        return ((max(l1, l2) + 0.05) / (min(l1, l2) + 0.05) * 1000).rounded() / 1000
+    }
+
+    static func hex(_ c: (UInt8, UInt8, UInt8)) -> String {
+        String(format: "#%02X%02X%02X", c.0, c.1, c.2)
     }
 
     // MARK: - Switch check

@@ -52,7 +52,12 @@ struct PrinterStudioApp: App {
     @StateObject private var state = AppState()
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
 
-    private var appearance: Appearance { .stored(appearanceRaw) }
+    init() {
+        // Before the first window exists, so it opens already in the chosen
+        // scheme. The stored choice owns the real AppKit appearance; SwiftUI's
+        // colour scheme alone left the cards and the page disagreeing.
+        Appearance.apply(.stored(UserDefaults.standard.string(forKey: "appearance")))
+    }
 
     var body: some Scene {
         MenuBarExtra {
@@ -76,20 +81,20 @@ struct PrinterStudioApp: App {
             MainWindow()
                 .environmentObject(state)
                 .frame(minWidth: 860, minHeight: 580)
-                .preferredColorScheme(appearance.colorScheme)
+                // Every window inherits the app appearance, so one change here
+                // repaints the window, its sidebar and every page.
+                .onChange(of: appearanceRaw) { Appearance.apply(.stored($0)) }
         }
         .commands { MainCommands() }
 
         Window("What's New", id: "whats-new") {
             WhatsNewView()
-                .preferredColorScheme(appearance.colorScheme)
         }
         .defaultSize(width: 520, height: 300)
         .windowResizability(.contentMinSize)
 
         Window("Support Printer Studio KH", id: "support") {
             SupportView()
-                .preferredColorScheme(appearance.colorScheme)
         }
         .windowResizability(.contentMinSize)
     }

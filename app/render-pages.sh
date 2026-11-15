@@ -13,7 +13,8 @@
 # and "window-sharing" render those pages inside the real window.
 # Default sizes: pages 375x900 768x900 1440x900; window 860x580 1024x720 1440x900.
 # "switch-check" drives the Cards/Table control; "keyboard-check" drives it with the
-# keyboard and records Tab focus movement.
+# keyboard and records Tab focus movement. "theme-check" applies each Appearance
+# choice and measures that the drawn page and cards agree on its scheme.
 # If WxH arguments are given they override defaults for all targets.
 # Every render is produced in light and dark (-light/-dark suffix).
 
@@ -55,7 +56,7 @@ mkdir -p "$OUT_DIR"
 # Nothing stale survives: every PNG in an evidence folder must be one this run
 # produced and measured, so earlier files are retired recoverably first.
 case "$PAGE_SPEC" in
-  switch-check|keyboard-check) ;;
+  switch-check|keyboard-check|theme-check) ;;
   *)
     if compgen -G "$OUT_DIR/*.png" > /dev/null 2>&1; then
       STALE="$(dirname "$OUT_DIR")/_trash/$(basename "$OUT_DIR")-replaced-$(date +%Y%m%dT%H%M%SZ)"
@@ -95,16 +96,23 @@ new = '@Published var stickerSizes: [StickerSize] = (ProcessInfo.processInfo.env
 if old in text:
     text = text.replace(old, new)
 
-# Skip side effects in AppState.init when rendering.
+# Skip side effects in AppState.init when rendering. Anchored on the class, not
+# on the first `init() {` in the file: the App struct has one too, and patching
+# that instead would leave AppState running the real startup work.
+marker = 'final class AppState: ObservableObject {'
 needle = '    init() {\n'
-if needle not in text:
+if marker not in text:
+    raise SystemExit('AppState class not found for render patch')
+start = text.index(marker)
+if needle not in text[start:]:
     raise SystemExit('AppState.init() not found for render patch')
+at = text.index(needle, start)
 guard = '''    init() {
         if ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER"] == "1" {
             return
         }
 '''
-text = text.replace(needle, guard, 1)
+text = text[:at] + guard + text[at + len(needle):]
 
 # Strip the duplicate-copy NSAlert .task in MainWindow for render safety (it
 # would try to show an alert and terminate). Render harness does not exercise it.
@@ -198,6 +206,32 @@ if ! "$ROOT_DIR/app/release-notes.sh" "$VERSION" "$ROOT_DIR/CHANGELOG.md" \
   echo "Release notes could not be loaded for this version." > "$APP_BUNDLE/Contents/Resources/WhatsNew.txt"
 fi
 
+# Appearance ownership: the stored Light/Dark/System choice must drive the real
+# AppKit appearance, so the page and the cards can never land in different
+# schemes. Fails when they disagree, or when both ignore the choice.
+if [ "$PAGE_SPEC" = "theme-check" ]; then
+  # The harness drives Appearance.apply directly, so a revert in App.swift to the
+  # SwiftUI-only colour scheme would not show up in the render. Hold the wiring.
+  APP_SWIFT="$ROOT_DIR/app/Sources/PrinterStudio/App.swift"
+  WIRING_OK=1
+  grep -q 'Appearance.apply(.stored(UserDefaults' "$APP_SWIFT" \
+    || { echo "THEME_FAIL App.swift no longer applies the stored appearance at launch"; WIRING_OK=0; }
+  grep -q 'onChange(of: appearanceRaw) { Appearance.apply' "$APP_SWIFT" \
+    || { echo "THEME_FAIL App.swift no longer applies appearance changes"; WIRING_OK=0; }
+  if grep -q 'preferredColorScheme' "$APP_SWIFT"; then
+    echo "THEME_FAIL App.swift sets a SwiftUI colour scheme again; the app must have one appearance owner"
+    WIRING_OK=0
+  fi
+  [ "$WIRING_OK" -eq 1 ] || exit 1
+  set +e
+  PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+    "$BIN" theme-check "$OUT_DIR" 2>&1 | tee "$OUT_DIR/theme-check.log"
+  rc=${PIPESTATUS[0]}
+  set -e
+  echo "THEME_CHECK_EXIT $rc"
+  exit "$rc"
+fi
+
 # Optional UI-control check: drive the Printers Table/Cards control with a real
 # offscreen mouse event. Skips cleanly when the Fleet UI switch is not present.
 if [ "$PAGE_SPEC" = "switch-check" ]; then
@@ -271,6 +305,7 @@ fi
 HAD_FAIL=0
 TOTAL=0
 CLIPPED_PAGES=()
+NARROW_PAGES=()
 
 render_one() {
   local mode="$1" target="$2" size="$3" appearance="$4" mode_arg="${5:-}"
@@ -293,7 +328,7 @@ render_one() {
     return
   fi
   echo "MEASURE $measure"
-  # Check ok and clipped via python for reliable JSON parsing.
+  # Check ok, clipped and used width via python for reliable JSON parsing.
   local verdict
   verdict=$(python3 - "$measure" <<'PY'
 import json, sys
@@ -302,17 +337,37 @@ ok = m.get('ok')
 clipped = m.get('clipped')
 print('ok' if ok else 'bad')
 print('clipped' if clipped else 'clear')
+target = m.get('target') or ''
+requested = m.get('requested_width') or 0
+width = m.get('width') or 0
+scale = (width / requested) if requested and width else 1
+gutter = (m.get('right_gutter_px') or 0) / scale
+used = requested - gutter
+print(f"used={used:.0f}pt of {requested}pt ({100 * used / requested:.1f}%) right_gutter={gutter:.0f}pt"
+      if requested else "used=?")
+# A page fills the window: dialogs, window renders and empty/error states do not.
+is_page = (not target.startswith('window') and target != 'whats-new'
+           and not target.startswith('banner')
+           and not target.endswith('-empty') and not target.endswith('-error'))
+print('narrow' if is_page and requested and gutter > 48 else 'wide')
 PY
 )
-  local okv clippedv
+  local okv clippedv widthv fillv
   okv=$(printf '%s\n' "$verdict" | sed -n '1p')
   clippedv=$(printf '%s\n' "$verdict" | sed -n '2p')
+  widthv=$(printf '%s\n' "$verdict" | sed -n '3p')
+  fillv=$(printf '%s\n' "$verdict" | sed -n '4p')
+  echo "WIDTH $target $size $appearance $widthv"
   if [ "$okv" != "ok" ]; then
     HAD_FAIL=1
   fi
   if [ "$clippedv" = "clipped" ]; then
     HAD_FAIL=1
     CLIPPED_PAGES+=("$target:$size:$appearance")
+  fi
+  if [ "$fillv" = "narrow" ]; then
+    HAD_FAIL=1
+    NARROW_PAGES+=("$target:$size:$appearance")
   fi
 }
 
@@ -365,6 +420,9 @@ done
 
 if [ ${#CLIPPED_PAGES[@]} -gt 0 ]; then
   echo "CLIPPED: ${CLIPPED_PAGES[*]}"
+fi
+if [ ${#NARROW_PAGES[@]} -gt 0 ]; then
+  echo "NARROW: ${NARROW_PAGES[*]} (a page left more than 48 pt of the window unused)"
 fi
 
 echo "TOTAL_RENDERS $TOTAL"

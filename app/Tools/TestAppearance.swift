@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 @main
 struct TestAppearance {
@@ -29,9 +30,22 @@ struct TestAppearance {
         assertTest(Appearance.stored("dark") == .dark, "Stored dark reads back")
         assertTest(Appearance.stored("default") == .system, "Old Default choice reads as System")
         assertTest(Appearance.stored("nonsense") == .system, "Unknown value falls back to System")
-        assertTest(Appearance.system.colorScheme == nil, "System leaves the scheme to macOS")
-        assertTest(Appearance.light.colorScheme == .light, "Light forces the light scheme")
-        assertTest(Appearance.dark.colorScheme == .dark, "Dark forces the dark scheme")
+        assertTest(Appearance.system.nsAppearance == nil, "System leaves the appearance to macOS")
+        assertTest(Appearance.light.nsAppearance?.name == .aqua, "Light sets the light AppKit appearance")
+        assertTest(Appearance.dark.nsAppearance?.name == .darkAqua, "Dark sets the dark AppKit appearance")
+
+        // The stored choice must reach the real appearance, which every Palette
+        // surface resolves against. Setting only SwiftUI's colour scheme left
+        // the cards and the page in different schemes.
+        Appearance.apply(.dark)
+        assertTest(NSApplication.shared.appearance?.name == .darkAqua,
+                   "Applying Dark sets the app appearance")
+        Appearance.apply(.light)
+        assertTest(NSApplication.shared.appearance?.name == .aqua,
+                   "Applying Light sets the app appearance")
+        Appearance.apply(.system)
+        assertTest(NSApplication.shared.appearance == nil,
+                   "Applying System hands appearance back to macOS")
 
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }

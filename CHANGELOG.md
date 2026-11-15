@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.23 — 2026-11-15
+- Choosing Light or Dark now repaints the whole window — the page, the cards and the sidebar together — instead of leaving white cards on a dark page or dark cards on a light page.
+- System still follows macOS, including when macOS changes while the app is open.
+- Every page now uses the whole window: cards, the printer grid, the shared-queues table, the watcher log and the size table reach the right edge instead of stopping at a fixed column, while paragraphs keep a comfortable reading width.
+
 ## 1.0.22 — 2026-11-15
 - Background work now runs as one helper instead of two, so Login Items shows Printer Studio KH and one Printer Studio KH Helper.
 - Installing the background watcher no longer turns Printer Sharing on for you.
