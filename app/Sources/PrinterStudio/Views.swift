@@ -1699,6 +1699,21 @@ struct SettingsView: View {
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
+                        Toggle("Tell me when a job arrives",
+                               isOn: Binding(get: { state.notifyOnJobReceived },
+                                             set: { state.notifyOnJobReceived = $0 }))
+                            .toggleStyle(.switch)
+                            .probe("control.notifyOnJob")
+                        Text("Chimes and says so the moment a job reaches the Mac — about a second after you press Print. The printer itself takes longer to warm up, so this is the acknowledgement, not the page. Off unless you turn it on.")
+                            .font(.caption).foregroundStyle(Palette.muted)
+                            .prose()
+                    }
+                    .padding(6)
+                }
+                .probe("card.notify")
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("About").font(.headline)
                         SettingsRow("Printer Studio KH", version)
                         SettingsRow("Bundle", Bundle.main.bundleIdentifier ?? "—")

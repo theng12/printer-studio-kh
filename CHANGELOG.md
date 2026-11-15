@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.25 — 2026-11-15
+- New, off by default: **Tell me when a job arrives**. Switch it on in Settings and Printer Studio KH chimes and says so the moment a job reaches the Mac — about a second after you press Print on a phone or another Mac. The printer's own warm-up still takes several seconds, so this is the acknowledgement, not the page.
+- The chime only runs while the switch is on, never repeats for a job it has already announced, and stays quiet for jobs that were already queued when it started.
+
 ## 1.0.24 — 2026-11-15
 - A USB printer that macOS shares as an IPP queue is now announced to iPhone and iPad instead of being skipped: sharing is read from CUPS itself, not from a queue option that does not carry it.
 - Choosing Light or Dark now repaints the whole window — the page, the cards and the sidebar together — instead of leaving white cards on a dark page or dark cards on a light page.

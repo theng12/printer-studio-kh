@@ -144,6 +144,19 @@ final class AppState: ObservableObject {
     @Published var lastMessageOK = true
     @Published var reportFeedback: String?
 
+    /// Off unless the person turns it on: a chime and a line the moment a job
+    /// lands in the queue, so a phone print is acknowledged in about a second
+    /// instead of waiting out the printer's warm-up in silence.
+    @Published var notifyOnJobReceived = UserDefaults.standard.bool(forKey: "notifyOnJobReceived") {
+        didSet {
+            UserDefaults.standard.set(notifyOnJobReceived, forKey: "notifyOnJobReceived")
+            updateJobWatch()
+        }
+    }
+    private var jobWatchTimer: Timer?
+    private var seenJobIDs: Set<String> = []
+    private var jobWatchFirstLook = true
+
     /// Which sidebar screen is showing. This lives here rather than in a
     /// `@State` because SwiftUI's `@State` is a macro whose plugin is only
     /// shipped with full Xcode, and this app is built with Command Line Tools.
@@ -171,6 +184,7 @@ final class AppState: ObservableObject {
             return
         }
         log("Printer Studio KH started.")
+        DispatchQueue.main.async { self.updateJobWatch() }
 
         // When launchd starts us at login we should leave only the menu bar
         // icon. The window scene always opens one, and macOS 13 and 14 have no
@@ -228,6 +242,35 @@ final class AppState: ObservableObject {
             return "\(unfinishedJobs.count) job\(unfinishedJobs.count == 1 ? "" : "s") in progress"
         }
         return "\(printers.count) printer\(printers.count == 1 ? "" : "s")"
+    }
+
+    // MARK: Job watch
+
+    /// Runs only while the switch is on, so an app nobody asked to be noisy
+    /// spends nothing. Two seconds is fast enough to beat the printer's own
+    /// warm-up and cheap enough to run all day.
+    func updateJobWatch() {
+        jobWatchTimer?.invalidate()
+        jobWatchTimer = nil
+        guard notifyOnJobReceived else { return }
+        jobWatchFirstLook = true
+        let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self, !self.busy else { return }
+            let jobs = CUPS.unfinishedJobs()
+            let fresh = JobWatch.newIDs(previous: self.seenJobIDs, current: jobs,
+                                        firstLook: self.jobWatchFirstLook)
+            self.seenJobIDs = JobWatch.ids(jobs)
+            self.jobWatchFirstLook = false
+            guard !fresh.isEmpty else { return }
+            NSSound(named: "Glass")?.play()
+            self.log("Received \(fresh.joined(separator: ", ")) — printing.", kind: .success)
+            self.lastMessage = fresh.count == 1
+                ? "Job received — printing now."
+                : "\(fresh.count) jobs received — printing now."
+            self.lastMessageOK = true
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        jobWatchTimer = timer
     }
 
     // MARK: Logging
