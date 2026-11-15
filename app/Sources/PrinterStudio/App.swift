@@ -156,6 +156,7 @@ final class AppState: ObservableObject {
     private var jobWatchTimer: Timer?
     private var seenJobIDs: Set<String> = []
     private var jobWatchFirstLook = true
+    private var jobWatchReadFailed = false
 
     /// Which sidebar screen is showing. This lives here rather than in a
     /// `@State` because SwiftUI's `@State` is a macro whose plugin is only
@@ -248,26 +249,49 @@ final class AppState: ObservableObject {
 
     /// Runs only while the switch is on, so an app nobody asked to be noisy
     /// spends nothing. Two seconds is fast enough to beat the printer's own
-    /// warm-up and cheap enough to run all day.
+    /// warm-up and cheap enough to run all day. The queue is read off the main
+    /// thread: a wedged cupsd must never freeze the window.
     func updateJobWatch() {
         jobWatchTimer?.invalidate()
         jobWatchTimer = nil
         guard notifyOnJobReceived else { return }
         jobWatchFirstLook = true
+        jobWatchReadFailed = false
         let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             guard let self, !self.busy else { return }
-            let jobs = CUPS.unfinishedJobs()
-            let fresh = JobWatch.newIDs(previous: self.seenJobIDs, current: jobs,
-                                        firstLook: self.jobWatchFirstLook)
-            self.seenJobIDs = JobWatch.ids(jobs)
-            self.jobWatchFirstLook = false
-            guard !fresh.isEmpty else { return }
-            NSSound(named: "Glass")?.play()
-            self.log("Received \(fresh.joined(separator: ", ")) — printing.", kind: .success)
-            self.lastMessage = fresh.count == 1
-                ? "Job received — printing now."
-                : "\(fresh.count) jobs received — printing now."
-            self.lastMessageOK = true
+            self.work.async {
+                let read = CUPS.unfinishedJobsRead()
+                DispatchQueue.main.async {
+                    guard let jobs = read.jobs else {
+                        // A read that failed says nothing about what is queued.
+                        // Keep what we knew and say why, once.
+                        if !self.jobWatchReadFailed {
+                            self.jobWatchReadFailed = true
+                            self.log("Could not read the print queue: \(read.error ?? "no reason given")",
+                                     kind: .warning)
+                        }
+                        return
+                    }
+                    self.jobWatchReadFailed = false
+                    let fresh = JobWatch.newIDs(previous: self.seenJobIDs, current: jobs,
+                                                firstLook: self.jobWatchFirstLook)
+                    self.seenJobIDs = JobWatch.ids(jobs)
+                    self.jobWatchFirstLook = false
+                    // The same read feeds the page, so the count on screen and the
+                    // chime can never disagree.
+                    self.unfinishedJobs = jobs
+                    guard !fresh.isEmpty else { return }
+                    NSSound(named: "Glass")?.play()
+                    self.log("Received \(fresh.joined(separator: ", ")).", kind: .success)
+                    // "Received", never "printing": the queue being stopped, held
+                    // or backed up is a state this app shows elsewhere and cannot
+                    // rule out from an lpstat line.
+                    self.lastMessage = fresh.count == 1
+                        ? "Job received."
+                        : "\(fresh.count) jobs received."
+                    self.lastMessageOK = true
+                }
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         jobWatchTimer = timer

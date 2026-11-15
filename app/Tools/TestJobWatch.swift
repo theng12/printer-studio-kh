@@ -33,5 +33,11 @@ struct TestJobWatch {
         precondition(JobWatch.ids([""]).isEmpty)
         precondition(JobWatch.newIDs(previous: [], current: [""], firstLook: false).isEmpty)
         print("PASS: blank output is not a job")
+
+        // A failed read is not an empty queue: the scheduler being unreachable
+        // must never re-announce every job that is still standing.
+        precondition(JobWatch.newIDs(previous: ["Brother_HL_L2370DN_series-64"], current: nil, firstLook: false).isEmpty)
+        precondition(JobWatch.newIDs(previous: [], current: nil, firstLook: true).isEmpty)
+        print("PASS: a failed read announces nothing")
     }
 }

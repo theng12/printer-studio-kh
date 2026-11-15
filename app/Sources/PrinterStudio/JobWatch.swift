@@ -10,8 +10,10 @@ enum JobWatch {
 
     /// Empty on the first look: jobs already queued before the watch started are
     /// not news, and chiming for them would be a lie about what just arrived.
-    static func newIDs(previous: Set<String>, current: [String], firstLook: Bool) -> [String] {
-        guard !firstLook else { return [] }
+    /// `current` is nil when the queue could not be read at all — that says
+    /// nothing about what is queued, so it announces nothing.
+    static func newIDs(previous: Set<String>, current: [String]?, firstLook: Bool) -> [String] {
+        guard !firstLook, let current else { return [] }
         return ids(current).subtracting(previous).sorted()
     }
 }

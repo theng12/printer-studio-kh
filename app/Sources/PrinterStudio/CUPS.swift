@@ -231,13 +231,23 @@ enum CUPS {
     // MARK: - Jobs
 
     /// Jobs that have not finished — including ones parked with
-    /// "held for authentication".
-    static func unfinishedJobs() -> [String] {
+    /// "held for authentication". A failed read is `nil`, never an empty list:
+    /// a caller that announces new jobs must not mistake a broken scheduler for
+    /// a quiet one, or it re-announces every standing job when cupsd comes back.
+    static func unfinishedJobsRead() -> (jobs: [String]?, error: String?) {
         let result = Shell.run(Tool.lpstat, ["-W", "not-completed"])
-        return result.stdout
+        guard result.ok else {
+            let why = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (nil, why.isEmpty ? "lpstat exited \(result.status)" : why)
+        }
+        return (result.stdout
             .split(separator: "\n")
             .map { String($0) }
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }, nil)
+    }
+
+    static func unfinishedJobs() -> [String] {
+        unfinishedJobsRead().jobs ?? []
     }
 
     static func cancelAllJobs(on name: String) -> CommandResult {
