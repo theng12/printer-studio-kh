@@ -10,7 +10,8 @@ remain saved.
 | User task | Check and evidence | State |
 | --- | --- | --- |
 | Update the app while it is open without losing what it was doing | `app/test-maintenance-hold.sh` — the pause refuses new actions, the real in-flight count is reported, and the settle is bounded at the contract's 20 s / 30 s | Required on 1.0.31 |
-| See why a clicked action did nothing while the app is paused | The same suite asserts the plain refusal text; `AppState.perform` refuses the claim and shows it | Required on 1.0.31; the click itself is not shown on a desktop |
+| See why a clicked action did nothing while the app is paused | `app/test-maintenance-hold.sh` exercises the same gate `AppState.perform` calls, and the runner fails if an action path loses it | Required on 1.0.31; the click itself is not shown on a desktop |
+| Stop saying "paused" when an abandoned hold expires | The hold reports itself when the pause ends, clearing the menu-bar notice and logging that it is working again | Required on 1.0.31; the menu bar is not photographed |
 | Resume at once when the installer says so | `app/test-maintenance-hold.sh` — DELETE clears the pause and work starts again | Required on 1.0.31 |
 | Carry on by itself when an update is abandoned | The same suite — a pause with no DELETE expires after `pause_s` | Required on 1.0.31 |
 | Quit and reopen: the app works normally with no switch to turn back on | The same suite — a fresh instance is open, and the pause is never written to disk | Required on 1.0.31 |
