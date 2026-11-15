@@ -19,7 +19,8 @@ case "$1" in
       HP*) printf '\tDescription: HP Laser 108w\n' ;;
       *) printf '\tDescription: Brother HL-L2370DN series-AirPrint\n' ;;
     esac ;;
--v) printf '%s\n' \
+-v) if [ -f "$PRINTER_STUDIO_FIXTURES/devices" ]; then cat "$PRINTER_STUDIO_FIXTURES/devices"; exit; fi
+    printf '%s\n' \
       'device for TSC_TTP_244_Pro: usb://TSC/TTP-244%20Pro?serial=000001' \
       'device for Xprinter_XP_D463B: usb://Xprinter/XP-D463B?serial=00000000000011' \
       'device for Brother_HL_L2370DN_series: ippusb://Brother%20HL-L2370DN%20series._ipp._tcp.local/?uuid=2a48000-80ce-11db-8c00-3c2af470c7c4' \
@@ -256,6 +257,67 @@ printf 'PASS: the scheduler answer outranks a stale lpoptions flag\n'
 /usr/bin/grep -q 'could not read whether TSC_TTP_244_Pro is shared' "$OUT/plan.err" \
   || { printf 'FAIL: an unreadable sharing attribute was skipped silently\n' >&2; exit 1; }
 printf 'PASS: an unreadable sharing attribute is skipped and said out loud, never guessed\n'
+export PRINTER_STUDIO_FIXTURES="$OUT"
+
+# The two real Brother records from the hardware baseline
+# (_orchestra/printer-lead/brother-usb-20261115/hardware-baseline.json). Neither
+# may suppress the bridge advertisement: an iPhone cannot reach a localhost:59438
+# record, and the Mac's shared :631 record carries no URF TXT and is absent from
+# the _universal subtype. The queue is ippusb://, which is always bridged.
+NATIVE="$OUT/native-records"
+/bin/mkdir -p "$NATIVE"
+export PRINTER_STUDIO_FIXTURES="$NATIVE"
+printf '_share_printers=1\n' > "$NATIVE/sharing"
+printf 'printer-is-shared (boolean) = true\n' > "$NATIVE/shared-Brother_HL_L2370DN_series"
+BROTHER_NAME='Brother series'
+
+# As shipped the queue is ippusb://, which is bridged before any DNS-SD query.
+printf '%s\n' \
+  'device for TSC_TTP_244_Pro: usb://TSC/TTP-244%20Pro?serial=000001' \
+  'device for Xprinter_XP_D463B: usb://Xprinter/XP-D463B?serial=00000000000011' \
+  'device for Brother_HL_L2370DN_series: ippusb://Brother%20HL-L2370DN%20series._ipp._tcp.local/?uuid=e3248000-80ce-11db-8c00-3c2af470c7c4' \
+  'device for HP_Laser_108w: ipps://HP%20Laser%20108w._ipps._tcp.local./' > "$NATIVE/devices"
+run_list
+/usr/bin/grep -qx 'rp=printers/Brother_HL_L2370DN_series' "$OUT/plan" \
+  || { printf 'FAIL: the shipped ippusb queue was not advertised\n' >&2; exit 1; }
+printf 'PASS: the shipped ippusb queue is advertised whatever Bonjour shows\n'
+
+# The same two records against a direct usb:// backend, so the native-twin check
+# actually runs instead of returning at the ippusb rule.
+printf '%s\n' \
+  'device for TSC_TTP_244_Pro: usb://TSC/TTP-244%20Pro?serial=000001' \
+  'device for Xprinter_XP_D463B: usb://Xprinter/XP-D463B?serial=00000000000011' \
+  'device for Brother_HL_L2370DN_series: usb://Brother/series?serial=E78352A9N830370' \
+  'device for HP_Laser_108w: ipps://HP%20Laser%20108w._ipps._tcp.local./' > "$NATIVE/devices"
+
+# Fact 1: the native USB record is local-only — _universal at localhost.:59438,
+# interface -1 — and the UUID matches the queue, so only the endpoint rejects it.
+printf 'printer-uuid (uri) = urn:uuid:e3248000-80ce-11db-8c00-3c2af470c7c4\nprinter-dns-sd-name (nameWithoutLanguage) = %s\n' \
+  "$BROTHER_NAME" > "$NATIVE/uuid-Brother_HL_L2370DN_series"
+printf '%s\n' \
+  "$BROTHER_NAME._ipp._tcp.local. can be reached at localhost.:59438 (interface -1)" \
+  " txtvers=1 rp=printers/Brother_HL_L2370DN_series UUID=e3248000-80ce-11db-8c00-3c2af470c7c4 pdl=application/pdf,image/pwg-raster URF=W8,RS300" \
+  > "$NATIVE/native-$BROTHER_NAME"
+printf '%s\n' "12:00:00.000  Add  3 18 local.  _ipp._tcp.  $BROTHER_NAME" > "$NATIVE/native-browse"
+run_list
+/usr/bin/grep -qx 'rp=printers/Brother_HL_L2370DN_series' "$OUT/plan" \
+  || { printf 'FAIL: a localhost:59438 native USB record suppressed the bridge\n' >&2; exit 1; }
+printf 'PASS: a localhost:59438 native USB record never suppresses the LAN bridge, even for a usb:// queue\n'
+
+# Fact 2: the Mac's shared record is LAN-reachable at :631 with a matching UUID,
+# but has no URF TXT and no _universal subtype — so it is not an iPhone AirPrint
+# twin and the bridge stays.
+printf 'printer-uuid (uri) = urn:uuid:1ea514e9-3cb8-39ad-78ff-eed86b6236cb\nprinter-dns-sd-name (nameWithoutLanguage) = %s\n' \
+  "$BROTHER_NAME" > "$NATIVE/uuid-Brother_HL_L2370DN_series"
+printf '%s\n' \
+  "$BROTHER_NAME._ipp._tcp.local. can be reached at this-mac.local.:631 (interface 12)" \
+  " txtvers=1 rp=printers/Brother_HL_L2370DN_series UUID=1ea514e9-3cb8-39ad-78ff-eed86b6236cb pdl=application/pdf,image/pwg-raster" \
+  > "$NATIVE/native-$BROTHER_NAME"
+printf '%s\n' '12:00:00.000  Add  3 18 local.  _ipp._tcp.  Some other printer' > "$NATIVE/native-browse"
+run_list
+/usr/bin/grep -qx 'rp=printers/Brother_HL_L2370DN_series' "$OUT/plan" \
+  || { printf 'FAIL: a URF-less :631 record without the AirPrint subtype suppressed the bridge\n' >&2; exit 1; }
+printf 'PASS: a :631 record without URF or the _universal subtype keeps the bridge, even for a usb:// queue\n'
 export PRINTER_STUDIO_FIXTURES="$OUT"
 
 printf 'Artifacts retained: %s\n' "$OUT"
