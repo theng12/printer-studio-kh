@@ -100,6 +100,17 @@ fi
 cp "$ROOT/Resources/Read Me First.txt" "$APP/Contents/Resources/"
 chmod 644 "$APP/Contents/Resources/Read Me First.txt"
 
+# Spoken announcements. Three clips made with the studio's own local VoxCPM2
+# model on Gateway, so an install never needs a network to hear them.
+for clip in printing-en printing-zh printing-km; do
+  if [ ! -f "$ROOT/Resources/$clip.wav" ]; then
+    echo "FAIL: missing announcement clip $clip.wav" >&2
+    exit 1
+  fi
+  cp "$ROOT/Resources/$clip.wav" "$APP/Contents/Resources/$clip.wav"
+done
+echo "==> Bundled spoken announcements"
+
 # Extract What's New notes for this version from CHANGELOG.md. Refuse if missing or empty.
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
 CHANGELOG="$ROOT/../CHANGELOG.md"

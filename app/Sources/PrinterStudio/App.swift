@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVFoundation
 
 // MARK: - Entry point
 
@@ -146,13 +147,18 @@ final class AppState: ObservableObject {
 
     /// Off unless the person turns it on: a chime and a line the moment a job
     /// lands in the queue, so a phone print is acknowledged in about a second
-    /// instead of waiting out the printer's warm-up in silence.
+    /// instead of waiting out the printer's warm-up in silence. The voice is
+    /// separate, and defaults to the plain chime.
     @Published var notifyOnJobReceived = UserDefaults.standard.bool(forKey: "notifyOnJobReceived") {
         didSet {
             UserDefaults.standard.set(notifyOnJobReceived, forKey: "notifyOnJobReceived")
             updateJobWatch()
         }
     }
+    @Published var announcementVoice = VoiceClip.stored(UserDefaults.standard.string(forKey: "announcementVoice")) {
+        didSet { UserDefaults.standard.set(announcementVoice.rawValue, forKey: "announcementVoice") }
+    }
+    private var announcer: AVAudioPlayer?
     private var jobWatchTimer: Timer?
     private var seenJobIDs: Set<String> = []
     private var jobWatchFirstLook = true
@@ -247,6 +253,18 @@ final class AppState: ObservableObject {
 
     // MARK: Job watch
 
+    /// Says so out loud with the chosen clip, or the plain chime when the person
+    /// picked "Sound only" or a recording that is no longer there.
+    private func announce() {
+        if let url = announcementVoice.url, let player = try? AVAudioPlayer(contentsOf: url) {
+            announcer = player
+            player.prepareToPlay()
+            player.play()
+            return
+        }
+        NSSound(named: NSSound.Name(VoiceClip.chimeName))?.play()
+    }
+
     /// Runs only while the switch is on, so an app nobody asked to be noisy
     /// spends nothing. Two seconds is fast enough to beat the printer's own
     /// warm-up and cheap enough to run all day. The queue is read off the main
@@ -281,7 +299,7 @@ final class AppState: ObservableObject {
                     // chime can never disagree.
                     self.unfinishedJobs = jobs
                     guard !fresh.isEmpty else { return }
-                    NSSound(named: "Glass")?.play()
+                    self.announce()
                     self.log("Received \(fresh.joined(separator: ", ")).", kind: .success)
                     // "Received", never "printing": the queue being stopped, held
                     // or backed up is a state this app shows elsewhere and cannot

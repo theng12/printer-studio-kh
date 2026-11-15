@@ -1644,6 +1644,9 @@ struct WhatsNewView: View {
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
+    @AppStorage("announcementVoice") private var voiceRaw = VoiceClip.system.rawValue
+    @State private var customExists = false
+    @State private var choosingRecording = false
     @State private var confirmingRemoval = false
 
     private var version: String {
@@ -1711,6 +1714,66 @@ struct SettingsView: View {
                     .padding(6)
                 }
                 .probe("card.notify")
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Announcement").font(.headline)
+                        Picker("Announcement", selection: $voiceRaw) {
+                            ForEach(VoiceClip.allCases) { clip in
+                                Text(clip.title).tag(clip.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .disabled(!state.notifyOnJobReceived)
+                        .probe("control.announcementVoice")
+                        if state.announcementVoice == .custom {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 10) {
+                                    Button("Choose a recording…") { choosingRecording = true }
+                                        .probe("control.chooseRecording")
+                                    Button("Use the English clip instead") {
+                                        state.announcementVoice = .english
+                                    }
+                                    if !customExists {
+                                        Button("Remove my recording", role: .destructive) {
+                                            try? FileManager.default.removeItem(at: VoiceClip.customURL())
+                                            customExists = false
+                                            state.announcementVoice = .english
+                                        }
+                                    }
+                                }
+                                Text(customExists
+                                     ? "Using your recording. It must be \(Int(VoiceClip.maxCustomSeconds)) seconds or less; a longer one is refused, never trimmed."
+                                     : "No recording chosen yet, so this falls back to the English clip. A recording has to be \(Int(VoiceClip.maxCustomSeconds)) seconds or less — anything longer is refused, not trimmed.")
+                                    .font(.caption).foregroundStyle(Palette.muted)
+                                    .prose()
+                            }
+                        } else if state.announcementVoice != .system {
+                            Text(state.announcementVoice == .english
+                                 ? "Says \"Printing\" when a job arrives."
+                                 : state.announcementVoice == .khmer
+                                   ? "Khmer announcement, made with the studio's own voice model."
+                                   : "Chinese announcement, made with the studio's own voice model.")
+                                .font(.caption).foregroundStyle(Palette.muted)
+                                .prose()
+                        }
+                    }
+                    .padding(6)
+                }
+                .probe("card.announcement")
+                .onAppear { customExists = FileManager.default.fileExists(atPath: VoiceClip.customURL().path) }
+                .fileImporter(isPresented: $choosingRecording, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
+                    guard case let .success(urls) = result, let url = urls.first else { return }
+                    switch VoiceClip.installCustom(from: url) {
+                    case .success:
+                        customExists = true
+                        state.announcementVoice = .custom
+                        state.log("Using your recording for the announcement.", kind: .success)
+                    case let .failure(problem):
+                        state.log(problem.said, kind: .error)
+                    }
+                }
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {

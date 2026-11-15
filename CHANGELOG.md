@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.26 — 2026-11-15
+- The job announcement can now speak instead of chime. Settings → Announcement offers English, Khmer, Chinese, or your own recording. The three voices are built in and made with the studio's own local voice model, so an install never needs a network to hear them.
+- Your own recording has to be 5 seconds or less. A longer one is refused with the reason, never silently trimmed.
+- Everything about this stays off until you turn on "Tell me when a job arrives", and the plain chime remains the starting choice.
+
 ## 1.0.25 — 2026-11-15
 - New, off by default: **Tell me when a job arrives**. Switch it on in Settings and Printer Studio KH chimes and says so the moment a job reaches the Mac — about a second after you press Print on a phone or another Mac. The printer's own warm-up still takes several seconds, so this is the acknowledgement, not the page.
 - The chime only runs while the switch is on, never repeats for a job it has already announced, and stays quiet for jobs that were already queued when it started.
