@@ -27,6 +27,7 @@ struct TestMaintenanceHold {
         anAbandonedHoldExpiresByItself()
         aFreshStartOpens()
         theRouteOverRealHTTP()
+        theReplyCountsWorkWhenItAnswers()
 
         if failures > 0 {
             print("FAILED: \(failures) check(s)")
@@ -67,6 +68,21 @@ struct TestMaintenanceHold {
               && MaintenanceHold.refusal.contains("Try again in a moment")
               && !MaintenanceHold.refusal.contains("hold")
               && !MaintenanceHold.refusal.contains("API"))
+
+        // The gate the action path itself calls: same answer, same words.
+        let gate = hold.claimOrRefuse("Installing the printer driver…")
+        check("the action path's gate refuses while held", gate.claim == nil && gate.refusal == MaintenanceHold.refusal)
+        hold.resume()
+        let open = hold.claimOrRefuse("Installing the printer driver…")
+        check("the action path's gate claims when open", open.claim != nil && open.refusal == nil)
+        if let id = open.claim { hold.settle(id) }
+
+        // Removing the app is never refused, but is counted while a hold stands.
+        hold.pause(seconds: 120)
+        let removal = hold.register("Removing Printer Studio KH from this Mac…")
+        check("removal is allowed during a hold and counted", hold.inFlight == 1)
+        hold.settle(removal)
+        check("removal is done", hold.inFlight == 0)
     }
 
     static func inFlightIsReal() {
@@ -191,8 +207,28 @@ struct TestMaintenanceHold {
         }
     }
 
-    // MARK: Helpers
+    /// The number the installer shows must be true when the reply is made, not when the hold was
+    /// taken: work that finished inside the window is not still running.
+    static func theReplyCountsWorkWhenItAnswers() {
+        let hold = MaintenanceHold()
+        let server = HoldServer(hold: hold, port: 0, onHeld: { _, _ in }, onResumed: { })
+        guard let port = server.start() else {
+            check("the listener started for the timing check", false)
+            return
+        }
+        let claim = hold.claim("Sending one test page…")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
+            if let claim { hold.settle(claim) }
+        }
+        let (status, reply) = send("POST", "http://127.0.0.1:\(port)/api/maintenance/hold?timeout_s=3&pause_s=120",
+                                   timeout: 10)
+        check("a hold that settles inside its window answers 200", status == 200)
+        check("finished work is not still counted as running", reply["in_flight"] as? Int == 0)
+        check("the answer agrees with itself",
+              reply["safe"] as? Bool == true && (reply["unsettled"] as? [String])?.isEmpty == true)
+    }
 
+    // MARK: Helpers
     static func send(_ method: String, _ url: String, timeout: TimeInterval = 5) -> (Int, [String: Any]) {
         guard let target = URL(string: url) else { return (-1, [:]) }
         var request = URLRequest(url: target)

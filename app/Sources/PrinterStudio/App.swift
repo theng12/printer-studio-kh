@@ -224,6 +224,10 @@ final class AppState: ObservableObject {
             if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
         }
         work.async {
+            // Startup maintenance moves files too: a hold taken while it runs must not see it
+            // unclaimed. If the app is held at launch, the next start does it.
+            guard let claim = MaintenanceHold.shared.claim("Checking the AirPrint bridge…") else { return }
+            defer { MaintenanceHold.shared.settle(claim) }
             let result = DriverInstaller.refreshAirPrintBridgeIfOutdated()
             if !result.ok { self.report(result, success: "", action: "Refreshing the AirPrint bridge") }
             // Upgrades an older shell-based watcher without an admin prompt.
@@ -244,6 +248,13 @@ final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 self?.holdNotice = notice
                 self?.log(notice)
+            }
+            // No DELETE means the pause expires by itself. Say so then, or the menu bar keeps
+            // claiming the app is held while it is already working again.
+            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { [weak self] in
+                guard let self, self.holdNotice != nil, !MaintenanceHold.shared.isPaused else { return }
+                self.holdNotice = nil
+                self.log(MaintenanceHold.resumedNotice, kind: .success)
             }
         }, onResumed: { [weak self] in
             DispatchQueue.main.async {
@@ -454,9 +465,11 @@ final class AppState: ObservableObject {
     /// Runs a shell action off the main thread, then refreshes. While an update hold stands nothing
     /// new starts: the person is told in plain words instead of watching a button do nothing.
     private func perform(_ message: String, _ body: @escaping () -> CommandResult, success: String) {
-        guard let claim = MaintenanceHold.shared.claim(message) else {
-            log(MaintenanceHold.refusal, kind: .warning)
-            lastMessage = MaintenanceHold.refusal
+        let gate = MaintenanceHold.shared.claimOrRefuse(message)
+        guard let claim = gate.claim else {
+            let refusal = gate.refusal ?? MaintenanceHold.refusal
+            log(refusal, kind: .warning)
+            lastMessage = refusal
             lastMessageOK = false
             return
         }
@@ -651,6 +664,16 @@ final class AppState: ObservableObject {
     }
 
     func setStartAtLogin(_ enabled: Bool) {
+        let label = enabled ? "Turning on start at login…" : "Turning off start at login…"
+        let gate = MaintenanceHold.shared.claimOrRefuse(label)
+        guard let claim = gate.claim else {
+            let refusal = gate.refusal ?? MaintenanceHold.refusal
+            log(refusal, kind: .warning)
+            lastMessage = refusal
+            lastMessageOK = false
+            return
+        }
+        defer { MaintenanceHold.shared.settle(claim) }
         let result = renderActionsStubbed
             ? CommandResult(status: 0, stdout: "", stderr: "")
             : (enabled ? LoginItem.enable() : LoginItem.disable())
@@ -670,6 +693,10 @@ final class AppState: ObservableObject {
     /// Takes the app back off this Mac and then quits, so nothing it installed is
     /// left behind. Settings and saved sizes are the person's, and stay.
     func removeEverything() {
+        // Taking the app off this Mac is the person's own choice and is never refused by a hold —
+        // but it is counted, so a hold taken while it runs sees it.
+        let claim = MaintenanceHold.shared.register("Removing Printer Studio KH from this Mac…")
+        defer { MaintenanceHold.shared.settle(claim) }
         let result = Removal.everything()
         log(result.combined, kind: result.ok ? .info : .warning)
         reportFeedback = result.ok ? "Removed from this Mac. Your settings were kept." : result.combined

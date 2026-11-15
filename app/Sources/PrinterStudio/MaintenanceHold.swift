@@ -81,6 +81,23 @@ final class MaintenanceHold {
         running[id] = nil
     }
 
+    /// The action path's one gate: the claim, or the words to show when refused. `perform` calls
+    /// this, so the refusal text the person sees is the one the tests check.
+    func claimOrRefuse(_ label: String) -> (claim: Int?, refusal: String?) {
+        if let id = claim(label) { return (id, nil) }
+        return (nil, Self.refusal)
+    }
+
+    /// Registers work that must never be refused: taking the app off this Mac is the person's own
+    /// choice, not work an update could strand. It is still counted, so `in_flight` stays true.
+    func register(_ label: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        nextID += 1
+        running[nextID] = label
+        return nextID
+    }
+
     var inFlight: Int {
         lock.lock()
         defer { lock.unlock() }
@@ -223,13 +240,14 @@ final class HoldServer {
                                                 min: MaintenanceHold.minPauseS, max: MaintenanceHold.maxPauseS)
             // The claim path closes here, before any waiting.
             hold.pause(seconds: pause)
-            let inFlight = hold.inFlight
-            onHeld(inFlight, pause)
+            onHeld(hold.inFlight, pause)
             // Bounded settle: never waits for the work to finish, only up to the deadline.
             let unsettled = hold.settleWindow(seconds: timeout)
+            // Counted when the answer is made, not when the hold was taken: work that finished
+            // inside the window must not still be reported as running.
             Self.send(fd, status: 200, body: MaintenanceHold.Reply(
                 safe: unsettled.isEmpty, unsettled: unsettled,
-                dispatchPausedS: pause, inFlight: inFlight).json)
+                dispatchPausedS: pause, inFlight: hold.inFlight).json)
         case ("DELETE", "/api/maintenance/hold"):
             hold.resume()
             onResumed()
