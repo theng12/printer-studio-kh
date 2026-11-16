@@ -2,3 +2,4 @@
 /dist
 /.release-dist.lock
 .DS_Store
+/_trash
