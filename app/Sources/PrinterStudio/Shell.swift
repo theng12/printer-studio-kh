@@ -114,14 +114,59 @@ private final class PipeText: @unchecked Sendable {
     }
 }
 
+/// A cancel token for one running action. `perform` opens a scope per action;
+/// Escape closes it and the child is stopped the way the ceiling stops one.
+final class ShellCancel: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+
+    var isCancelled: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return flag
+    }
+
+    func cancel() {
+        lock.lock(); flag = true; lock.unlock()
+    }
+}
+
 enum Shell {
+    /// The cancel scope of the action currently running, or nil between actions.
+    /// Existing callers pass nothing and keep their exact behaviour; only a
+    /// scope opened by `perform` makes a run cancellable.
+    private static let scopeLock = NSLock()
+    private static var scopedToken: ShellCancel?
+
+    static func beginCancelScope(_ token: ShellCancel) {
+        scopeLock.lock(); scopedToken = token; scopeLock.unlock()
+    }
+
+    static func endCancelScope(_ token: ShellCancel) {
+        scopeLock.lock(); if scopedToken === token { scopedToken = nil }; scopeLock.unlock()
+    }
+
+    /// Asks the running action to stop. Returns a plain refusal when nothing is
+    /// running; the scope is closed when the action ends, so a finished action
+    /// cannot be cancelled again.
+    static func cancelCurrent() -> String? {
+        scopeLock.lock()
+        let token = scopedToken
+        scopeLock.unlock()
+        guard let token else {
+            return "Nothing is running to cancel right now."
+        }
+        token.cancel()
+        return nil
+    }
+
     /// Runs a binary and waits for it, but never past its own ceiling: a wedged
     /// cupsd, a stuck launchd or an unanswered password prompt would otherwise
     /// leave the action — and every control behind `busy` — hanging for good.
+    /// A cancelled run ends the same way, with its own distinct outcome.
     /// Safe to call from a background thread.
     @discardableResult
     static func run(_ launchPath: String, _ arguments: [String] = [],
-                    timeout: TimeInterval = 120) -> CommandResult {
+                    timeout: TimeInterval = 120, cancel: ShellCancel? = nil) -> CommandResult {
         guard FileManager.default.isExecutableFile(atPath: launchPath) else {
             return .failure("Missing tool: \(launchPath)")
         }
@@ -158,10 +203,22 @@ enum Shell {
         }
 
         let deadline = Date().addingTimeInterval(timeout)
+        var cancelSeen = false
         while process.isRunning && Date() < deadline {
+            if let cancel, cancel.isCancelled { cancelSeen = true; break }
+            // No explicit handle: fall back to the action's own cancel scope, so
+            // existing callers are unchanged and a perform-scoped action is
+            // cancellable end to end.
+            scopeLock.lock()
+            let ambient = scopedToken
+            scopeLock.unlock()
+            if let ambient, ambient.isCancelled { cancelSeen = true; break }
             Thread.sleep(forTimeInterval: 0.02)
         }
         var stopped = false
+        // Cancelled, not "took too long": the ambient scope stops a run the same
+        // way the handle does, and the message must match what happened.
+        let cancelled = cancelSeen
         if process.isRunning {
             stopped = true
             process.terminate()
@@ -176,13 +233,16 @@ enum Shell {
         _ = readers.wait(timeout: .now() + 2)
 
         var stderr = err.text
-        if stopped {
+        if cancelled {
+            let note = "was cancelled"
+            stderr = stderr.isEmpty ? note : stderr + "\n" + note
+        } else if stopped {
             let ceiling = "\(Int(timeout)) second\(Int(timeout) == 1 ? "" : "s")"
             let note = "took longer than \(ceiling) and was stopped"
             stderr = stderr.isEmpty ? note : stderr + "\n" + note
         }
         return CommandResult(
-            status: stopped ? -2 : process.terminationStatus,
+            status: cancelled ? -3 : (stopped ? -2 : process.terminationStatus),
             stdout: out.text,
             stderr: stderr
         )

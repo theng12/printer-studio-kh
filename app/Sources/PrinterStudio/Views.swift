@@ -179,6 +179,21 @@ struct MainWindow: View {
                 }
                 .disabled(state.busy)
             }
+            // Escape cancels the running action. The platform idiom: a real
+            // button with the cancel shortcut, present only while an action
+            // runs, so a sheet's or text field's own Escape is never stolen.
+            if state.busy {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        state.cancelRunningAction()
+                    } label: {
+                        Label("Cancel", systemImage: "stop.fill")
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .probe("control.cancelAction")
+                    .help("Stop the running action")
+                }
+            }
         }
         .task {
             // Two copies would fight over the same launchd jobs; say so plainly

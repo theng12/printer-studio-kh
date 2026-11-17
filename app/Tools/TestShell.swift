@@ -43,6 +43,44 @@ struct TestShell {
         check("a missing tool is named",
               missing.status == -1 && missing.stderr.contains("Missing tool"))
 
+        // A cancel from outside stops a long command well inside its ceiling,
+        // with an outcome distinct from both success and the ceiling stop.
+        let token = ShellCancel()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
+            token.cancel()
+        }
+        let startedCancel = Date()
+        let cancelled = Shell.run("/bin/sleep", ["30"], timeout: 20, cancel: token)
+        let cancelTook = Date().timeIntervalSince(startedCancel)
+        check("a cancelled command ends with its own status -3", cancelled.status == -3)
+        check("the cancelled outcome says it was cancelled",
+              cancelled.stderr.contains("was cancelled"))
+        check("a cancelled outcome is not the ceiling outcome",
+              !cancelled.stderr.contains("took longer than"))
+        check("cancel is honoured well inside the ceiling (\(String(format: "%.1f", cancelTook)) s)", cancelTook < 6)
+
+        // A cancel with nothing running is refused in plain words.
+        let refused = Shell.cancelCurrent()
+        check("a cancel with nothing running is refused in plain words",
+              refused?.contains("Nothing is running") == true)
+
+        // The path a real action takes: `perform` opens a scope and the inner
+        // run() callers pass no handle, so Escape must reach them through the
+        // scope — and they must say cancelled, not "took too long".
+        let scoped = ShellCancel()
+        Shell.beginCancelScope(scoped)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
+            _ = Shell.cancelCurrent()
+        }
+        let startedScoped = Date()
+        let inner = Shell.run("/bin/sleep", ["30"], timeout: 20)
+        let scopedTook = Date().timeIntervalSince(startedScoped)
+        Shell.endCancelScope(scoped)
+        check("a run with no handle is cancelled by the action's scope", inner.status == -3)
+        check("the scoped cancel says it was cancelled, not that it timed out",
+              inner.stderr.contains("was cancelled") && !inner.stderr.contains("took longer than"))
+        check("the scoped cancel lands well inside the ceiling (\(String(format: "%.1f", scopedTook)) s)", scopedTook < 6)
+
         exit(failures == 0 ? 0 : 1)
     }
 }

@@ -383,6 +383,15 @@ final class AppState: ObservableObject {
     }
 
     private func report(_ result: CommandResult, success: String, action: String) {
+        // A cancelled run is its own honest outcome, not a tool failure: it says
+        // it was cancelled in the same banner and activity row.
+        if result.status == -3 {
+            let message = "\(action) was cancelled."
+            log(message, kind: .warning)
+            lastMessage = message
+            lastMessageOK = false
+            return
+        }
         var outcome = OutcomeMessage.outcome(for: result, success: success, action: action)
         if !outcome.ok {
             outcome.message = DiskSpace.explain(outcome.message, freeBytes: DiskSpace.freeBytes())
@@ -484,7 +493,12 @@ final class AppState: ObservableObject {
         log(message)
         work.async { [weak self] in
             guard let self else { return }
+            // The action's cancel scope: Escape closes it and every Shell.run
+            // inside the body ends the way the ceiling ends one.
+            let cancel = ShellCancel()
+            Shell.beginCancelScope(cancel)
             let result = self.renderActionsStubbed ? CommandResult(status: 0, stdout: "", stderr: "") : body()
+            Shell.endCancelScope(cancel)
             DispatchQueue.main.async {
                 MaintenanceHold.shared.settle(claim)
                 self.busy = false
@@ -694,6 +708,17 @@ final class AppState: ObservableObject {
     func refreshNow() {
         log("Refreshing…")
         refresh(announce: true)
+    }
+
+    /// Escape: asks the running action to stop. When nothing is running the
+    /// refusal is said out loud instead of the key doing nothing.
+    func cancelRunningAction() {
+        if let refusal = Shell.cancelCurrent() {
+            lastMessage = refusal
+            lastMessageOK = false
+            return
+        }
+        log("Cancelling…")
     }
 
     /// Takes the app back off this Mac and then quits, so nothing it installed is
