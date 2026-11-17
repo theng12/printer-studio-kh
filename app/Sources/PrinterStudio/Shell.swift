@@ -24,6 +24,33 @@ struct CommandResult {
     }
 }
 
+// MARK: - Free space
+
+/// Says how much room is left when a command fails because the disk is full, so
+/// the message names the number instead of leaving the person to guess.
+enum DiskSpace {
+    static func freeBytes(at path: String = NSHomeDirectory()) -> Int64? {
+        (try? URL(fileURLWithPath: path)
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage
+    }
+
+    static func describe(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    /// Only a full-disk failure gains the number; every other message is unchanged.
+    static func explain(_ message: String, freeBytes: Int64?) -> String {
+        guard let freeBytes,
+              message.range(of: "no space left on device", options: .caseInsensitive) != nil
+        else { return message }
+        return message.trimmingCharacters(in: .whitespacesAndNewlines)
+            + " \(describe(freeBytes)) free."
+    }
+}
+
 // MARK: - Tool discovery
 
 /// Locates the system binaries we depend on. The app must not rely on the
