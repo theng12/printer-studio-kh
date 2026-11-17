@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 // MARK: - Command results
 
@@ -65,10 +66,35 @@ enum Tool {
 
 // MARK: - Shell
 
+/// Output collected while a command runs, so a stopped command still answers
+/// with what it had printed.
+private final class PipeText: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func collect(from handle: FileHandle) {
+        while let chunk = try? handle.read(upToCount: 65536), !chunk.isEmpty {
+            lock.lock()
+            data.append(chunk)
+            lock.unlock()
+        }
+    }
+
+    var text: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
 enum Shell {
-    /// Runs a binary and waits for it. Safe to call from a background thread.
+    /// Runs a binary and waits for it, but never past its own ceiling: a wedged
+    /// cupsd, a stuck launchd or an unanswered password prompt would otherwise
+    /// leave the action — and every control behind `busy` — hanging for good.
+    /// Safe to call from a background thread.
     @discardableResult
-    static func run(_ launchPath: String, _ arguments: [String] = []) -> CommandResult {
+    static func run(_ launchPath: String, _ arguments: [String] = [],
+                    timeout: TimeInterval = 120) -> CommandResult {
         guard FileManager.default.isExecutableFile(atPath: launchPath) else {
             return .failure("Missing tool: \(launchPath)")
         }
@@ -88,14 +114,50 @@ enum Shell {
             return .failure("Could not run \(launchPath): \(error.localizedDescription)")
         }
 
-        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        // Read both pipes as the output arrives. Reading them one after the other
+        // deadlocks once the other fills its 64 KiB buffer.
+        let out = PipeText()
+        let err = PipeText()
+        let readers = DispatchGroup()
+        readers.enter()
+        DispatchQueue.global(qos: .utility).async {
+            out.collect(from: outPipe.fileHandleForReading)
+            readers.leave()
+        }
+        readers.enter()
+        DispatchQueue.global(qos: .utility).async {
+            err.collect(from: errPipe.fileHandleForReading)
+            readers.leave()
+        }
 
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        var stopped = false
+        if process.isRunning {
+            stopped = true
+            process.terminate()
+            let grace = Date().addingTimeInterval(2)
+            while process.isRunning && Date() < grace {
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        }
+        process.waitUntilExit()
+        // A grandchild can hold the write end open; the answer must not wait for it.
+        _ = readers.wait(timeout: .now() + 2)
+
+        var stderr = err.text
+        if stopped {
+            let ceiling = "\(Int(timeout)) second\(Int(timeout) == 1 ? "" : "s")"
+            let note = "took longer than \(ceiling) and was stopped"
+            stderr = stderr.isEmpty ? note : stderr + "\n" + note
+        }
         return CommandResult(
-            status: process.terminationStatus,
-            stdout: String(decoding: outData, as: UTF8.self),
-            stderr: String(decoding: errData, as: UTF8.self)
+            status: stopped ? -2 : process.terminationStatus,
+            stdout: out.text,
+            stderr: stderr
         )
     }
 
@@ -124,7 +186,9 @@ enum Shell {
             appleScript += " with prompt \"\(escaped)\""
         }
 
-        let result = run(Tool.osascript, ["-e", appleScript])
+        // The person has to type their password; that wait is theirs, so its
+        // ceiling is generous, but it still has one.
+        let result = run(Tool.osascript, ["-e", appleScript], timeout: 300)
 
         // -128 is AppleScript's "user cancelled".
         if result.status != 0 && (result.stderr.contains("-128") || result.stderr.contains("User canceled")) {
