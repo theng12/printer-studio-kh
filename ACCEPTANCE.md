@@ -7,7 +7,7 @@ A stability pass on the paths that can leave the app unusable. No screen or feat
 | User task | Check and evidence | State |
 | --- | --- | --- |
 | An action always ends, and says why | `app/test-shell-ceiling.sh` — a stuck command ends with a named reason inside its ceiling, both output pipes are read without deadlock, a missing tool is named | Required on 1.0.32 |
-| Reopening from the app icon shows the window | `app/test-reopen.sh` — a probe app built from the real delegate opens its window on a reopen; the real app's wiring is asserted from source | Required on 1.0.32; a real Finder click is not performed |
+| Reopening from the app icon shows the window | `app/test-reopen.sh` — a probe app built from the real delegate, launched hidden, records the reopen Apple Event arriving, and the wiring that then opens the main window is asserted from source | Required on 1.0.32; mechanism measured, window not shown and no real Finder click (no-desktop rule) |
 | A full disk fails with the number | `app/test-disk-space.sh` — a real nearly-full volume refuses a write and the message names the free space | Required on 1.0.32 |
 | The 1.0.31 update hold still behaves | `app/test-maintenance-hold.sh`, unchanged | Required on 1.0.32 |
 
