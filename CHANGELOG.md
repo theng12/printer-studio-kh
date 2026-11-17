@@ -1,8 +1,8 @@
 # Changelog
 
 ## 1.0.32 — 2026-11-17
+- Reopening Printer Studio KH from its icon in Finder or Spotlight now brings the window back. Before, an app already running with its window closed answered that with nothing.
 - An action cannot hang the app any more. Every command Printer Studio KH runs now has its own time limit, so a stuck printer service ends with a plain message instead of leaving every button disabled for good.
-- Reopening Printer Studio KH from its icon in Finder or Spotlight brings the window back. Before, an app already running with its window closed answered that with nothing.
 - When an action fails because the disk is full, the message now says how much room is left.
 
 ## 1.0.31 — 2026-11-15
