@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.32 — 2026-11-17
+- An action cannot hang the app any more. Every command Printer Studio KH runs now has its own time limit, so a stuck printer service ends with a plain message instead of leaving every button disabled for good.
+- Reopening Printer Studio KH from its icon in Finder or Spotlight brings the window back. Before, an app already running with its window closed answered that with nothing.
+- When an action fails because the disk is full, the message now says how much room is left.
+
 ## 1.0.31 — 2026-11-15
 - Printer Studio KH can now be updated while it is open without cutting off what it is doing. Before an update starts, it stops taking new actions, gives the action already running up to 20 seconds to finish, and tells the installer whether replacing it right now is safe. Nothing is cancelled.
 - If an update is started and then abandoned, Printer Studio KH carries on by itself after two minutes. Quitting and reopening it always starts it working normally; there is no switch to turn back on.

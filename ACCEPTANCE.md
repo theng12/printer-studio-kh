@@ -1,5 +1,16 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.32
+
+A stability pass on the paths that can leave the app unusable. No screen or feature changed.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| An action always ends, and says why | `app/test-shell-ceiling.sh` — a stuck command ends with a named reason inside its ceiling, both output pipes are read without deadlock, a missing tool is named | Required on 1.0.32 |
+| Reopening from the app icon shows the window | `app/test-reopen.sh` — a probe app built from the real delegate opens its window on a reopen; the real app's wiring is asserted from source | Required on 1.0.32; a real Finder click is not performed |
+| A full disk fails with the number | `app/test-disk-space.sh` — a real nearly-full volume refuses a write and the message names the free space | Required on 1.0.32 |
+| The 1.0.31 update hold still behaves | `app/test-maintenance-hold.sh`, unchanged | Required on 1.0.32 |
+
 ## Release scope: 1.0.31
 
 The release makes Printer Studio KH update-safe: an update can replace it while it is open without
