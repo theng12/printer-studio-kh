@@ -1,5 +1,16 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.33
+
+Every remaining issue from the 1.0.32 sweep. No screen layout changed; one control was added.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| Stop an action that is running | `app/test-shell-ceiling.sh` — Escape cancels through the action's own scope, the inner command ends with its own status and says it was cancelled, never "took too long"; a cancel with nothing running is refused in plain words; the button's shortcut and busy-only visibility are asserted from source | Required on 1.0.33; the key press is asserted from source, not pressed |
+| Upgrade without Printer Sharing switching itself on | `app/test-airprint-installer.sh` — the migration body is driven with an injected sharing step and proves it is never the `cupsctl` default; a source check fails if `ShareFix.swift` references that default again | Required on 1.0.33 |
+| Nothing the helper runs can wait for ever | `app/test-helper-ceiling.sh` — a stuck command ends at its own ceiling with a plain reason, and a large stderr cannot deadlock it | Required on 1.0.33 |
+| Only the updater can pause the app | `app/test-maintenance-hold.sh` (no token → 401, wrong token → 401, right token → 200, missing file → 401) and `app/test-maintenance-hold-live.sh` against the signed package | Required on 1.0.33 |
+
 ## Release scope: 1.0.32
 
 A stability pass on the paths that can leave the app unusable. No screen or feature changed.

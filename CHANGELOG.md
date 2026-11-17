@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.33 — 2026-11-17
+- Upgrading from an older install no longer turns Printer Sharing on. Before, the first launch after an upgrade could ask for an admin password and switch sharing on with no action by you.
+- Escape now stops the action that is running. Before, a command could only finish or reach its own time limit.
+- Every command the background helper runs has its own time limit too, so a stuck printer service can no longer leave it waiting for ever.
+- The route the updater uses to pause the app before replacing it now requires the updater's own credential. A request without it is refused, so nothing else on this Mac can pause the app.
+
 ## 1.0.32 — 2026-11-17
 - Reopening Printer Studio KH from its icon in Finder or Spotlight now brings the window back. Before, an app already running with its window closed answered that with nothing.
 - An action cannot hang the app any more. Every command Printer Studio KH runs now has its own time limit, so a stuck printer service ends with a plain message instead of leaving every button disabled for good.
