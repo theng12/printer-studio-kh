@@ -26,6 +26,8 @@ struct MenuBarLabel: View {
                     openWindow(id: "main")
                 }
             }
+            // A reopen from the app icon has no window to come back to.
+            .modifier(ReopenOpensMainWindow(hiddenRun: hiddenRun))
     }
 }
 
@@ -50,6 +52,7 @@ struct MainCommands: Commands {
 
 @main
 struct PrinterStudioApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
 
