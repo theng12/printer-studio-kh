@@ -380,7 +380,10 @@ final class AppState: ObservableObject {
     }
 
     private func report(_ result: CommandResult, success: String, action: String) {
-        let outcome = OutcomeMessage.outcome(for: result, success: success, action: action)
+        var outcome = OutcomeMessage.outcome(for: result, success: success, action: action)
+        if !outcome.ok {
+            outcome.message = DiskSpace.explain(outcome.message, freeBytes: DiskSpace.freeBytes())
+        }
         log(outcome.message, kind: outcome.kind)
         DispatchQueue.main.async {
             self.lastMessage = outcome.message
