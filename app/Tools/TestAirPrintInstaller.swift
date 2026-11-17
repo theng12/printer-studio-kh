@@ -43,6 +43,9 @@ struct TestAirPrintInstaller {
         testRefreshMigratesOldStyleAgent()
         testRefreshLeavesNewStyleAlone()
         testUninstallLeavesNoJobOrCopy()
+        testMigrationLeavesSharingAlone()
+        testMigrationPropagatesSharingFailure()
+        testSupportDirectoryHonoursTestDataDir()
 
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
@@ -282,5 +285,73 @@ struct TestAirPrintInstaller {
                    "the combined helper agent is left alone")
         assertTest(result.stdout.contains("up to date"),
                    "an up-to-date advertisement says it is up to date")
+    }
+
+    /// Bug #33: the migration runs at app launch with nobody watching, so it
+    /// must go through the injected sharing step and never reach the cupsctl
+    /// default that switches Printer Sharing on behind the person's back.
+    static func testMigrationLeavesSharingAlone() {
+        _ = DriverInstaller.removeAirPrintBridge()
+        let legacy = ShareFix.legacyLaunchAgent
+        try? FileManager.default.createDirectory(
+            at: legacy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        write("<plist/>", to: legacy)
+
+        var sharingCalls = 0
+        let result = ShareFix.runWatcherMigration(prepareSharing: {
+            sharingCalls += 1
+            return CommandResult(status: 0, stdout: "Printer Sharing left as it is.", stderr: "")
+        })
+        assertTest(result.ok, "the migration succeeds in the scratch directory")
+        assertTest(sharingCalls == 1,
+                   "the migration prepares sharing only through the injected no-op")
+        assertTest(!FileManager.default.fileExists(atPath: legacy.path),
+                   "the migration retires the old share-fix agent")
+        assertTest(agentArguments() == [installedHelperExecutable.path, "all"],
+                   "the migration leaves the one combined helper agent")
+        _ = DriverInstaller.removeAirPrintBridge()
+    }
+
+    /// A cancelled sharing step must stop the migration before anything is
+    /// installed — proof the injected closure really sits on the migration path.
+    static func testMigrationPropagatesSharingFailure() {
+        _ = DriverInstaller.removeAirPrintBridge()
+        let legacy = ShareFix.legacyLaunchAgent
+        try? FileManager.default.createDirectory(
+            at: legacy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        write("<plist/>", to: legacy)
+
+        let result = ShareFix.runWatcherMigration(prepareSharing: {
+            .failure("Printer Sharing permission was cancelled.")
+        })
+        assertTest(!result.ok, "a failed sharing step fails the migration")
+        assertTest(result.combined.contains("cancelled"),
+                   "the migration reports the sharing failure")
+        assertTest(!DriverInstaller.isAirPrintInstalled,
+                   "a failed sharing step installs no agent")
+        assertTest(FileManager.default.fileExists(atPath: legacy.path),
+                   "the old share-fix agent is left for the next launch")
+        _ = DriverInstaller.removeAirPrintBridge()
+    }
+
+    static func testSupportDirectoryHonoursTestDataDir() {
+        let previous = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SUPPORT_DIR"]
+
+        let primary = makeRoot()
+        setenv("PRINTER_STUDIO_TEST_DATA_DIR", primary.path, 1)
+        assertTest(ShareFix.supportDirectory.path == primary.path,
+                   "PRINTER_STUDIO_TEST_DATA_DIR is the honoured override")
+        unsetenv("PRINTER_STUDIO_TEST_DATA_DIR")
+
+        let alias = makeRoot()
+        setenv("PRINTER_STUDIO_SUPPORT_DIR", alias.path, 1)
+        assertTest(ShareFix.supportDirectory.path == alias.path,
+                   "PRINTER_STUDIO_SUPPORT_DIR still works as an alias")
+
+        if let previous {
+            setenv("PRINTER_STUDIO_SUPPORT_DIR", previous, 1)
+        } else {
+            unsetenv("PRINTER_STUDIO_SUPPORT_DIR")
+        }
     }
 }

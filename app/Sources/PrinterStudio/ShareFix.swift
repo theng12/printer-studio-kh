@@ -21,8 +21,13 @@ enum ShareFix {
     static let helperIdentifier = "com.theng12.printerstudio.helper"
     static let usbHelperBundleName = "Printer Studio KH USB Helper"
 
+    /// The app's data directory. `PRINTER_STUDIO_TEST_DATA_DIR` is the primary,
+    /// documented override for test runs; `PRINTER_STUDIO_SUPPORT_DIR` is kept
+    /// as an alias so existing test callers keep working.
     static var supportDirectory: URL {
-        if let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SUPPORT_DIR"] {
+        let environment = ProcessInfo.processInfo.environment
+        if let override = environment["PRINTER_STUDIO_TEST_DATA_DIR"]
+            ?? environment["PRINTER_STUDIO_SUPPORT_DIR"] {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
         return FileManager.default.homeDirectoryForCurrentUser
@@ -198,8 +203,18 @@ enum ShareFix {
         guard FileManager.default.fileExists(atPath: legacyLaunchAgent.path) else {
             return CommandResult(status: 0, stdout: "Background watcher is up to date.", stderr: "")
         }
+        // Migration runs at launch with no action by the person, so like
+        // installWatcher it must never switch Printer Sharing on.
+        return runWatcherMigration(prepareSharing: {
+            CommandResult(status: 0, stdout: "Printer Sharing left as it is.", stderr: "")
+        })
+    }
+
+    /// The migration body, with the sharing step injectable so the test suite
+    /// can drive it and prove Printer Sharing is never touched.
+    static func runWatcherMigration(prepareSharing: () -> CommandResult) -> CommandResult {
         if !DriverInstaller.isAirPrintInstalled {
-            let installed = DriverInstaller.installAirPrintBridge()
+            let installed = DriverInstaller.installAirPrintBridge(prepareSharing: prepareSharing)
             guard installed.ok else { return installed }
         }
         guard retireLegacyAgent() else {

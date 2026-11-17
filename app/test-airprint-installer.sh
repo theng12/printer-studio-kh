@@ -11,6 +11,14 @@ ARCH="$(uname -m)"
 OUT="$ROOT/../_trash/test-airprint-installer-$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$OUT"
 
+echo "==> Checking ShareFix never reaches the cupsctl sharing default"
+# Bug #33: both install and migration must inject their own sharing step.
+if grep -q "CUPS.prepareAirPrintSharing" "$ROOT/Sources/PrinterStudio/ShareFix.swift"; then
+  echo "  ✗ FAIL: ShareFix.swift references the cupsctl sharing default directly"
+  exit 1
+fi
+echo "  ✓ ShareFix.swift never references the cupsctl sharing default"
+
 echo "==> Compiling TestAirPrintInstaller ($ARCH)"
 # The sharing dependency is injected so tests never change live queues.
 SOURCES=(
