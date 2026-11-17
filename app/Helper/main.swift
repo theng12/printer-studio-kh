@@ -36,25 +36,92 @@ struct Output {
     var ok: Bool { status == 0 }
 }
 
-func run(_ path: String, _ arguments: [String] = []) -> Output {
+// Ceilings for every child this helper starts. The app's own ceiling (Shell.run)
+// only covers commands the app runs itself, so a wedged cupsd, lpadmin or
+// launchctl here would otherwise hang this helper for ever.
+let statusCeiling: TimeInterval = 30   // read-only queries: lpstat, lpoptions, ipptool, pgrep, ps, hostname
+let changeCeiling: TimeInterval = 60   // changes: lpadmin, launchctl bootout, kill
+let dnssdCeiling: TimeInterval = 2     // a DNS-SD query is answered or the service is not there
+
+/// Output collected while a command runs, so a stopped command still answers
+/// with what it had printed.
+final class PipeText: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func collect(from handle: FileHandle) {
+        while let chunk = try? handle.read(upToCount: 65536), !chunk.isEmpty {
+            lock.lock()
+            data.append(chunk)
+            lock.unlock()
+        }
+    }
+
+    var text: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// Runs a child and waits for it, but never past its own ceiling: terminate, a
+/// short grace, then SIGKILL. Both pipes are read as output arrives — reading
+/// them one after the other deadlocks once the other fills its 64 KiB buffer.
+func run(_ path: String, _ arguments: [String] = [],
+         ceiling: TimeInterval = statusCeiling) -> Output {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: path)
     process.arguments = arguments
-    let out = Pipe()
-    let err = Pipe()
-    process.standardOutput = out
-    process.standardError = err
+    let outPipe = Pipe()
+    let errPipe = Pipe()
+    process.standardOutput = outPipe
+    process.standardError = errPipe
     do {
         try process.run()
     } catch {
         return Output(status: -1, stdout: "", stderr: "\(error)")
     }
-    let outData = out.fileHandleForReading.readDataToEndOfFile()
-    let errData = err.fileHandleForReading.readDataToEndOfFile()
+    let out = PipeText()
+    let err = PipeText()
+    let readers = DispatchGroup()
+    readers.enter()
+    DispatchQueue.global(qos: .utility).async {
+        out.collect(from: outPipe.fileHandleForReading)
+        readers.leave()
+    }
+    readers.enter()
+    DispatchQueue.global(qos: .utility).async {
+        err.collect(from: errPipe.fileHandleForReading)
+        readers.leave()
+    }
+
+    let deadline = Date().addingTimeInterval(ceiling)
+    while process.isRunning && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    var stopped = false
+    if process.isRunning {
+        stopped = true
+        process.terminate()
+        let grace = Date().addingTimeInterval(2)
+        while process.isRunning && Date() < grace {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+    }
     process.waitUntilExit()
-    return Output(status: process.terminationStatus,
-                  stdout: String(decoding: outData, as: UTF8.self),
-                  stderr: String(decoding: errData, as: UTF8.self))
+    // A grandchild can hold the write end open; the answer must not wait for it.
+    _ = readers.wait(timeout: .now() + 2)
+
+    var stderr = err.text
+    if stopped {
+        let seconds = Int(ceiling)
+        let note = "took longer than \(seconds) second\(seconds == 1 ? "" : "s") and was stopped"
+        stderr = stderr.isEmpty ? note : stderr + "\n" + note
+    }
+    return Output(status: stopped ? -2 : process.terminationStatus,
+                  stdout: out.text,
+                  stderr: stderr)
 }
 
 func outputLines(_ text: String) -> [String] {
@@ -197,31 +264,9 @@ func advertisementArgs(_ queue: String) -> [String] {
 // MARK: - Native AirPrint detection
 
 func queryDnssd(_ arguments: [String]) -> Output {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: dnsSD)
-    process.arguments = ["-lo", "-m"] + arguments
-    let out = Pipe()
-    let err = Pipe()
-    process.standardOutput = out
-    process.standardError = err
-    let finished = DispatchSemaphore(value: 0)
-    process.terminationHandler = { _ in finished.signal() }
-    do {
-        try process.run()
-    } catch {
-        return Output(status: -1, stdout: "", stderr: "")
-    }
     // Bound a cache miss; never wait indefinitely for a native DNS-SD service.
-    let seconds = Double(environment["PRINTER_STUDIO_DNSSD_SECONDS"] ?? "") ?? 2
-    if finished.wait(timeout: .now() + seconds) == .timedOut {
-        if process.isRunning { process.terminate() }
-        _ = finished.wait(timeout: .now() + 1)
-    }
-    let data = out.fileHandleForReading.readDataToEndOfFile()
-    _ = err.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-    return Output(status: process.terminationStatus,
-                  stdout: String(decoding: data, as: UTF8.self), stderr: "")
+    let seconds = Double(environment["PRINTER_STUDIO_DNSSD_SECONDS"] ?? "") ?? dnssdCeiling
+    return run(dnsSD, ["-lo", "-m"] + arguments, ceiling: seconds)
 }
 
 func confirmsNative(_ text: String, queue: String, uuid: String) -> Bool {
@@ -427,7 +472,7 @@ func clearOwnJobIfBundleIsGone(_ mode: String) -> Bool {
         try? FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         try? FileManager.default.moveItem(at: plist, to: trash.appendingPathComponent(plist.lastPathComponent))
     }
-    _ = run("/bin/launchctl", ["bootout", "gui/\(getuid())/\(label)"])
+    _ = run("/bin/launchctl", ["bootout", "gui/\(getuid())/\(label)"], ceiling: changeCeiling)
     note("The app is no longer on this Mac, so this helper removed its own background job (\(label)).")
     return true
 }
@@ -531,7 +576,7 @@ func runShareFix() {
         guard attributes.lowercased().contains("requesting-user-name-allowed") else {
             continue
         }
-        let result = run(lpadmin, ["-p", queue, "-u", "allow:all"])
+        let result = run(lpadmin, ["-p", queue, "-u", "allow:all"], ceiling: changeCeiling)
         if !result.stderr.isEmpty {
             appendLog(result.stderr.trimmingCharacters(in: .newlines), to: log)
         }
@@ -583,7 +628,7 @@ func runUSB() {
         let recheck = run(ps, ["-p", pid, "-o", "args="])
         guard recheck.ok,
               recheck.stdout.trimmingCharacters(in: .newlines) == command else { continue }
-        guard run(kill, ["-TERM", pid]).ok else { exit(1) }
+        guard run(kill, ["-TERM", pid], ceiling: changeCeiling).ok else { exit(1) }
         print("Released the configured HP Laser 107a from IPP-over-USB.")
     }
     exit(0)
@@ -615,6 +660,9 @@ func runSelfTest() {
 // MARK: - Entry point
 
 let mode = CommandLine.arguments.dropFirst().first ?? ""
+#if HELPER_CEILING_TEST
+if environment["PRINTER_STUDIO_CEILING_DRIVER"] == "1" { ceilingDriverMain() }
+#endif
 if clearOwnJobIfBundleIsGone(mode) { exit(0) }
 switch mode {
 case "all":
