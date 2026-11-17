@@ -159,8 +159,10 @@ struct TestMaintenanceHold {
     // MARK: The route, over real HTTP
 
     static func theRouteOverRealHTTP() {
+        let token = "hold-test-\(UUID().uuidString)"
+        let tokenPath = writeToken(token, "route")
         let hold = MaintenanceHold()
-        let server = HoldServer(hold: hold, port: 0,
+        let server = HoldServer(hold: hold, port: 0, tokenPath: tokenPath,
                                 onHeld: { _, _ in }, onResumed: { })
         guard let port = server.start() else {
             check("the hold listener started", false)
@@ -169,8 +171,18 @@ struct TestMaintenanceHold {
         check("the listener started on a loopback port", port > 0)
         let base = "http://127.0.0.1:\(port)/api/maintenance/hold"
 
-        let (status, reply) = send("POST", base + "?timeout_s=0&pause_s=120")
-        check("POST answers 200", status == 200)
+        // The hold route takes the updater's credential: no token and a wrong token are refused.
+        let (noToken, _) = send("POST", base + "?timeout_s=0&pause_s=120")
+        check("a hold with no token is refused", noToken == 401)
+        check("a refused hold pauses nothing", !hold.isPaused)
+        let (wrongToken, _) = send("POST", base + "?timeout_s=0&pause_s=120",
+                                   headers: ["X-Hub-Token": "not-the-token"])
+        check("a hold with a wrong token is refused", wrongToken == 401)
+        check("a wrong token pauses nothing either", !hold.isPaused)
+
+        let (status, reply) = send("POST", base + "?timeout_s=0&pause_s=120",
+                                   headers: ["X-Hub-Token": token])
+        check("the right token answers 200", status == 200)
         check("the reply carries exactly the contract's keys",
               Set(reply.keys) == ["safe", "unsettled", "dispatch_paused_s", "in_flight"])
         check("an idle app is safe to replace", reply["safe"] as? Bool == true)
@@ -178,17 +190,26 @@ struct TestMaintenanceHold {
         check("in_flight is real: nothing running", reply["in_flight"] as? Int == 0)
         check("the route paused the app", hold.isPaused && hold.claim("Refreshing…") == nil)
 
-        let (resumedStatus, resumed) = send("DELETE", base)
-        check("DELETE answers 200", resumedStatus == 200)
+        let (resumedStatus, resumed) = send("DELETE", base, headers: ["Authorization": "Bearer \(token)"])
+        check("DELETE answers 200 with the bearer credential", resumedStatus == 200)
         check("DELETE resumes at once", !hold.isPaused && resumed["dispatch_paused_s"] as? Int == 0)
         check("DELETE reports what is still running", resumed["in_flight"] as? Int == 0)
+
+        // A DELETE without the credential must not release a standing hold either.
+        hold.pause(seconds: 120)
+        let (openDelete, _) = send("DELETE", base)
+        check("a DELETE with no token is refused too", openDelete == 401)
+        check("a refused DELETE releases nothing", hold.isPaused)
+        let (release, _) = send("DELETE", base, headers: ["X-Hub-Token": token])
+        check("a tokened DELETE releases the hold", release == 200 && !hold.isPaused)
 
         // Live work: the reply must count it and name what a restart would strand.
         guard let claim = hold.claim("Installing the printer driver…") else {
             check("work could be claimed once resumed", false)
             return
         }
-        let (busyStatus, busy) = send("POST", "\(base)?timeout_s=0&pause_s=120")
+        let (busyStatus, busy) = send("POST", "\(base)?timeout_s=0&pause_s=120",
+                                      headers: ["X-Hub-Token": token])
         check("a held app with work running still answers", busyStatus == 200)
         check("in_flight matches reality", busy["in_flight"] as? Int == 1)
         check("work past the deadline is not safe to strand", busy["safe"] as? Bool == false)
@@ -197,6 +218,17 @@ struct TestMaintenanceHold {
 
         let (unknown, _) = send("GET", base)
         check("another request is not the hold", unknown == 404)
+
+        // No token file at all means an old or absent updater: refusing is the safe direction.
+        let holdNoFile = MaintenanceHold()
+        let serverNoFile = HoldServer(hold: holdNoFile, port: 0, tokenPath: "/nonexistent/hold-token",
+                                      onHeld: { _, _ in }, onResumed: { })
+        guard let noFilePort = serverNoFile.start() else {
+            check("the no-token-file listener started", false)
+            return
+        }
+        let (noFile, _) = send("POST", "http://127.0.0.1:\(noFilePort)/api/maintenance/hold?timeout_s=0&pause_s=120")
+        check("a missing token file refuses the hold", noFile == 401 && !holdNoFile.isPaused)
 
         // Only this Mac may pause the app: the listener binds 127.0.0.1, nothing else.
         if let outside = nonLoopbackIPv4() {
@@ -211,7 +243,9 @@ struct TestMaintenanceHold {
     /// taken: work that finished inside the window is not still running.
     static func theReplyCountsWorkWhenItAnswers() {
         let hold = MaintenanceHold()
-        let server = HoldServer(hold: hold, port: 0, onHeld: { _, _ in }, onResumed: { })
+        let server = HoldServer(hold: hold, port: 0,
+                                tokenPath: writeToken("hold-test-timing", "timing"),
+                                onHeld: { _, _ in }, onResumed: { })
         guard let port = server.start() else {
             check("the listener started for the timing check", false)
             return
@@ -221,18 +255,27 @@ struct TestMaintenanceHold {
             if let claim { hold.settle(claim) }
         }
         let (status, reply) = send("POST", "http://127.0.0.1:\(port)/api/maintenance/hold?timeout_s=3&pause_s=120",
-                                   timeout: 10)
+                                   timeout: 10, headers: ["X-Hub-Token": "hold-test-timing"])
         check("a hold that settles inside its window answers 200", status == 200)
         check("finished work is not still counted as running", reply["in_flight"] as? Int == 0)
         check("the answer agrees with itself",
               reply["safe"] as? Bool == true && (reply["unsettled"] as? [String])?.isEmpty == true)
     }
 
+    /// A throwaway token file in the shape the updater writes it: plain text, one trailing line.
+    static func writeToken(_ token: String, _ tag: String) -> String {
+        let path = NSTemporaryDirectory() + "hold-token-\(tag)-\(UUID().uuidString)"
+        try? Data((token + "\n").utf8).write(to: URL(fileURLWithPath: path))
+        return path
+    }
+
     // MARK: Helpers
-    static func send(_ method: String, _ url: String, timeout: TimeInterval = 5) -> (Int, [String: Any]) {
+    static func send(_ method: String, _ url: String, timeout: TimeInterval = 5,
+                     headers: [String: String] = [:]) -> (Int, [String: Any]) {
         guard let target = URL(string: url) else { return (-1, [:]) }
         var request = URLRequest(url: target)
         request.httpMethod = method
+        for (name, value) in headers { request.addValue(value, forHTTPHeaderField: name) }
         if method == "POST" { request.httpBody = Data() }
         request.timeoutInterval = timeout
         var status = -1

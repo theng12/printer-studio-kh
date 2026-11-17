@@ -159,20 +159,27 @@ final class MaintenanceHold {
 }
 
 /// The loopback HTTP the installer talks to. Only this Mac can pause the app: the listener binds
-/// 127.0.0.1 and nothing else, so a request from anywhere off the machine cannot reach it.
+/// 127.0.0.1 and nothing else, and the hold route takes the credential the updater sent, so a
+/// local process cannot pause or release the hold without the token file.
 final class HoldServer {
     private let hold: MaintenanceHold
     private let port: UInt16
+    /// The token file the updater writes before it calls; the hold route answers nothing without it.
+    private let tokenPath: String
     private let onHeld: (Int, Int) -> Void
     private let onResumed: () -> Void
     private var listenFD: Int32 = -1
 
     init(hold: MaintenanceHold = .shared,
          port: UInt16 = MaintenanceHold.defaultPort,
+         tokenPath: String? = nil,
          onHeld: @escaping (Int, Int) -> Void,
          onResumed: @escaping () -> Void) {
         self.hold = hold
         self.port = port
+        self.tokenPath = tokenPath
+            ?? ProcessInfo.processInfo.environment["PRINTER_STUDIO_HOLD_TOKEN_FILE"]
+            ?? NSHomeDirectory() + "/Library/KHUpdater/state/hold-token"
         self.onHeld = onHeld
         self.onResumed = onResumed
     }
@@ -232,6 +239,16 @@ final class HoldServer {
         let (method, target) = Self.requestLine(request)
         let (path, query) = Self.split(target)
 
+        // The hold route takes the updater's credential; every other route stays open as before.
+        if path == "/api/maintenance/hold" && (method == "POST" || method == "DELETE") {
+            let configured = configuredToken()
+            let offered = Self.offeredCredential(request)
+            guard let configured, let offered, Self.sameToken(offered, configured) else {
+                Self.send(fd, status: 401, body: Data("{\"error\":\"unauthorized\"}".utf8))
+                return
+            }
+        }
+
         switch (method, path) {
         case ("POST", "/api/maintenance/hold"):
             let timeout = MaintenanceHold.bounded(query["timeout_s"], MaintenanceHold.defaultTimeoutS,
@@ -259,7 +276,47 @@ final class HoldServer {
         }
     }
 
+    /// The token the updater writes (0600, plain text) before it calls. Read once per request. A
+    /// missing or empty file means an old or absent updater that will never send the credential,
+    /// so refusing the hold is the safe direction — the updater fails closed on any non-200.
+    private func configuredToken() -> String? {
+        guard let text = try? String(contentsOfFile: tokenPath, encoding: .utf8) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     // MARK: HTTP
+
+    /// `X-Hub-Token: t` or `Authorization: Bearer t`, whichever the updater sent.
+    private static func offeredCredential(_ request: Data) -> String? {
+        if let token = header(request, "x-hub-token") { return token }
+        if let auth = header(request, "authorization"), auth.hasPrefix("Bearer ") {
+            return auth.dropFirst("Bearer ".count).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    private static func header(_ request: Data, _ name: String) -> String? {
+        guard let end = request.range(of: Data("\r\n\r\n".utf8)) else { return nil }
+        let head = String(decoding: request[..<end.lowerBound], as: UTF8.self)
+        for line in head.split(separator: "\r\n").dropFirst() {
+            let kv = line.split(separator: ":", maxSplits: 1)
+            if kv.count == 2, kv[0].trimmingCharacters(in: .whitespaces).lowercased() == name {
+                return kv[1].trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
+    }
+
+    /// Constant-time byte compare: no early exit, so the answer cannot leak how much matched.
+    private static func sameToken(_ offered: String, _ configured: String) -> Bool {
+        let a = Array(offered.utf8), b = Array(configured.utf8)
+        var diff = a.count ^ b.count
+        for i in 0..<max(a.count, b.count) {
+            diff |= Int(i < a.count ? a[i] : 0) ^ Int(i < b.count ? b[i] : 0)
+        }
+        return diff == 0
+    }
 
     /// Headers (at most 64 KiB), then exactly Content-Length body bytes, within a deadline.
     private static func read(_ fd: Int32, deadline: TimeInterval = 15) -> Data? {
@@ -314,7 +371,7 @@ final class HoldServer {
     }
 
     private static func send(_ fd: Int32, status: Int, body: Data) {
-        var out = "HTTP/1.1 \(status) \(status == 200 ? "OK" : "Not Found")\r\n"
+        var out = "HTTP/1.1 \(status) \(status == 200 ? "OK" : status == 401 ? "Unauthorized" : "Not Found")\r\n"
         out += "Content-Type: application/json\r\n"
         out += "Content-Length: \(body.count)\r\n"
         out += "Connection: close\r\n\r\n"

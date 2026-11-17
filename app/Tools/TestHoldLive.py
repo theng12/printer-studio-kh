@@ -26,7 +26,7 @@ def run(args):
     return subprocess.run(args, capture_output=True, text=True, timeout=30)
 
 
-def launch(app, work):
+def launch(app, work, token_path=None):
     work.mkdir(parents=True, exist_ok=True)
     ready = work / 'ready.json'
     if ready.exists():
@@ -34,11 +34,16 @@ def launch(app, work):
     label = 'com.theng12.printerstudio.hold-test.' + uuid.uuid4().hex
     job = DOMAIN + '/' + label
     plist = work / 'job.plist'
+    environment = {'PRINTER_STUDIO_SIGNING_SMOKE': str(ready)}
+    if token_path:
+        # The hold route takes the updater's credential; the test plays the updater and points
+        # the app at the same token file.
+        environment['PRINTER_STUDIO_HOLD_TOKEN_FILE'] = str(token_path)
     plist.write_bytes(plistlib.dumps({
         'Label': label,
         'ProgramArguments': [str(app / 'Contents/MacOS/PrinterStudio')],
         # The app's own hidden-run entry: no window, no printer services, a free hold port.
-        'EnvironmentVariables': {'PRINTER_STUDIO_SIGNING_SMOKE': str(ready)},
+        'EnvironmentVariables': environment,
         'RunAtLoad': True,
         'StandardOutPath': str(work / 'stdout'),
         'StandardErrorPath': str(work / 'stderr'),
@@ -62,10 +67,11 @@ def stop(job):
         time.sleep(0.1)
 
 
-def request(port, method, path, timeout=35):
+def request(port, method, path, timeout=35, headers=None):
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
     try:
-        connection.request(method, path, body=b'' if method == 'POST' else None)
+        connection.request(method, path, body=b'' if method == 'POST' else None,
+                           headers=headers or {})
         response = connection.getresponse()
         body = response.read()
         return response.status, json.loads(body or b'{}')
@@ -104,7 +110,13 @@ def main():
         'the fixed port 8642 bound by a normally-launched app: the smoke entry takes a free port',
     ]}
 
-    job, health = launch(args.app.resolve(), work / 'run1')
+    # The test plays the updater: it writes the token file, then points the app at it.
+    token = 'hold-live-' + uuid.uuid4().hex
+    token_path = work / 'hold-token'
+    token_path.write_text(token + '\n')
+    token_path.chmod(0o600)
+
+    job, health = launch(args.app.resolve(), work / 'run1', token_path=token_path)
     try:
         port = health.get('holdPort', -1)
         check('the packaged app started its hold listener', port > 0, failures)
@@ -112,20 +124,29 @@ def main():
         record['holdPort'] = port
         base = '/api/maintenance/hold'
 
-        status, reply = request(port, 'POST', base + '?timeout_s=0&pause_s=120')
-        check('POST answers 200', status == 200, failures)
+        status, _ = request(port, 'POST', base + '?timeout_s=0&pause_s=120')
+        check('a hold with no token is refused', status == 401, failures)
+        status, _ = request(port, 'POST', base + '?timeout_s=0&pause_s=120',
+                            headers={'X-Hub-Token': 'not-the-token'})
+        check('a hold with a wrong token is refused', status == 401, failures)
+
+        auth = {'X-Hub-Token': token}
+        status, reply = request(port, 'POST', base + '?timeout_s=0&pause_s=120', headers=auth)
+        check('the right token answers 200', status == 200, failures)
         check('the reply is exactly the contract shape',
               set(reply) == {'safe', 'unsettled', 'dispatch_paused_s', 'in_flight'}, failures)
         check('an idle app is safe to replace', reply.get('safe') is True and reply.get('unsettled') == [], failures)
         check('the pause is the one asked for', reply.get('dispatch_paused_s') == 120, failures)
         check('in_flight is real', reply.get('in_flight') == 0, failures)
 
-        status, reply = request(port, 'DELETE', base)
-        check('DELETE answers 200', status == 200, failures)
+        status, reply = request(port, 'DELETE', base,
+                                headers={'Authorization': 'Bearer ' + token})
+        check('DELETE answers 200 with the bearer credential', status == 200, failures)
         check('DELETE resumes at once', reply.get('dispatch_paused_s') == 0, failures)
 
-        status, reply = request(port, 'POST', base + '?timeout_s=0&pause_s=1')
+        status, reply = request(port, 'POST', base + '?timeout_s=0&pause_s=1', headers=auth)
         check('a one-second pause is taken as asked', status == 200 and reply.get('dispatch_paused_s') == 1, failures)
+        request(port, 'DELETE', base, headers=auth)
 
         status, _ = request(port, 'GET', base)
         check('another request is not the hold', status == 404, failures)
@@ -150,12 +171,13 @@ def main():
 
     # A restart is a fresh process with nothing remembered: it must serve a hold again with no
     # operator step, which is how an aborted install resumes by itself.
-    job, health = launch(args.app.resolve(), work / 'run2')
+    job, health = launch(args.app.resolve(), work / 'run2', token_path=token_path)
     try:
         port = health.get('holdPort', -1)
         check('the restarted app serves the hold again', port > 0, failures)
         check('the restart is a different process', health.get('pid') != record['firstRun'].get('pid'), failures)
-        status, reply = request(port, 'POST', '/api/maintenance/hold?timeout_s=0&pause_s=120')
+        status, reply = request(port, 'POST', '/api/maintenance/hold?timeout_s=0&pause_s=120',
+                                headers={'X-Hub-Token': token})
         check('a restart answers the hold with no manual step',
               status == 200 and reply.get('safe') is True and reply.get('dispatch_paused_s') == 120, failures)
         record['checks'] = failures or ['all passed']
