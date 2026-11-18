@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.34 — 2026-11-18
+- Printer Studio KH now trusts only the update key built into the app itself. Before, it read the key from a file in your home folder that anything running as you could rewrite, so a rewritten file plus its own update could have been accepted. If that file names a different key, the app ignores it and uses its own.
+- An update signed by any other key is refused, and the message says it was not signed by Printer Studio KH's key. If the built-in key is ever missing, update checking stops and says so rather than reading one from the file.
+
 ## 1.0.33 — 2026-11-17
 - Upgrading from an older install no longer turns Printer Sharing on. Before, the first launch after an upgrade could ask for an admin password and switch sharing on with no action by you.
 - Escape now stops the action that is running. Before, a command could only finish or reach its own time limit.

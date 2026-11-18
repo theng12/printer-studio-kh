@@ -1,5 +1,14 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.34
+
+The update key can no longer be replaced by anything running as the logged-in user.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| An update signed by anyone else is refused | `app/test-update-checker.sh` — a feed signed by a different key is refused with "not signed by this app's key" even when `publisher.json` names that key and its URL; a feed signed by the pinned key is accepted; the shipped `PublisherKey.txt` equals the fleet key; the built app carries it unchanged | Required on 1.0.34 |
+| Checking still works when the app is connected normally | Same suite — the file still supplies the feed address, and a pinned-key-signed feed is offered | Required on 1.0.34; no live feed was checked against the real Update Studio |
+
 ## Release scope: 1.0.33
 
 Every remaining issue from the 1.0.32 sweep. No screen layout changed; one control was added.

@@ -16,6 +16,10 @@ enum UpdateState: Equatable {
     case upToDate
     case available(version: String)
     case failed(reason: String)
+
+    /// Fail closed: no pinned key, no update check. Never the file's key instead.
+    static let missingKey = UpdateState.failed(
+        reason: "this app cannot check for updates because its built-in update key is missing")
 }
 
 struct KhVersion {
@@ -71,6 +75,68 @@ func verifiedUpdateFeed(feed: String, signature: String, publicKey: String) thro
     return decoded
 }
 
+/// `~/Library/KHUpdater/publisher.json` may name the feed. It may not name the
+/// key: anything running as the logged-in user can rewrite that file, so a key
+/// found there is read to be noticed, then ignored.
+struct PublisherFile: Decodable {
+    let feedURL: URL
+    let publicKey: String?
+
+    static func address(_ data: Data) -> PublisherFile? {
+        try? JSONDecoder().decode(PublisherFile.self, from: data)
+    }
+}
+
+/// The fleet publisher key, shipped at Contents/Resources/PublisherKey.txt and
+/// covered by the app's own signature. Nil means this build lost it.
+enum PinnedPublisherKey {
+    static func value(at url: URL?) -> String? {
+        guard let url,
+              let data = try? Data(contentsOf: url),
+              let key = String(data: data, encoding: .utf8)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              Data(base64Encoded: key)?.count == 32 else { return nil }
+        return key
+    }
+
+    static func bundleValue(_ bundle: Bundle = .main) -> String? {
+        value(at: bundle.url(forResource: "PublisherKey", withExtension: "txt"))
+    }
+}
+
+private struct SignedFeed: Decodable {
+    let feed: String
+    let signature: String
+}
+
+/// Everything after the feed's bytes are in hand. Only the pinned key verifies
+/// a feed; whatever key the publisher file named never reaches this.
+func updateState(feedData: Data, pinnedKey: String?, bundleID: String?, installed: String?) -> UpdateState {
+    guard let pinnedKey else { return .missingKey }
+    guard let signed = try? JSONDecoder().decode(SignedFeed.self, from: feedData) else {
+        return .failed(reason: "the update feed is invalid")
+    }
+    let feed: UpdateFeed
+    do {
+        feed = try verifiedUpdateFeed(feed: signed.feed, signature: signed.signature, publicKey: pinnedKey)
+    } catch UpdateCheckError.invalidSignature {
+        return .failed(reason: "the update was refused because it was not signed by this app's key")
+    } catch {
+        return .failed(reason: "the update feed is invalid")
+    }
+    guard let bundleID else { return .failed(reason: "this app's bundle identifier is unavailable") }
+    guard let version = feed.version(for: bundleID) else {
+        return .failed(reason: "this Update Studio does not offer this app")
+    }
+    guard let offered = KhVersion.parse(version) else {
+        return .failed(reason: "the update feed version is invalid")
+    }
+    guard let installed, let installedVersion = KhVersion.parse(installed) else {
+        return .failed(reason: "this app's installed version is invalid")
+    }
+    return offered.isNewer(than: installedVersion) ? .available(version: version) : .upToDate
+}
+
 @MainActor
 final class UpdateChecker: ObservableObject {
     @Published private(set) var state: UpdateState = .notChecked
@@ -90,27 +156,25 @@ final class UpdateChecker: ObservableObject {
         return nil
     }
 
-    private struct Publisher: Decodable {
-        let feedURL: URL
-        let publicKey: String
-        let testAuthority: Bool
-    }
-
-    private struct SignedFeed: Decodable {
-        let feed: String
-        let signature: String
-    }
-
     func check() async {
         guard state != .checking else { return }
         state = .checking
 
+        // Before the file or the network: the key comes from the bundle, or not at all.
+        guard let pinnedKey = PinnedPublisherKey.bundleValue() else {
+            state = .missingKey
+            return
+        }
+
         let publisherURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/KHUpdater/publisher.json")
         guard let publisherData = try? Data(contentsOf: publisherURL),
-              let publisher = try? JSONDecoder().decode(Publisher.self, from: publisherData) else {
+              let publisher = PublisherFile.address(publisherData) else {
             state = .failed(reason: "this Mac is not connected to an Update Studio")
             return
+        }
+        if let named = publisher.publicKey, named != pinnedKey {
+            NSLog("Printer Studio KH: publisher.json names a different update key; only the key built into this app is used.")
         }
 
         // Info.plist carries the tailnet ATS exception this needs; the signature
@@ -133,37 +197,9 @@ final class UpdateChecker: ObservableObject {
             state = .failed(reason: "the update feed could not be reached")
             return
         }
-        guard let signed = try? JSONDecoder().decode(SignedFeed.self, from: data) else {
-            state = .failed(reason: "the update feed is invalid")
-            return
-        }
-        let feed: UpdateFeed
-        do {
-            feed = try verifiedUpdateFeed(feed: signed.feed, signature: signed.signature, publicKey: publisher.publicKey)
-        } catch UpdateCheckError.invalidSignature {
-            state = .failed(reason: "the update feed signature could not be verified")
-            return
-        } catch {
-            state = .failed(reason: "the update feed is invalid")
-            return
-        }
-        guard let bundleID = Bundle.main.bundleIdentifier else {
-            state = .failed(reason: "this app's bundle identifier is unavailable")
-            return
-        }
-        guard let version = feed.version(for: bundleID) else {
-            state = .failed(reason: "this Update Studio does not offer this app")
-            return
-        }
-        guard let offered = KhVersion.parse(version) else {
-            state = .failed(reason: "the update feed version is invalid")
-            return
-        }
-        guard let installedString = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-              let installed = KhVersion.parse(installedString) else {
-            state = .failed(reason: "this app's installed version is invalid")
-            return
-        }
-        state = offered.isNewer(than: installed) ? .available(version: version) : .upToDate
+        state = updateState(feedData: data,
+                            pinnedKey: pinnedKey,
+                            bundleID: Bundle.main.bundleIdentifier,
+                            installed: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
     }
 }

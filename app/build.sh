@@ -100,6 +100,17 @@ fi
 cp "$ROOT/Resources/Read Me First.txt" "$APP/Contents/Resources/"
 chmod 644 "$APP/Contents/Resources/Read Me First.txt"
 
+# The update key travels inside the signed bundle. publisher.json is writable by
+# the logged-in user, so the key must never be read from there.
+PUBLISHER_KEY="$ROOT/Resources/PublisherKey.txt"
+if [ ! -s "$PUBLISHER_KEY" ]; then
+  echo "FAIL: Resources/PublisherKey.txt is missing or empty — update checks would have no trusted key" >&2
+  exit 1
+fi
+cp "$PUBLISHER_KEY" "$APP/Contents/Resources/PublisherKey.txt"
+chmod 644 "$APP/Contents/Resources/PublisherKey.txt"
+echo "==> Bundled the update publisher key"
+
 # Spoken announcements. Three clips made with the studio's own local VoxCPM2
 # model on Gateway, so an install never needs a network to hear them.
 for clip in printing-en printing-zh printing-km; do

@@ -33,6 +33,18 @@ echo "==> Compiling native test runner (${#SOURCES[@]} sources)"
   "${SOURCES[@]}"
 
 echo "==> Running TestUpdateChecker"
-"$BIN"
+"$BIN" "$ROOT/Resources/PublisherKey.txt"
+
+# The pin must travel in the built app unchanged, or the fix only exists in source.
+APP="${1:-$ROOT/../dist/Printer Studio KH.app}"
+if [ -d "$APP" ]; then
+  if ! /usr/bin/cmp -s "$ROOT/Resources/PublisherKey.txt" "$APP/Contents/Resources/PublisherKey.txt"; then
+    echo "FAIL: the built app does not carry the pinned update key unchanged" >&2
+    exit 1
+  fi
+  echo "==> Built app carries the pinned key unchanged"
+else
+  echo "SKIP: no built app at $APP, so the bundled copy is not checked (the gate builds first)"
+fi
 
 echo "==> Update checker checks passed."
