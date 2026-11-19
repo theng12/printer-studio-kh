@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.35 — 2026-11-19
+- Printer Studio KH is now signed with the studio's new certificate. Nothing about how it works changes. The old certificate carried a personal email address inside every copy of the app, and the new one does not.
+
 ## 1.0.34 — 2026-11-18
 - Printer Studio KH now trusts only the update key built into the app itself. Before, it read the key from a file in your home folder that anything running as you could rewrite, so a rewritten file plus its own update could have been accepted. If that file names a different key, the app ignores it and uses its own.
 - An update signed by any other key is refused, and the message says it was not signed by Printer Studio KH's key. If the built-in key is ever missing, update checking stops and says so rather than reading one from the file.
