@@ -167,6 +167,8 @@ final class AppState: ObservableObject {
     }
     private var announcer: AVAudioPlayer?
     private var jobWatchTimer: Timer?
+    /// Re-reads the printer and queue state when the app is brought forward.
+    private var activationObserver: NSObjectProtocol?
     private var seenJobIDs: Set<String> = []
     private var jobWatchFirstLook = true
     private var jobWatchReadFailed = false
@@ -206,6 +208,15 @@ final class AppState: ObservableObject {
         log("Printer Studio KH started.")
         DispatchQueue.main.async { self.updateJobWatch() }
 
+        // The printer and queue state was read once and then held: a queue that
+        // stopped, or a job that arrived from a phone, stayed invisible until
+        // Refresh was pressed. Re-read whenever the app is brought forward;
+        // no timer, so nothing runs while the app sits in the background. An
+        // offscreen render run keeps its fixture state instead of reading live.
+        if !renderActionsStubbed {
+            activationObserver = LiveStatus.observeActivation { [weak self] in self?.refresh() }
+        }
+
         // When launchd starts us at login we should leave only the menu bar
         // icon. The window scene always opens one, and macOS 13 and 14 have no
         // way to suppress that declaratively — `defaultLaunchBehavior` is
@@ -239,6 +250,12 @@ final class AppState: ObservableObject {
             DispatchQueue.main.async { self.refresh() }
         }
         refresh()
+    }
+
+    deinit {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+        }
     }
 
     // MARK: Update hold
@@ -783,7 +800,10 @@ struct MenuBarContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        // Opening the menu is a look at the status: re-read it first so the
+        // summary is current, not the snapshot taken when the app last ran.
         Text(state.statusSummary)
+            .onAppear { state.refresh() }
 
         if let notice = state.holdNotice {
             Text(notice)

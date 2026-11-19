@@ -1,5 +1,13 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.36
+
+The status shown is read again when the app is brought forward, instead of being held from launch.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| See a queue that stopped, or a job that arrived, without pressing Refresh | `app/test-live-status.sh` — the shipped activation hook fires when the app becomes active and on nothing else; the app, the window and the menu bar are wired to it; an offscreen render keeps its fixtures; no timer drives it, so nothing polls while the app is idle | Required on 1.0.36; the click itself is not shown on a desktop |
+
 ## Release scope: 1.0.34
 
 The update key can no longer be replaced by anything running as the logged-in user.

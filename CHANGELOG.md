@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.36 — 2026-11-20
+- The status you see is read again when you bring the app forward. Before, printer and queue state was read once at launch and then held: a queue that stopped, or a job that arrived from a phone, stayed invisible until Refresh was pressed.
+
 ## 1.0.35 — 2026-11-19
 - Printer Studio KH is now signed with the studio's new certificate. Nothing about how it works changes. The old certificate carried a personal email address inside every copy of the app, and the new one does not.
 

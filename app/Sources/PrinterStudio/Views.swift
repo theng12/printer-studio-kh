@@ -206,6 +206,10 @@ struct MainWindow: View {
             alert.runModal()
             NSApp.terminate(nil)
         }
+        // The printer and job state was read once and then held: a queue that
+        // stopped, or a job that arrived from a phone, stayed invisible until
+        // Refresh was pressed. Re-read whenever this window is shown again.
+        .onAppear { state.refresh() }
     }
 
     /// One left-aligned group, inside the sidebar so it shares its material.
