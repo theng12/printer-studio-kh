@@ -143,6 +143,10 @@ final class AppState: ObservableObject {
 
     @Published var busy = false
     @Published var busyMessage = ""
+    /// Printing from another device: off unless the person turns it on.
+    @Published var remotePrinting = RemotePrint.isEnabled
+    @Published var remoteDevices: [RemoteDevice] = []
+    @Published var remoteJobs: [RemoteJob] = []
     /// The last action's result, shown on the page where it happened until dismissed.
     @Published var lastMessage: String?
     @Published var lastMessageOK = true
@@ -181,6 +185,10 @@ final class AppState: ObservableObject {
     private let work = DispatchQueue(label: "com.theng12.printerstudio.work", qos: .userInitiated)
 
     init() {
+        // The remote-printing routes ride the same loopback listener as the
+        // update hold; wiring them here keeps the hold testable on its own.
+        HoldServer.remoteRoute = RemotePrint.route
+
         // The update hold exists in every real run; a smoke run takes a free port so a packaged
         // launch test never collides with the copy the owner is using.
         let smoke = ProcessInfo.processInfo.environment["PRINTER_STUDIO_SIGNING_SMOKE"]
@@ -467,6 +475,11 @@ final class AppState: ObservableObject {
                 self.offeredSizes = offered
                 self.paperChoices = choices
                 self.selectedPaper = selected
+                // Remote printing is read from its own store on every refresh,
+                // so the switch, the device list and the audit cannot drift.
+                self.remotePrinting = RemotePrint.isEnabled
+                self.remoteDevices = RemotePrint.devices()
+                self.remoteJobs = RemotePrint.jobs()
                 // Keep the detailed list in step for queues that no longer exist.
                 let names = Set(printers.map(\.name))
                 self.detailedPrinters.removeAll { !names.contains($0.name) }
@@ -654,6 +667,49 @@ final class AppState: ObservableObject {
         perform("Stopping the AirPrint advertisement…",
                 { DriverInstaller.removeAirPrintBridge() },
                 success: "AirPrint advertisement stopped.")
+    }
+
+    // MARK: - Printing from another device
+
+    /// The switch, the devices and the audit are held here so the Settings page
+    /// and the server always read one store.
+    func refreshRemote() {
+        remoteDevices = RemotePrint.devices()
+        remoteJobs = RemotePrint.jobs()
+        remotePrinting = RemotePrint.isEnabled
+    }
+
+    func setRemotePrinting(_ enabled: Bool) {
+        perform(enabled ? "Sharing the printer over the tailnet…" : "Stopping remote printing…",
+                { RemotePrint.setEnabled(enabled) },
+                success: enabled
+                    ? "Remote printing is on. Only a device with a token minted here can print."
+                    : "Remote printing is off. No device can print from another machine.")
+        remotePrinting = enabled
+        refreshRemote()
+    }
+
+    /// Returns the token once, for the person to hand to the device. It is
+    /// never written to disk or shown again.
+    func mintRemoteDevice(named name: String) -> String? {
+        guard let minted = RemotePrint.mint(name: name) else { return nil }
+        log("Added the device \(minted.device.name). Its token is shown once — give it to that device now.",
+            kind: .success)
+        refreshRemote()
+        return minted.token
+    }
+
+    func revokeRemoteDevice(_ device: RemoteDevice) {
+        RemotePrint.revoke(id: device.id)
+        log("Revoked the token for \(device.name).", kind: .warning)
+        refreshRemote()
+    }
+
+    /// The kill switch: every token stops working on the next request.
+    func revokeAllRemoteDevices() {
+        RemotePrint.revokeAll()
+        log("Revoked every remote device token.", kind: .warning)
+        refreshRemote()
     }
 
     // MARK: - Sticker sizes

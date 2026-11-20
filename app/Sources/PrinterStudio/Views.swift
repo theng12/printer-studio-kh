@@ -1667,6 +1667,16 @@ struct SettingsView: View {
     @State private var customExists = false
     @State private var choosingRecording = false
     @State private var confirmingRemoval = false
+    @State private var namingDevice = false
+    @State private var newDeviceName = ""
+    @State private var tokenReveal: String?
+    @State private var confirmingRevokeAll = false
+
+    private static let day: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter
+    }()
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -1699,6 +1709,114 @@ struct SettingsView: View {
                             .prose()
                     }
                     .padding(6)
+                }
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Printing from another device").font(.headline)
+                        Toggle("Let a device with a token print over Tailscale",
+                               isOn: Binding(get: { state.remotePrinting },
+                                             set: { state.setRemotePrinting($0) }))
+                            .toggleStyle(.switch)
+                            .disabled(state.busy)
+                            .probe("control.remotePrint")
+                        Text("Off by default. What it allows is narrow and exact: a device on your Tailscale network with a token you minted here can print a test page, or one of your saved sticker sizes, on this Mac's printer — and nothing else. A remote request cannot name a file, a link or a document. Printing on your local network is unchanged.")
+                            .font(.caption).foregroundStyle(Palette.muted).prose()
+
+                        if state.remotePrinting {
+                            Divider()
+                            HStack {
+                                Text("Devices").font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Button("Add a device…") { namingDevice = true }.controlSize(.small)
+                                Button("Revoke all") { confirmingRevokeAll = true }
+                                    .controlSize(.small)
+                                    .disabled(!state.remoteDevices.contains { !$0.isRevoked })
+                            }
+                            if let token = tokenReveal {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("This token is shown once. Give it to the device now — it cannot be shown again.")
+                                        .font(.caption).foregroundStyle(Palette.warning).prose()
+                                    HStack {
+                                        Text(token)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .lineLimit(2)
+                                        Spacer()
+                                        Button("Copy") {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(token, forType: .string)
+                                        }
+                                        .controlSize(.small)
+                                    }
+                                    Button("Done") { tokenReveal = nil }.controlSize(.small)
+                                }
+                                .padding(8)
+                                .cardSurface(radius: 8)
+                            }
+                            if state.remoteDevices.isEmpty {
+                                Text("No device has a token yet.").font(.caption).foregroundStyle(Palette.muted)
+                            } else {
+                                ForEach(state.remoteDevices) { device in
+                                    HStack(alignment: .top) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(device.name).font(.callout)
+                                            Text(device.isRevoked
+                                                 ? "Revoked — requests are refused"
+                                                 : "Added \(Self.day.string(from: device.createdAt))")
+                                                .font(.caption2).foregroundStyle(Palette.muted)
+                                        }
+                                        Spacer()
+                                        if !device.isRevoked {
+                                            Button("Revoke") { state.revokeRemoteDevice(device) }
+                                                .controlSize(.small)
+                                        }
+                                    }
+                                }
+                            }
+                            Divider()
+                            Text("Recent jobs").font(.subheadline.weight(.semibold))
+                            if state.remoteJobs.isEmpty {
+                                Text("No remote jobs yet.").font(.caption).foregroundStyle(Palette.muted)
+                            } else {
+                                ForEach(state.remoteJobs.prefix(10)) { job in
+                                    Text("\(job.time) · \(job.device) · \(job.content) · \(job.outcome.rawValue): \(job.detail)")
+                                        .font(.caption2).foregroundStyle(Palette.muted)
+                                }
+                            }
+                        }
+                    }
+                    .padding(6)
+                }
+                .probe("card.remotePrint")
+                .sheet(isPresented: $namingDevice) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Name this device").font(.headline)
+                        TextField("For example: my laptop", text: $newDeviceName)
+                            .textFieldStyle(.plain)
+                            .fieldSurface()
+                        Text("Its token is shown once, after you add it.")
+                            .font(.caption).foregroundStyle(Palette.muted)
+                        HStack {
+                            Spacer()
+                            Button("Cancel") { namingDevice = false; newDeviceName = "" }
+                            Button("Add device") {
+                                tokenReveal = state.mintRemoteDevice(named: newDeviceName)
+                                namingDevice = false
+                                newDeviceName = ""
+                            }
+                            .buttonStyle(PrimaryButtonStyle(isDisabled: newDeviceName.trimmingCharacters(in: .whitespaces).isEmpty))
+                            .disabled(newDeviceName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                    .padding(18)
+                    .frame(width: 380)
+                }
+                .confirmationDialog("Revoke every device token?", isPresented: $confirmingRevokeAll) {
+                    Button("Revoke all", role: .destructive) { state.revokeAllRemoteDevices() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Every device is refused from its next request. You can mint new tokens afterwards.")
                 }
 
                 GroupBox {

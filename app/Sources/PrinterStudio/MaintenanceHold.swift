@@ -162,6 +162,10 @@ final class MaintenanceHold {
 /// 127.0.0.1 and nothing else, and the hold route takes the credential the updater sent, so a
 /// local process cannot pause or release the hold without the token file.
 final class HoldServer {
+    /// The remote-printing routes, wired in at launch. Keeping it a hook lets
+    /// the hold be compiled and tested on its own, with no listener around.
+    static var remoteRoute: ((String, String, Data) -> (Int, Data))?
+
     private let hold: MaintenanceHold
     private let port: UInt16
     /// The token file the updater writes before it calls; the hold route answers nothing without it.
@@ -238,6 +242,19 @@ final class HoldServer {
         guard let request = Self.read(fd) else { return }
         let (method, target) = Self.requestLine(request)
         let (path, query) = Self.split(target)
+
+        // Printing from another device shares this one loopback listener. It is
+        // wired in at launch so this file stays compilable on its own; unwired,
+        // the route says not-found rather than pretending to work.
+        if path.hasPrefix("/api/remote/") {
+            guard let route = Self.remoteRoute else {
+                Self.send(fd, status: 404, body: Data("{\"ok\":false,\"error\":\"not_found\"}".utf8))
+                return
+            }
+            let (status, body) = route(method, path, request)
+            Self.send(fd, status: status, body: body)
+            return
+        }
 
         // The hold route takes the updater's credential; every other route stays open as before.
         if path == "/api/maintenance/hold" && (method == "POST" || method == "DELETE") {
@@ -371,7 +388,17 @@ final class HoldServer {
     }
 
     private static func send(_ fd: Int32, status: Int, body: Data) {
-        var out = "HTTP/1.1 \(status) \(status == 200 ? "OK" : status == 401 ? "Unauthorized" : "Not Found")\r\n"
+        let reason: String
+        switch status {
+        case 200: reason = "OK"
+        case 401: reason = "Unauthorized"
+        case 403: reason = "Forbidden"
+        case 404: reason = "Not Found"
+        case 405: reason = "Method Not Allowed"
+        case 500: reason = "Internal Server Error"
+        default: reason = "Not Found"
+        }
+        var out = "HTTP/1.1 \(status) \(reason)\r\n"
         out += "Content-Type: application/json\r\n"
         out += "Content-Length: \(body.count)\r\n"
         out += "Connection: close\r\n\r\n"

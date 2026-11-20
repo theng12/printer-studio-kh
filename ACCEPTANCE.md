@@ -1,5 +1,20 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.37
+
+Printing from another device over Tailscale, behind four controls. Off by default.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| Nothing is reachable while the feature is off | `app/test-remote-print.sh` — `feature_off` 403 before any token is looked at; nothing answers on this Mac's tailnet address (`nc`); the server still binds 127.0.0.1 only; local printing untouched | Required on 1.0.37 |
+| A missing, wrong or revoked token is refused, and the answer says which | Same suite — `missing_token` 401, `wrong_token` 401, `revoked_token` 401 | Required on 1.0.37 |
+| A request for a path, URL, uploaded file or document is refused by name and never printed | Same suite — `content_not_allowed` 403 for `path`, `url`, `file`, `document`; an unknown id is `unknown_content` 404 | Required on 1.0.37 |
+| The kill switch stops the very next request | Same suite — `revokeAll` then the next request is `revoked_token`, and minting afterwards still works | Required on 1.0.37 |
+| Turning the switch off also removes the tailnet mapping | Same suite — after the switch goes off, `tailscale serve status` no longer names port 8642, read back from Tailscale itself rather than the app's own line; if Tailscale cannot apply serve on this machine the suite prints SKIP with its reason | Required on 1.0.37 |
+| A token is stored only as a hash, in a 0600 file | Same suite — the raw token is absent from the store; the file mode is checked | Required on 1.0.37 |
+| A valid token prints an item the app generated | **NOT CHECKED as a print** — a physical print on the owner's printer is not run as a test. The composed page, the id list (test page + saved sizes) and the fail-closed `no_printer` path are what the suite proves; the `sent` branch and the printer receiving paper are unproven | Not checked |
+| Idle with the feature on stays flat | No timer is added; the socket is passive and the serve mapping is static. **A ten-minute footprint measurement was not run** | Partly checked |
+
 ## Release scope: 1.0.36
 
 The status shown is read again when the app is brought forward, instead of being held from launch.

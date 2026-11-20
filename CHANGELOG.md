@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.37 — 2026-11-20
+- A device on your Tailscale network can print a test page, or one of your saved sticker sizes, on this Mac's printer — and nothing else. Off by default: turn it on in Settings, and nothing is reachable while it is off. This is not a document catalogue; it prints only those items. Printing on your local network is unchanged.
+- Each device gets its own token, shown once when you add it and never kept in readable form. A request with no token, a wrong one, or a revoked one is refused, and the refusal says which. Revoke one device, or all of them at once, and the next request is refused — no restart.
+- A remote request can only name an item this app generated, by id: the test page or one of your saved label sizes. A path, link, uploaded file or document is refused by name and never printed.
+- Every request is recorded in Settings — which device, what it asked for, when, and how it ended.
+
 ## 1.0.36 — 2026-11-20
 - The status you see is read again when you bring the app forward. Before, printer and queue state was read once at launch and then held: a queue that stopped, or a job that arrived from a phone, stayed invisible until Refresh was pressed.
 
