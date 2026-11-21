@@ -1,8 +1,8 @@
 #!/bin/bash
 # Offscreen page-acceptance harness for Printer Studio KH.
 # Renders real SwiftUI views to PNGs in a hidden, offscreen window with a temp
-# data environment. Never activates a window, never uses screencapture/cliclick/
-# System Events, never touches ~/Library/Application Support/PrinterStudio or
+# data environment. Never activates a window, never automates the pointer or the
+# keyboard, never touches ~/Library/Application Support/PrinterStudio or
 # launchd, never runs the shipped dist app.
 #
 #   app/render-pages.sh [pages|all] [out-dir] [WxH ...]
