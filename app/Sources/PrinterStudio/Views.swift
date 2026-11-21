@@ -127,8 +127,8 @@ struct MainWindow: View {
 
     /// The band carries one line only. Before anyone asks, it is the app's own
     /// summary; after a check it becomes that check's answer and stays there.
-    private var footerStatus: String {
-        checker.state == .notChecked ? state.statusSummary : checker.statusLine
+    private func footerStatus(at now: Date) -> String {
+        checker.state == .notChecked ? state.statusSummary : checker.statusLine(at: now)
     }
 
     var body: some View {
@@ -278,11 +278,15 @@ struct MainWindow: View {
                 }
             }
 
-            Text(footerStatus)
-                .font(.system(size: 11))
-                .foregroundStyle(Palette.muted)
-                .lineLimit(1)
-                .accessibilityAddTraits(.updatesFrequently)
+            // Re-evaluated every minute while the window is open, so the age of
+            // the last check keeps moving instead of freezing at "just now".
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                Text(footerStatus(at: context.date))
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(Palette.muted)
+            .lineLimit(1)
+            .accessibilityAddTraits(.updatesFrequently)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)

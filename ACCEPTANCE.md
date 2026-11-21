@@ -1,5 +1,13 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.38
+
+The update check shows the age of its last result instead of "just now" for ever.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| See how old the last update check is, moving while the window is open | `app/test-update-checker.sh` — `checkedAge` returns "just now" at 0 s, "1 hr 30 min ago" at 90 min and "1 day ago" at 1 day; the footer re-renders every minute (`TimelineView` in `Views.swift`) | Required on 1.0.38; the rendered footer is not photographed |
+
 ## Release scope: 1.0.37
 
 Printing from another device over Tailscale, behind four controls. Off by default.

@@ -106,6 +106,16 @@ struct TestUpdateChecker {
                                bundleID: bundleID, installed: "1.0") == .missingKey,
                    "No pinned key stops the check instead of using the file's key")
 
+        // The footer's age text: a finished check ages in plain words instead of
+        // reading "just now" for as long as the app stays open.
+        let checked = Date(timeIntervalSince1970: 1_600_000_000)
+        assertTest(checkedAge(since: checked, now: checked) == "just now",
+                   "0 s after a check reads as just now")
+        assertTest(checkedAge(since: checked, now: checked.addingTimeInterval(90 * 60)) == "1 hr 30 min ago",
+                   "90 min after a check reads as 1 hr 30 min ago")
+        assertTest(checkedAge(since: checked, now: checked.addingTimeInterval(24 * 60 * 60)) == "1 day ago",
+                   "1 day after a check reads as 1 day ago")
+
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
     }

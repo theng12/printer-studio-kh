@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.38 — 2026-11-22
+- The update check now says how long ago it ran — "Checked 2 days ago" rather than "Checked just now" for ever. Before, a result from days ago still read as if it had just happened, on the screen where you decide whether to trust the version you run. The age keeps moving while the window is open.
+
 ## 1.0.37 — 2026-11-20
 - A device on your Tailscale network can print a test page, or one of your saved sticker sizes, on this Mac's printer — and nothing else. Off by default: turn it on in Settings, and nothing is reachable while it is off. This is not a document catalogue; it prints only those items. Printing on your local network is unchanged.
 - Each device gets its own token, shown once when you add it and never kept in readable form. A request with no token, a wrong one, or a revoked one is refused, and the refusal says which. Revoke one device, or all of them at once, and the next request is refused — no restart.

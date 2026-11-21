@@ -137,16 +137,34 @@ func updateState(feedData: Data, pinnedKey: String?, bundleID: String?, installe
     return offered.isNewer(than: installedVersion) ? .available(version: version) : .upToDate
 }
 
+/// How long ago the last finished check was, in words: "just now", "5 min ago",
+/// "1 hr 30 min ago", "2 days ago". A stored verdict must never read as live.
+func checkedAge(since lastChecked: Date, now: Date) -> String {
+    let minutes = Int(now.timeIntervalSince(lastChecked)) / 60
+    guard minutes >= 1 else { return "just now" }
+    if minutes < 60 { return "\(minutes) min ago" }
+    let hours = minutes / 60
+    if hours < 24 {
+        let rest = minutes % 60
+        return rest == 0 ? "\(hours) hr ago" : "\(hours) hr \(rest) min ago"
+    }
+    let days = hours / 24
+    return days == 1 ? "1 day ago" : "\(days) days ago"
+}
+
 @MainActor
 final class UpdateChecker: ObservableObject {
     @Published private(set) var state: UpdateState = .notChecked
+    /// When the last check finished, so the footer can say how old its answer is.
+    private(set) var lastChecked: Date?
 
-    var statusLine: String {
+    func statusLine(at now: Date) -> String {
+        let age = checkedAge(since: lastChecked ?? now, now: now)
         switch state {
         case .notChecked: return "Not checked"
         case .checking: return "Checking..."
-        case .upToDate: return "Checked just now · up to date"
-        case .available(let version): return "Checked just now · \(version) is available"
+        case .upToDate: return "Checked \(age) · up to date"
+        case .available(let version): return "Checked \(age) · \(version) is available"
         case .failed(let reason): return "Check failed: \(reason). Try again."
         }
     }
@@ -159,6 +177,7 @@ final class UpdateChecker: ObservableObject {
     func check() async {
         guard state != .checking else { return }
         state = .checking
+        defer { if state != .checking { lastChecked = Date() } }
 
         // Before the file or the network: the key comes from the bundle, or not at all.
         guard let pinnedKey = PinnedPublisherKey.bundleValue() else {

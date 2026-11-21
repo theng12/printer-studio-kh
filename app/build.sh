@@ -27,6 +27,12 @@ DIST="$ROOT/../dist"
 APP="$DIST/Printer Studio KH.app"
 BIN_NAME="PrinterStudio"
 MIN_MACOS="13.0"
+# The CLT 27.2 SDK declares SwiftUI's @State as a macro whose plugin
+# (SwiftUIMacros) ships only with Xcode, so the default SDK cannot build this
+# app on a CLT-only Mac. Pin the newest SDK that can.
+# shortcut: SDK 26.5 until the CLT ships the plugin; upgrade when it does.
+SDK="$(/usr/bin/xcrun --show-sdk-path --sdk macosx26.5 2>/dev/null || true)"
+[ -n "$SDK" ] || SDK="$(/usr/bin/xcrun --show-sdk-path)"
 # Published and accepted installers are immutable, even when rebuilding this version.
 if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
   VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/Resources/Info.plist")
@@ -67,6 +73,7 @@ for ARCH in arm64 x86_64; do
     -O \
     -parse-as-library \
     -swift-version 5 \
+    -sdk "$SDK" \
     -target "${ARCH}-apple-macos${MIN_MACOS}" \
     -framework SwiftUI \
     -framework AppKit \
@@ -159,6 +166,7 @@ for ARCH in arm64 x86_64; do
   /usr/bin/swiftc \
     -O \
     -swift-version 5 \
+    -sdk "$SDK" \
     -target "${ARCH}-apple-macos${MIN_MACOS}" \
     -o "$SLICES/helper.$ARCH" \
     "$ROOT/Helper/main.swift"
