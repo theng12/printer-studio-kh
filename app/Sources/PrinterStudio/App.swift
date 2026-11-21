@@ -125,6 +125,8 @@ final class AppState: ObservableObject {
     @Published var labelPrintingNeedsSetup = false
     /// True when the app is registered to open at login.
     @Published var startsAtLogin = false
+    /// macOS is holding the login item until the person allows it.
+    @Published var loginNeedsApproval = false
     @Published var automaticUSBRelease = false
 
     /// The user's sticker sizes, as last saved.
@@ -238,12 +240,26 @@ final class AppState: ObservableObject {
             }
         }
 
-        // Enable on first launch, then respect the Settings switch. Refresh an
-        // enabled item after an app move so launchd keeps the current path.
-        if !UserDefaults.standard.bool(forKey: "loginItemConfigured") || LoginItem.isEnabled {
+        // Enable on first launch, then respect the Settings switch. A registration
+        // made by an earlier build is re-made once per build, so it carries the
+        // current signing identity; a state that is not enabled is reported in its
+        // own words instead of being replaced by a success sentence.
+        let loginConfigured = UserDefaults.standard.bool(forKey: "loginItemConfigured")
+        let action = LoginItem.registrationAction(storedBuild: LoginItem.storedBuild,
+                                                  currentBuild: LoginItem.currentBuild,
+                                                  isEnabled: LoginItem.isEnabled,
+                                                  isConfigured: loginConfigured)
+        switch action {
+        case .none:
+            break
+        case .register:
             let result = LoginItem.enable()
-            report(result, success: "Printer Studio KH will open at login.", action: "Turning on start at login")
+            report(result, success: result.stdout, action: "Turning on start at login")
             if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
+        case .reRegister:
+            if let result = LoginItem.refreshRegistration(build: LoginItem.currentBuild) {
+                report(result, success: result.stdout, action: "Refreshing start at login")
+            }
         }
         work.async {
             // Startup maintenance moves files too: a hold taken while it runs must not see it
@@ -470,6 +486,7 @@ final class AppState: ObservableObject {
                 self.airPrintInstalled = airPrint
                 self.labelPrintingNeedsSetup = labelSetup
                 self.startsAtLogin = login
+                self.loginNeedsApproval = LoginItem.needsApproval
                 self.automaticUSBRelease = automaticUSB
                 self.labelQueues = labelQueues
                 self.offeredSizes = offered
@@ -771,9 +788,9 @@ final class AppState: ObservableObject {
             ? CommandResult(status: 0, stdout: "", stderr: "")
             : (enabled ? LoginItem.enable() : LoginItem.disable())
         if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
-        report(result, success: enabled
-               ? "Printer Studio KH will open at login."
-               : "Printer Studio KH will no longer open at login.",
+        report(result, success: result.stdout.isEmpty
+               ? (enabled ? "Printer Studio KH will open at login." : "Printer Studio KH will no longer open at login.")
+               : result.stdout,
                action: enabled ? "Turning on start at login" : "Turning off start at login")
         if !renderActionsStubbed { refresh() }
     }

@@ -1,5 +1,15 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.39
+
+The login item tells the truth about its state and is re-registered under the current identity.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| See why "Open at login" is not working, and the one action that fixes it | `app/test-login-item.sh` — every registration state has its own sentence; the waiting-for-approval state never reads as success, names System Settings > Login Items, and Settings shows an **Open Login Items** button when it applies | Required on 1.0.39 |
+| An updated app is registered under its current signing certificate | The launch path calls `LoginItem.refreshRegistration(build:)` once per build, which `unregister()`s then `register()`s an enabled item; the test fails if any caller still overwrites the state's own sentence with a success string | Required on 1.0.39 |
+| The real login after a restart | **NOT CHECKED** — needs one restart on a Mac where the app is installed and set to open at login; owner only, per `lead/1.0.39-20261122/LOGIN-ITEM-PROCEDURE.md` step 6 | Not checked |
+
 ## Release scope: 1.0.38
 
 The update check shows the age of its last result instead of "just now" for ever.

@@ -1703,6 +1703,19 @@ struct SettingsView: View {
                         Text("Starts the menu bar icon when you log in, without opening a window. The background services — keeping shared queues open, and the AirPrint advertisement — run at login independently of this.")
                             .font(.caption).foregroundStyle(Palette.muted)
                             .prose()
+                        if state.loginNeedsApproval {
+                            HStack(spacing: 8) {
+                                Text("macOS is waiting for you to allow it: System Settings > General > Login Items.")
+                                    .font(.caption).foregroundStyle(Palette.warning).prose()
+                                Button("Open Login Items") {
+                                    if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                                .controlSize(.small)
+                                .probe("control.openLoginItems")
+                            }
+                        }
                         Toggle("Keep the USB printer ready after restarts",
                                isOn: Binding(get: { state.automaticUSBRelease },
                                              set: { state.setAutomaticUSBRelease($0) }))
