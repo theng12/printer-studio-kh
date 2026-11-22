@@ -5,6 +5,13 @@ import Foundation
 /// daemon loop. Compiled only by test-helper-ceiling.sh with -D HELPER_CEILING_TEST,
 /// so the shipped helper binary never carries this code.
 func ceilingDriverMain() {
+    // The termination path, isolated: park with the helper's own handlers and
+    // let the shell send SIGTERM. No services, no data, no printer.
+    if ProcessInfo.processInfo.environment["PRINTER_STUDIO_TERM_DRIVER"] == "1" {
+        signal(SIGTERM, handleTermination)
+        signal(SIGINT, handleTermination)
+        while true { Thread.sleep(forTimeInterval: 0.05) }
+    }
     var failures = 0
     func check(_ name: String, _ condition: @autoclosure () -> Bool) {
         if condition() {
@@ -14,6 +21,11 @@ func ceilingDriverMain() {
             print("FAIL: \(name)")
         }
     }
+
+    // The intended bounds, asserted from source rather than discovered by waiting 30 s.
+    check("status ceiling is the intended 30 s", statusCeiling == 30)
+    check("change ceiling is the intended 60 s", changeCeiling == 60)
+    check("DNS-SD ceiling is the intended 2 s", dnssdCeiling == 2)
 
     let echo = run("/bin/echo", ["hello"])
     check("a quick command answers whole",
