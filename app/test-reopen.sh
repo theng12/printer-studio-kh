@@ -7,7 +7,7 @@
 # no-desktop rule ranks above seeing it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-reopen-$(date +%Y%m%d-%H%M%S)-$$"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/printer-reopen.XXXXXX")"
 mkdir -p "$OUT"
 
 # The probe is only meaningful if the real app is wired the same way: the delegate

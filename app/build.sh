@@ -57,8 +57,9 @@ if [ ${#SOURCES[@]} -eq 0 ]; then
   exit 1
 fi
 
-TRASH="$DIST/../_trash/build-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$TRASH"
+# The checkout's _trash link points into the owner's Desktop trash, which he can
+# empty at any time; a build must not depend on it resolving.
+TRASH="$(mktemp -d "${TMPDIR:-/tmp}/printer-build.XXXXXX")"
 [ ! -e "$APP" ] || mv "$APP" "$TRASH/"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 

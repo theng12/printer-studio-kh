@@ -8,7 +8,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 APP="${1:-$ROOT/../dist/Printer Studio KH.app}"
-OUT="$ROOT/../_trash/test-bundle-seal-$(date +%Y%m%d-%H%M%S)-$$"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/printer-bundle-seal.XXXXXX")"
 mkdir -p "$OUT/support"
 
 snapshot() { find "$APP" -print0 | xargs -0 stat -f '%N %z %m' | sort; }

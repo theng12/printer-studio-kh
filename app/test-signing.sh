@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIRST="${1:-$ROOT/dist/Printer Studio KH.app}"
-OUT="$ROOT/_trash/test-signing-$(date +%Y%m%d-%H%M%S)-$$"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/printer-signing.XXXXXX")"
 mkdir -p "$OUT/source"
 git -C "$ROOT" archive HEAD | /usr/bin/tar -x -C "$OUT/source"
 /usr/bin/python3 -I - "$ROOT" "$OUT/source" <<'PY'

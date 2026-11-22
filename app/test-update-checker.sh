@@ -8,8 +8,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 ARCH="$(uname -m)"
-TRASH="$ROOT/../_trash/test-update-checker-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$TRASH"
+# Own scratch dir: the checkout _trash link may dangle.
+TRASH="$(mktemp -d "${TMPDIR:-/tmp}/printer-update-checker.XXXXXX")"
 
 echo "==> Gathering sources for TestUpdateChecker ($ARCH)"
 SOURCES=()
