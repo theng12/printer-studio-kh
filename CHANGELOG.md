@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.40 — 2026-11-22
+- No change in how printing works. This release carries the app's card metadata: the Launcher now shows Printer Studio KH with its own description and Utility label instead of an unlabelled generic card.
+
 ## 1.0.39 — 2026-11-22
 - "Open Printer Studio KH at login" now tells you the truth. When macOS is waiting for you to allow it in Login Items, the app says so and offers a button that opens that setting, instead of claiming it will open at login.
 - The login item is registered again once after an update, so it carries the app's current signing certificate. A registration made by an older copy is never left in place. If you turned it off, it stays off — an update never switches it back on.
