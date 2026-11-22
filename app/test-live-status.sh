@@ -6,8 +6,7 @@
 #          keeps its fixtures, and no timer was added (nothing polls while idle).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-live-status-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$OUT"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/printer-live-status.XXXXXX")"
 
 /usr/bin/swiftc -parse-as-library -swift-version 5 \
   "$ROOT/Sources/PrinterStudio/LiveStatus.swift" "$ROOT/Tools/TestLiveStatus.swift" \

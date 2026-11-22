@@ -29,9 +29,8 @@ if [ -z "$(printf '%s\n' "$NOTES" | tr -d '[:space:]')" ]; then
 fi
 echo "PASS: Current version $VERSION has non-empty release notes"
 
-# Fixtures directory stored under _trash; no rm or trap deletion
-mkdir -p "$ROOT/_trash"
-FIXTURES_DIR=$(mktemp -d "$ROOT/_trash/test-release-notes-XXXXXX")
+# Fixtures in TMPDIR: the checkout _trash link may dangle.
+FIXTURES_DIR=$(mktemp -d "${TMPDIR:-/tmp}/printer-release-notes.XXXXXX")
 
 echo "==> Test 2: Controlled fixture exact match and next-version stop"
 cat << 'EOF' > "$FIXTURES_DIR/changelog_controlled.md"
