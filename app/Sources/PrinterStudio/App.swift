@@ -244,18 +244,22 @@ final class AppState: ObservableObject {
         // made by an earlier build is re-made once per build, so it carries the
         // current signing identity; a state that is not enabled is reported in its
         // own words instead of being replaced by a success sentence.
-        let loginConfigured = UserDefaults.standard.bool(forKey: "loginItemConfigured")
-        let action = LoginItem.registrationAction(storedBuild: LoginItem.storedBuild,
+        let choice = LoginItem.choice
+        LoginItem.remember(choice)   // persist the one-time migration, never re-infer
+        let action = LoginItem.registrationAction(choice: choice,
+                                                  storedBuild: LoginItem.storedBuild,
                                                   currentBuild: LoginItem.currentBuild,
-                                                  isEnabled: LoginItem.isEnabled,
-                                                  isConfigured: loginConfigured)
+                                                  isEnabled: LoginItem.isEnabled)
         switch action {
         case .none:
             break
         case .register:
             let result = LoginItem.enable()
             report(result, success: result.stdout, action: "Turning on start at login")
-            if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
+            if result.ok {
+                UserDefaults.standard.set(true, forKey: "loginItemConfigured")
+                LoginItem.remember(.on)
+            }
         case .reRegister:
             if let result = LoginItem.refreshRegistration(build: LoginItem.currentBuild) {
                 report(result, success: result.stdout, action: "Refreshing start at login")
@@ -787,7 +791,10 @@ final class AppState: ObservableObject {
         let result = renderActionsStubbed
             ? CommandResult(status: 0, stdout: "", stderr: "")
             : (enabled ? LoginItem.enable() : LoginItem.disable())
-        if result.ok { UserDefaults.standard.set(true, forKey: "loginItemConfigured") }
+        if result.ok {
+            UserDefaults.standard.set(true, forKey: "loginItemConfigured")
+            LoginItem.remember(enabled ? .on : .off)
+        }
         report(result, success: result.stdout.isEmpty
                ? (enabled ? "Printer Studio KH will open at login." : "Printer Studio KH will no longer open at login.")
                : result.stdout,

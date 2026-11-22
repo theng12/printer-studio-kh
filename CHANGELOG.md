@@ -2,7 +2,7 @@
 
 ## 1.0.39 — 2026-11-22
 - "Open Printer Studio KH at login" now tells you the truth. When macOS is waiting for you to allow it in Login Items, the app says so and offers a button that opens that setting, instead of claiming it will open at login.
-- The login item is registered again once after an update, so it carries the app's current signing certificate. A registration made by an older copy is never left in place.
+- The login item is registered again once after an update, so it carries the app's current signing certificate. A registration made by an older copy is never left in place. If you turned it off, it stays off — an update never switches it back on.
 
 ## 1.0.38 — 2026-11-22
 - The update check now says how long ago it ran — "Checked 2 days ago" rather than "Checked just now" for ever. Before, a result from days ago still read as if it had just happened, on the screen where you decide whether to trust the version you run. The age keeps moving while the window is open.

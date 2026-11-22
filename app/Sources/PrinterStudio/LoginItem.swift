@@ -49,20 +49,56 @@ enum LoginItem {
         case reRegister
     }
 
+    /// The person's own choice. Absence of a choice and a "no" are different
+    /// values: an untended first run may be turned on, a person's off never is.
+    enum Choice: String {
+        case unset = ""
+        case on = "on"
+        case off = "off"
+    }
+
     static let markerKey = "loginItemRegisteredBuild"
+    static let choiceKey = "loginItemChoice"
     static var storedBuild: String? { UserDefaults.standard.string(forKey: markerKey) }
     static var currentBuild: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
     }
 
-    /// `register` covers the first run and any state that is not enabled.
-    /// `reRegister` is the one-time refresh after a version or identity change;
-    /// with the same marker it is `none` — no unregister, no register, no write.
-    static func registrationAction(storedBuild: String?, currentBuild: String,
-                                   isEnabled: Bool, isConfigured: Bool) -> RegistrationAction {
-        guard isConfigured else { return .register }
-        guard isEnabled else { return .register }
-        return storedBuild == currentBuild ? .none : .reRegister
+    /// Before this key existed, `loginItemConfigured` meant "the person decided":
+    /// with the item off, that was a person turning it off. Read it that way once.
+    static var choice: Choice {
+        choiceValue(stored: UserDefaults.standard.string(forKey: choiceKey),
+                    configured: UserDefaults.standard.bool(forKey: "loginItemConfigured"),
+                    isEnabled: isEnabled)
+    }
+
+    /// Pure so the migration is testable: a stored choice always wins; an old
+    /// "configured" install with the item off migrates to a person's off.
+    static func choiceValue(stored: String?, configured: Bool, isEnabled: Bool) -> Choice {
+        if let raw = stored, let choice = Choice(rawValue: raw) { return choice }
+        if configured { return isEnabled ? .on : .off }
+        return .unset
+    }
+
+    static func remember(_ choice: Choice) {
+        UserDefaults.standard.set(choice.rawValue, forKey: choiceKey)
+    }
+
+    /// `off` is final: no call, whatever the marker says. `unset` is the product
+    /// default and registers. With `on`, a changed or missing marker refreshes or
+    /// restores the registration once; a matching marker with the item gone means
+    /// the person removed it in System Settings, so it stays gone.
+    static func registrationAction(choice: Choice, storedBuild: String?, currentBuild: String,
+                                   isEnabled: Bool) -> RegistrationAction {
+        switch choice {
+        case .off:
+            return .none
+        case .unset:
+            return .register
+        case .on:
+            if isEnabled { return storedBuild == currentBuild ? .none : .reRegister }
+            return storedBuild == currentBuild ? .none : .register
+        }
     }
 
     static func enable() -> CommandResult {
@@ -90,8 +126,8 @@ enum LoginItem {
     /// Nil means there is nothing to do.
     static func refreshRegistration(build: String) -> CommandResult? {
         let service = SMAppService.mainApp
-        let action = registrationAction(storedBuild: storedBuild, currentBuild: build,
-                                        isEnabled: service.status == .enabled, isConfigured: true)
+        let action = registrationAction(choice: choice, storedBuild: storedBuild, currentBuild: build,
+                                        isEnabled: service.status == .enabled)
         guard action == .reRegister else { return nil }
         do {
             try service.unregister()

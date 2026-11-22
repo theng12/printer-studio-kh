@@ -37,27 +37,42 @@ struct TestLoginItem {
                    "Every state has its own sentence")
 
         // Three launches, in order. The no-op is the absence of a call, not silence.
-        let first = LoginItem.registrationAction(storedBuild: nil, currentBuild: "40",
-                                                 isEnabled: false, isConfigured: false)
-        assertTest(first == .register, "First launch: first enable registers and is marked")
-        let second = LoginItem.registrationAction(storedBuild: "40", currentBuild: "40",
-                                                  isEnabled: true, isConfigured: true)
-        assertTest(second == .none,
+        func action(_ choice: LoginItem.Choice, _ stored: String?, _ current: String,
+                    _ enabled: Bool) -> LoginItem.RegistrationAction {
+            LoginItem.registrationAction(choice: choice, storedBuild: stored,
+                                         currentBuild: current, isEnabled: enabled)
+        }
+        assertTest(action(.unset, nil, "40", false) == .register,
+                   "First launch: nobody has chosen, so the default registers and is marked")
+        assertTest(action(.on, "40", "40", true) == .none,
                    "Second launch after the marker is written: no unregister, no register, no write")
-        let afterUpdate = LoginItem.registrationAction(storedBuild: "40", currentBuild: "41",
-                                                       isEnabled: true, isConfigured: true)
-        assertTest(afterUpdate == .reRegister,
+        assertTest(action(.on, "40", "41", true) == .reRegister,
                    "Launch after a version change: exactly one unregister+register, then the marker moves")
-        let settled = LoginItem.registrationAction(storedBuild: "41", currentBuild: "41",
-                                                   isEnabled: true, isConfigured: true)
-        assertTest(settled == .none, "The launch after that is quiet again")
-        let unmarked = LoginItem.registrationAction(storedBuild: nil, currentBuild: "40",
-                                                    isEnabled: true, isConfigured: true)
-        assertTest(unmarked == .reRegister,
+        assertTest(action(.on, "41", "41", true) == .none, "The launch after that is quiet again")
+        assertTest(action(.on, nil, "40", true) == .reRegister,
                    "An enabled item with no marker is refreshed once, never left stale")
-        let off = LoginItem.registrationAction(storedBuild: "40", currentBuild: "40",
-                                               isEnabled: false, isConfigured: true)
-        assertTest(off == .register, "An item that is off is enabled, not re-registered")
+        assertTest(action(.on, "40", "41", false) == .register,
+                   "An item the person turned on that vanished after an update is restored once")
+        assertTest(action(.on, "40", "40", false) == .none,
+                   "An item removed in System Settings under this build stays removed")
+
+        // The person's own off is not overridden, ever — the state-flipping bug.
+        assertTest(action(.off, "40", "40", false) == .none,
+                   "Person enables, then disables: the next launch does nothing")
+        assertTest(action(.off, "39", "40", false) == .none,
+                   "A person's off survives a version change with no call")
+        assertTest(action(.off, nil, "40", true) == .none,
+                   "Even a stray enabled state never overrides a stored off")
+
+        // One-time migration from the old pair of facts to the tri-state.
+        assertTest(LoginItem.choiceValue(stored: "on", configured: false, isEnabled: false) == .on,
+                   "A stored on is never re-inferred")
+        assertTest(LoginItem.choiceValue(stored: nil, configured: true, isEnabled: false) == .off,
+                   "An old configured-but-off install migrates to a person's off")
+        assertTest(LoginItem.choiceValue(stored: nil, configured: true, isEnabled: true) == .on,
+                   "An old configured-and-on install migrates to on")
+        assertTest(LoginItem.choiceValue(stored: nil, configured: false, isEnabled: false) == .unset,
+                   "A fresh install has made no choice")
 
         print("\nSummary: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
