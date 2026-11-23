@@ -94,5 +94,7 @@ not proven: a version changing by itself on the Mac; physical print; the login a
 - Release body left as the 1.0.42 changelog text, **deliberately**: the body feeds the card's `notes`, so gate
   and scanner evidence stays in this receipt rather than on the owner's Launcher card. Printer's gate runs no
   `install-launch-check`; its launch proof is `app/test-signing.sh`, quoted above.
-- Private EdDSA key at `~/.kh-sparkle/com.theng12.printerstudio/private.key` (0600), never in the tree;
+- Signing key: the public half is the `SUPublicEDKey` in the shipped `Info.plist`, so the appcast signature can be
+  checked by anyone. The private half's location and its backup are deliberately not recorded here, because this
+  repository is public.
   only the public half is in `Info.plist`.
