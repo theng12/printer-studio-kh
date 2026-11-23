@@ -1,7 +1,7 @@
 # Vendored updater
 
 - `libkhsparkle.a` and `include/khsparkle.h` — the studio's updater shim, static, universal
-  (arm64 + x86_64), sha256 `62ca951049daf27ea60dec7cf468a079ef00adf1f00f17b2fef8853318db870e`.
+  (arm64 + x86_64), sha256 `818826a79d4e54885cbb5ad167f7425da8ba77436c6a5e277532f400aa1b4216`.
   Source and contract: `_orchestra/developer-system/sparkle-shim-20261123/`.
 - `Sparkle.framework` — Sparkle `2.10.1` (build `2065`), unmodified from
   <https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz>

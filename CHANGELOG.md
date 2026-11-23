@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.43 — 2026-11-23
+- The updater now finds this app's key file. The copy shipped in 1.0.42 could not read a "~" path, so it refused its own update before downloading anything; 1.0.42 still installs and works, it just cannot update itself. Nothing else changes.
+
 ## 1.0.42 — 2026-11-23
 - Printer Studio KH can now update itself. It asks the app to pause before it fetches anything, installs the new version, and reopens by itself; the count of jobs still running is the same number the update hold already reports. Nothing appears on screen — no sheet, no alert, no window: if an update can't run, it writes one line in the app's log saying why and carries on with the work you gave it.
 - This release also carries the 1.0.41 change unchanged: the update-hold key is the app's own file, and a key that other people could read, or one that is the wrong shape, is refused and named.

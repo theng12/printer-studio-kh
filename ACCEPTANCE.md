@@ -1,5 +1,15 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.43
+
+Fixes the vendored updater so the update path can actually run.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| The app finds its own key file when the path starts with `~` | Vendored shim is `818826a7…` (System's fixed build, `khsparkle.m:182` `expand_tilde()` via `getpwuid`); the shim's own harness case `token-home` runs with `HOME=$RUN/home` and passes only if the user record, not `$HOME`, resolved the path | Required on 1.0.43; the harness result is quoted in the receipt |
+| 1.0.42 keeps working and installing | Nothing about printing, the hold route or the bundle layout changed; version and build only | Required on 1.0.43 |
+| A version actually replacing itself | **NOT CHECKED** — the loop needs an install of 1.0.43 and a later published version; 1.0.42 cannot update itself and will not be patched retroactively | Not checked |
+
 ## Release scope: 1.0.42
 
 Printer Studio KH can update itself, through Sparkle behind the studio's shim. No screen changes.

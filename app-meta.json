@@ -3,5 +3,6 @@
   "bundle_id": "com.theng12.printerstudio",
   "type": "utility",
   "tagline": "Print from any device to a USB-only printer",
-  "description": "Makes a USB printer such as the HP LaserJet reachable from every device on your network, with per-device tokens, a test page and saved sticker sizes, and nothing to install on the printer."
+  "description": "Makes a USB printer such as the HP LaserJet reachable from every device on your network, with per-device tokens, a test page and saved sticker sizes, and nothing to install on the printer.",
+  "localFile": "Printer Studio KH-1.0.43.dmg"
 }
