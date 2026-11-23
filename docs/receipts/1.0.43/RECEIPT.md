@@ -13,18 +13,28 @@ gate exit: 0 — GATE PASS printer-studio 9682325557b7dcbaf8bab53b59833d57e8c081
   scanner: `tool studio-gate.sh 727408ba…91028 at _orchestra/tools/pinned/studio-gate-727408ba92f53258.sh`
   then `scan clean export of 9682325557b7dcbaf8bab53b59833d57e8c0812d`
 deep verify: `codesign --verify --deep --strict` exit 0, printed by the build step
-dist: kept at the retained pair once this release exists
-github release: NOT CREATED
-readback: NOT RUN
-feed readback: PENDING
+dist: 1.0.43 + 1.0.42 (1.0.41 moved to the Desktop trash with a manifest)
+github release: CREATED — https://github.com/theng12/printer-studio-kh/releases/tag/1.0.43, tag on the docs commit
+  `fd58427`, non-draft, stored asset `005579eb4851-Printer.Studio.KH-1.0.43.dmg`, GitHub digest
+  sha256:005579eb…90bc, 4,585,008 B
+readback: anonymous download of the release asset hashed to 005579eb4851b6345f0c2b05ce7b2cd21bdfdbf1250ea139567109c8f37290bc
+  at 4,585,008 bytes — the bytes the gate scanned; READBACK OK
+feed readback: PENDING the next feed pass — the row is System's; the release is the newest published in the repo,
+  which is what the generator reads
+appcast: `appcast.xml` at the repo root updated to offer 1.0.43 (commit `527f7b7`), signed from the published DMG
+  and verified `SIGNATURE OK`; serving is confirmed by the served-copy check below
 feed/appcast agreement: printer-studio-kh  appcast 200 → 1.0.42   feed row 1.0.42   ✓ agree — measured by this
   session 2026-11-23T15:20:47Z (feed `published_at` 15:07:48Z per U001); for most of tonight they did not,
   and that is exactly the mismatch a user cannot diagnose, so the measurement time is part of the claim.
+appcast served: https://theng12.github.io/printer-studio-kh/appcast.xml — fetched from the internet in this
+  session: 200, one item, `sparkle:shortVersionString` 1.0.43, served sha256
+  fe2d3df6f387c0d749f20eefd9bf32d7eacc077b0d0add968ea3737595dec93e; the served `edSignature` verified against
+  the published DMG (4,585,008 B, sha 005579eb…) → **SIGNATURE OK**
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 commits: gated commit 9682325; the docs commit that carries `docs/receipts/` follows it and differs only in
   `docs/receipts/` — check with `git diff --stat 9682325..<tag>`; the released image is the gated build
-retired: nothing yet
+retired: Printer Studio KH-1.0.41.dmg, with a manifest in $HOME/Desktop/_trash/printer-studio-kh/
 self-update: **enabled in code; the end-to-end loop still unproven** — 1.0.43 vendors the fixed shim
   (`818826a7…`, `expand_tilde()` via `getpwuid` at `khsparkle.m:182`), which the shim's harness proves on
   these exact bytes: `5/token-home-missing-names-path` passes with the expanded path printed in full
