@@ -223,6 +223,17 @@ echo "==> Bundled helper apps"
 sign_code "$APP" 'com.theng12.printerstudio'
 echo "==> Signed with $SIGNING_IDENTITY"
 
+# Prove the whole seal, nested helpers and filters included, before an installer
+# is made. --strict alone checks only the top-level code; a build that cannot
+# pass this is not one we can offer for an automatic install.
+verify_rc=0
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$APP" || verify_rc=$?
+echo "==> codesign --verify --deep --strict: exit $verify_rc"
+if [ "$verify_rc" -ne 0 ]; then
+  echo "FAIL: the app seal does not verify deeply (exit $verify_rc)" >&2
+  exit 1
+fi
+
 # A .dmg is the one file to send by AirDrop or Telegram: it holds the app, the
 # Read Me, and an Applications shortcut. Build with --dmg.
 if [ "${1:-}" = "--dmg" ] || [ "${2:-}" = "--dmg" ]; then
