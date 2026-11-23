@@ -215,6 +215,12 @@ final class AppState: ObservableObject {
             }
             return
         }
+        // Self-update rides the hold above: the shim asks the hold route before it fetches
+        // anything. Smoke runs returned above, so a launch test never reaches the network.
+        SparkleUpdate.start { [weak self] message in
+            self?.log(message, kind: .warning)
+        }
+
         log("Printer Studio KH started.")
         DispatchQueue.main.async { self.updateJobWatch() }
 

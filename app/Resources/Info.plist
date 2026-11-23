@@ -17,9 +17,13 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.41</string>
+	<string>1.0.42</string>
 	<key>CFBundleVersion</key>
-	<string>42</string>
+	<string>43</string>
+	<key>KHHoldTokenFile</key>
+	<string>~/Library/Application Support/PrinterStudio/hold-token</string>
+	<key>KHHoldURL</key>
+	<string>http://127.0.0.1:8642/api/maintenance/hold</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
@@ -41,5 +45,11 @@
 	<string>Printer Studio KH — keeps this Mac's shared printers reachable.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://theng12.github.io/printer-studio-kh/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>jXoi4O9Hd6VDB4hfKjiB1/T4/zW5v9J2bv5aZN+80pA=</string>
 </dict>
 </plist>

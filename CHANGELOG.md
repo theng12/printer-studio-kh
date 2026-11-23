@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.42 — 2026-11-23
+- Printer Studio KH can now update itself. It asks the app to pause before it fetches anything, installs the new version, and reopens by itself; the count of jobs still running is the same number the update hold already reports. Nothing appears on screen — no sheet, no alert, no window: if an update can't run, it writes one line in the app's log saying why and carries on with the work you gave it.
+- This release also carries the 1.0.41 change unchanged: the update-hold key is the app's own file, and a key that other people could read, or one that is the wrong shape, is refused and named.
+
 ## 1.0.41 — 2026-11-23
 - Printing is unchanged. The small handshake that lets an update pause the app now keeps its own key file and refuses one other people on the Mac could read, link from elsewhere, or wipe. Before, the app read that key from the old Updater folder and accepted whatever was there. An existing key moves across once, on its own, the first time the app starts; after that the old folder is never read again.
 - When a key is missing or unsafe, the app now says which of those it is — a missing file, a link, a folder, too large, empty, the wrong length, or permissions that are not yours alone — instead of simply refusing.

@@ -12,6 +12,7 @@ import plistlib, shutil, sys
 root, source = map(Path, sys.argv[1:])
 # The driver binary is built separately and may be untracked in the checkout.
 shutil.copytree(root / 'vendor/splix', source / 'vendor/splix', dirs_exist_ok=True)
+shutil.copytree(root / 'vendor/khsparkle', source / 'vendor/khsparkle', dirs_exist_ok=True)
 path = source / 'app/Resources/Info.plist'
 info = plistlib.loads(path.read_bytes())
 info['CFBundleShortVersionString'] += '-signing-check'

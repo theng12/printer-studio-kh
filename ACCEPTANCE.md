@@ -1,5 +1,19 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.42
+
+Printer Studio KH can update itself, through Sparkle behind the studio's shim. No screen changes.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| An update never interrupts work: the app is asked to pause before anything is fetched | The shim's own harness proves hold-before-fetch order and refuses on any status other than `200 {"safe":true}` (401, 405, 500, timeout); Printer's `app/test-maintenance-hold.sh` proves the route answers that shape and reports `in_flight` | Shim harness (17 assertions, exit 0) + hold suite; not re-run inside Printer's gate |
+| An update never puts anything on screen | The shim answers every Sparkle prompt with a custom `SPUUserDriver` that draws nothing; a path that cannot run silently is dismissed | Shim harness |
+| A refused or failed update says why, once, in the log, and work carries on | `SparkleUpdate.start` logs the rc and `kh_sparkle_last_error()` and leaves the app running; states 0 idle / 1 updating / 2 relaunching are logged | Required on 1.0.42; the log line is asserted from source, not photographed |
+| The app still starts with Sparkle embedded | `app/test-signing.sh` builds from the committed tree and launches it hidden through its own launchd job; a missing entitlement fails in dyld *before* `main`, so a live process is the proof | Required on 1.0.42 |
+| The seal holds with hardened runtime and the framework inside | `app/build.sh` signs Sparkle inside-out, then the app with `--options runtime --entitlements`; `codesign --verify --deep --strict` prints its exit and stops the build on failure | Required on 1.0.42 |
+| The bundle carries its own feed address, public key and hold route | Four keys in `app/Resources/Info.plist`; the private key stays at `~/.kh-sparkle/com.theng12.printerstudio/private.key` (0600) and is never in the tree | Required on 1.0.42 |
+| A new version actually replacing this one by itself | **NOT CHECKED** — the appcast is not published yet and no 1.0.43 exists to install. This is the release that makes self-update possible, not the proof that it ran | Not checked |
+
 ## Release scope: 1.0.41
 
 The update-hold key is the app's own, moved once, and an unsafe one is refused by name.

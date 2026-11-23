@@ -24,6 +24,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$ROOT/../dist"
+# Sparkle behind the studio's shim: a static library (nothing to embed), plus the
+# framework it loads at run time and the entitlement hardened runtime needs.
+SPARKLE="$ROOT/../vendor/khsparkle"
+SPARKLE_ENTITLEMENTS="$ROOT/Resources/PrinterStudio.entitlements"
+for sym in kh_sparkle_start kh_sparkle_last_error kh_sparkle_set_state_callback; do
+  /usr/bin/nm -gU "$SPARKLE/libkhsparkle.a" 2>/dev/null | /usr/bin/grep -q "_$sym\$" \
+    || { echo "FAIL: the vendored shim does not export $sym" >&2; exit 1; }
+done
 APP="$DIST/Printer Studio KH.app"
 BIN_NAME="PrinterStudio"
 MIN_MACOS="13.0"
@@ -78,8 +86,12 @@ for ARCH in arm64 x86_64; do
     -target "${ARCH}-apple-macos${MIN_MACOS}" \
     -framework SwiftUI \
     -framework AppKit \
+    -F "$SPARKLE" \
+    -framework Sparkle \
+    -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
     -o "$SLICES/$BIN_NAME.$ARCH" \
-    "${SOURCES[@]}"
+    "${SOURCES[@]}" \
+    -Xlinker -force_load -Xlinker "$SPARKLE/libkhsparkle.a"
 done
 
 /usr/bin/lipo -create \
@@ -160,6 +172,17 @@ else
   echo "!! warning: Resources/PrinterStudio.icns missing — run ./app/make-icon.sh" >&2
 fi
 
+# Sparkle lives in Contents/Frameworks with an @rpath load, signed from the inside out
+# before the app: a framework signed after its host breaks the host's seal.
+SPARKLE_FW="$APP/Contents/Frameworks/Sparkle.framework"
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$SPARKLE/Sparkle.framework" "$SPARKLE_FW"
+for nested in "Versions/B/XPCServices/Downloader.xpc" "Versions/B/XPCServices/Installer.xpc" \
+              "Versions/B/Updater.app" "Versions/B/Autoupdate" "Versions/B" "Versions/Current" "."; do
+  /usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --options runtime "$SPARKLE_FW/$nested"
+done
+echo "==> Bundled Sparkle and signed it from the inside out"
+
 # One helper executable, shipped in two small app bundles so every background
 # process shows the app's own name. Both are signed before the app seal.
 echo "==> Compiling Printer Studio KH Helper"
@@ -220,8 +243,10 @@ done
 echo "==> Bundled helper apps"
 
 # Nested code has already been signed; seal the app before creating its installer.
-sign_code "$APP" 'com.theng12.printerstudio'
-echo "==> Signed with $SIGNING_IDENTITY"
+/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --identifier 'com.theng12.printerstudio' \
+  --options runtime --entitlements "$SPARKLE_ENTITLEMENTS" "$APP"
+/usr/bin/codesign --verify --strict "$APP"
+echo "==> Signed with $SIGNING_IDENTITY (hardened runtime, library validation disabled for Sparkle)"
 
 # Prove the whole seal, nested helpers and filters included, before an installer
 # is made. --strict alone checks only the top-level code; a build that cannot
