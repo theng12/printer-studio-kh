@@ -1,0 +1,31 @@
+# Serves the update feed at https://theng12.github.io/printer-studio-kh/appcast.xml
+# That URL is baked into the shipped app's SUFeedURL, so the path cannot move.
+# Only appcast.xml is published: the legacy branch builder produced no builds here,
+# and publishing the whole repository as a website is not what this site is for.
+name: pages
+on:
+  push:
+    branches: [main]
+    paths: [appcast.xml, .github/workflows/pages.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: mkdir -p _site && cp appcast.xml _site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
