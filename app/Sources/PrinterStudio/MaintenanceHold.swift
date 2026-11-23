@@ -158,6 +158,82 @@ final class MaintenanceHold {
     static let resumedNotice = "Update hold released — Printer Studio KH is working again."
 }
 
+/// The updater's hold credential: where the app keeps it, and every way the
+/// file can be untrustworthy. Pure so the tests can drive it with temporary
+/// paths; production passes the real ones.
+enum HoldToken {
+    static let maxBytes = 512
+    static let legacyPath = NSHomeDirectory() + "/Library/KHUpdater/state/hold-token"
+    static let appPath = ShareFix.supportDirectory.appendingPathComponent("hold-token").path
+    static let markerPath = ShareFix.supportDirectory.appendingPathComponent(".hold-token-migrated").path
+
+    /// Where the app reads from: an explicit override, else its own file.
+    static var path: String {
+        ProcessInfo.processInfo.environment["PRINTER_STUDIO_HOLD_TOKEN_FILE"] ?? appPath
+    }
+
+    /// One-time move from the legacy location. The marker is what makes it
+    /// once: with it present the legacy file is never read again, so a later
+    /// legacy write can never replace the app's own token.
+    static func migrateIfNeeded() {
+        migrate(appPath: appPath, legacyPath: legacyPath, markerPath: markerPath)
+    }
+
+    static func migrate(appPath: String, legacyPath: String, markerPath: String) {
+        let files = FileManager.default
+        guard !files.fileExists(atPath: markerPath),
+              !files.fileExists(atPath: appPath),
+              let bytes = try? Data(contentsOf: URL(fileURLWithPath: legacyPath)) else { return }
+        // Created with its mode already set, then renamed into place: the secret is never on disk
+        // readable by others, not even for a moment, and a half-written copy never takes the real
+        // name. A leftover from a crash is cleared first so the move is retried.
+        let staging = appPath + ".migrating"
+        try? files.removeItem(atPath: staging)
+        guard files.createFile(atPath: staging, contents: bytes,
+                               attributes: [.posixPermissions: 0o600]),
+              rename(staging, appPath) == 0 else {
+            try? files.removeItem(atPath: staging)
+            NSLog("Printer Studio: could not move the update hold token to %@", appPath)
+            return
+        }
+        do {
+            try Data().write(to: URL(fileURLWithPath: markerPath), options: .atomic)
+            NSLog("Printer Studio: moved the update hold token from %@ to %@ (mode 600)", legacyPath, appPath)
+        } catch {
+            NSLog("Printer Studio: moved the update hold token but could not mark it done: %@", error.localizedDescription)
+        }
+    }
+
+    /// The one reason a token file cannot be trusted, so a refusal can say it in plain words.
+    struct Fault: Error { let reason: String }
+
+    /// The token, or the one reason the file cannot be trusted.
+    static func read(path: String) -> Result<String, Fault> {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return .failure(Fault(reason: "the token file is missing")) }
+        if (info.st_mode & S_IFMT) == S_IFLNK { return .failure(Fault(reason: "the token file is a symlink")) }
+        if (info.st_mode & S_IFMT) != S_IFREG { return .failure(Fault(reason: "the token is not a regular file")) }
+        if info.st_size > off_t(maxBytes) { return .failure(Fault(reason: "the token file is oversized")) }
+        let mode = info.st_mode & 0o777
+        if mode & 0o077 != 0 {
+            return .failure(Fault(reason: String(
+                format: "the token file is readable or writable by other users (mode %03o); it must be 600", mode)))
+        }
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return .failure(Fault(reason: "the token file cannot be read"))
+        }
+        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if token.isEmpty { return .failure(Fault(reason: "the token file is empty")) }
+        let hex = token.utf8.allSatisfy { byte in
+            (48...57).contains(byte) || (65...70).contains(byte) || (97...102).contains(byte)
+        }
+        guard token.utf8.count == 64, hex else {
+            return .failure(Fault(reason: "the token is not 64 hex characters"))
+        }
+        return .success(token)
+    }
+}
+
 /// The loopback HTTP the installer talks to. Only this Mac can pause the app: the listener binds
 /// 127.0.0.1 and nothing else, and the hold route takes the credential the updater sent, so a
 /// local process cannot pause or release the hold without the token file.
@@ -181,9 +257,14 @@ final class HoldServer {
          onResumed: @escaping () -> Void) {
         self.hold = hold
         self.port = port
-        self.tokenPath = tokenPath
-            ?? ProcessInfo.processInfo.environment["PRINTER_STUDIO_HOLD_TOKEN_FILE"]
-            ?? NSHomeDirectory() + "/Library/KHUpdater/state/hold-token"
+        if let tokenPath {
+            self.tokenPath = tokenPath
+        } else if let override = ProcessInfo.processInfo.environment["PRINTER_STUDIO_HOLD_TOKEN_FILE"] {
+            self.tokenPath = override
+        } else {
+            HoldToken.migrateIfNeeded()
+            self.tokenPath = HoldToken.appPath
+        }
         self.onHeld = onHeld
         self.onResumed = onResumed
     }
@@ -258,10 +339,24 @@ final class HoldServer {
 
         // The hold route takes the updater's credential; every other route stays open as before.
         if path == "/api/maintenance/hold" && (method == "POST" || method == "DELETE") {
-            let configured = configuredToken()
+            let result = HoldToken.read(path: tokenPath)
             let offered = Self.offeredCredential(request)
-            guard let configured, let offered, Self.sameToken(offered, configured) else {
-                Self.send(fd, status: 401, body: Data("{\"error\":\"unauthorized\"}".utf8))
+            let authorised: Bool
+            if case let .success(configured) = result, let offered {
+                authorised = Self.sameToken(offered, configured)
+            } else {
+                authorised = false
+            }
+            guard authorised else {
+                let reason: String
+                switch result {
+                case .failure(let fault): reason = fault.reason
+                case .success: reason = "the token does not match"
+                }
+                NSLog("Printer Studio: hold refused: %@", reason)
+                let body = (try? JSONSerialization.data(withJSONObject: ["error": reason]))
+                    ?? Data("{\"error\":\"unauthorized\"}".utf8)
+                Self.send(fd, status: 401, body: body)
                 return
             }
         }
@@ -291,15 +386,6 @@ final class HoldServer {
         default:
             Self.send(fd, status: 404, body: Data("{\"error\":\"not found\"}".utf8))
         }
-    }
-
-    /// The token the updater writes (0600, plain text) before it calls. Read once per request. A
-    /// missing or empty file means an old or absent updater that will never send the credential,
-    /// so refusing the hold is the safe direction — the updater fails closed on any non-200.
-    private func configuredToken() -> String? {
-        guard let text = try? String(contentsOfFile: tokenPath, encoding: .utf8) else { return nil }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     // MARK: HTTP

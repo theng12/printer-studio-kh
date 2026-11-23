@@ -1,5 +1,17 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.41
+
+The update-hold key is the app's own, moved once, and an unsafe one is refused by name.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| The hold reads the app's own key, and an existing one moves across once | `app/test-maintenance-hold.sh` — the copy keeps the bytes, lands at 0600, writes the `.hold-token-migrated` marker, a later legacy write cannot overwrite the app's own file, and no legacy file means no copy and no marker; the migration logs one line naming both paths | Required on 1.0.41 |
+| An unsafe key file is refused, and the refusal says which fault it is | Same suite — missing file named as "the token file is missing", mode 0644 names the mode it found and "it must be 600", 63 and 65 characters, non-hex, a symlink, a directory, over 512 bytes and an empty file each refused with their own words | Required on 1.0.41 |
+| The right key still works on POST and DELETE, a wrong one does not | Same suite — no token, a wrong token and a refused DELETE answer 401 and pause or release nothing; the right token answers 200 on POST and on DELETE; `app/test-maintenance-hold-live.sh` repeats it with a 64-hex key against the signed package, including a restart | Required on 1.0.41 |
+| `PRINTER_STUDIO_HOLD_TOKEN_FILE` still overrides the path | The live suite points the packaged app at its own temp key through that variable and both requests succeed | Required on 1.0.41 |
+| A physical print, the login after a restart, and a ten-minute idle footprint | **NOT CHECKED** — no printer paper was printed by a test, no restart was made on an installed copy, and the footprint was not measured over ten idle minutes | Not checked |
+
 ## Release scope: 1.0.40
 
 Card metadata only; printing code is unchanged from 1.0.39.

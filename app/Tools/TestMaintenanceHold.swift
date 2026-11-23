@@ -28,6 +28,8 @@ struct TestMaintenanceHold {
         aFreshStartOpens()
         theRouteOverRealHTTP()
         theReplyCountsWorkWhenItAnswers()
+        theTokenFileRules()
+        theTokenMigration()
 
         if failures > 0 {
             print("FAILED: \(failures) check(s)")
@@ -159,7 +161,7 @@ struct TestMaintenanceHold {
     // MARK: The route, over real HTTP
 
     static func theRouteOverRealHTTP() {
-        let token = "hold-test-\(UUID().uuidString)"
+        let token = hexToken()
         let tokenPath = writeToken(token, "route")
         let hold = MaintenanceHold()
         let server = HoldServer(hold: hold, port: 0, tokenPath: tokenPath,
@@ -227,8 +229,9 @@ struct TestMaintenanceHold {
             check("the no-token-file listener started", false)
             return
         }
-        let (noFile, _) = send("POST", "http://127.0.0.1:\(noFilePort)/api/maintenance/hold?timeout_s=0&pause_s=120")
+        let (noFile, noFileBody) = send("POST", "http://127.0.0.1:\(noFilePort)/api/maintenance/hold?timeout_s=0&pause_s=120")
         check("a missing token file refuses the hold", noFile == 401 && !holdNoFile.isPaused)
+        check("the refusal names the missing file", noFileBody["error"] as? String == "the token file is missing")
 
         // Only this Mac may pause the app: the listener binds 127.0.0.1, nothing else.
         if let outside = nonLoopbackIPv4() {
@@ -243,8 +246,9 @@ struct TestMaintenanceHold {
     /// taken: work that finished inside the window is not still running.
     static func theReplyCountsWorkWhenItAnswers() {
         let hold = MaintenanceHold()
+        let timingToken = hexToken()
         let server = HoldServer(hold: hold, port: 0,
-                                tokenPath: writeToken("hold-test-timing", "timing"),
+                                tokenPath: writeToken(timingToken, "timing"),
                                 onHeld: { _, _ in }, onResumed: { })
         guard let port = server.start() else {
             check("the listener started for the timing check", false)
@@ -255,18 +259,105 @@ struct TestMaintenanceHold {
             if let claim { hold.settle(claim) }
         }
         let (status, reply) = send("POST", "http://127.0.0.1:\(port)/api/maintenance/hold?timeout_s=3&pause_s=120",
-                                   timeout: 10, headers: ["X-Hub-Token": "hold-test-timing"])
+                                   timeout: 10, headers: ["X-Hub-Token": timingToken])
         check("a hold that settles inside its window answers 200", status == 200)
         check("finished work is not still counted as running", reply["in_flight"] as? Int == 0)
         check("the answer agrees with itself",
               reply["safe"] as? Bool == true && (reply["unsettled"] as? [String])?.isEmpty == true)
     }
 
-    /// A throwaway token file in the shape the updater writes it: plain text, one trailing line.
+    // MARK: The token file's rules
+
+    static func theTokenFileRules() {
+        let dir = NSTemporaryDirectory() + "hold-rules-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        func fault(_ path: String) -> String? {
+            if case let .failure(fault) = HoldToken.read(path: path) { return fault.reason }
+            return nil
+        }
+        let good = hexToken()
+
+        let ok = writeFile(good + "\n", dir + "/ok", 0o600)
+        check("a 64-hex 0600 file is accepted", (try? HoldToken.read(path: ok).get()) == good)
+        check("a missing file is named", fault(dir + "/absent") == "the token file is missing")
+
+        let loose = writeFile(good + "\n", dir + "/loose", 0o644)
+        let looseFault = fault(loose) ?? ""
+        check("mode 644 is refused naming the mode it found",
+              looseFault.contains("mode 644") && looseFault.contains("must be 600"))
+
+        let short = writeFile(String(good.prefix(63)), dir + "/short", 0o600)
+        check("63 characters are refused", fault(short) == "the token is not 64 hex characters")
+        let long = writeFile(good + "a", dir + "/long", 0o600)
+        check("65 characters are refused", fault(long) == "the token is not 64 hex characters")
+        let nonHex = writeFile(String(repeating: "z", count: 64), dir + "/nonhex", 0o600)
+        check("non-hex characters are refused", fault(nonHex) == "the token is not 64 hex characters")
+
+        let link = dir + "/link"
+        try? FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: ok)
+        check("a symlink is refused", fault(link) == "the token file is a symlink")
+        try? FileManager.default.createDirectory(atPath: dir + "/folder", withIntermediateDirectories: true)
+        check("a directory is refused", fault(dir + "/folder") == "the token is not a regular file")
+        let big = writeFile(String(repeating: "a", count: 513), dir + "/big", 0o600)
+        check("over 512 bytes is refused", fault(big) == "the token file is oversized")
+        let empty = writeFile("\n", dir + "/empty", 0o600)
+        check("an empty file is refused", fault(empty) == "the token file is empty")
+    }
+
+    static func theTokenMigration() {
+        let dir = NSTemporaryDirectory() + "hold-migrate-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let app = dir + "/hold-token", legacy = dir + "/legacy-hold-token", marker = dir + "/.hold-token-migrated"
+        let token = hexToken()
+        _ = writeFile(token + "\n", legacy, 0o600)
+
+        HoldToken.migrate(appPath: app, legacyPath: legacy, markerPath: marker)
+        check("the bytes are preserved", (try? String(contentsOfFile: app, encoding: .utf8)) == token + "\n")
+        let mode = (try? FileManager.default.attributesOfItem(atPath: app)[.posixPermissions] as? Int) ?? 0
+        check("the copy is 0600", mode == 0o600)
+        check("the marker is written", FileManager.default.fileExists(atPath: marker))
+
+        // A later legacy token, and a second launch: the app's own file wins.
+        _ = writeFile(hexToken() + "\n", legacy, 0o600)
+        HoldToken.migrate(appPath: app, legacyPath: legacy, markerPath: marker)
+        check("a later legacy token cannot overwrite the app's own",
+              (try? String(contentsOfFile: app, encoding: .utf8)) == token + "\n")
+
+        check("no half-written copy is left behind",
+              !FileManager.default.fileExists(atPath: app + ".migrating"))
+
+        // A staging copy left by an interrupted move is cleared, not treated as the token.
+        let later = hexToken()
+        _ = writeFile(later + "\n", legacy, 0o600)
+        let app3 = dir + "/hold-token-3", marker3 = dir + "/.marker-3"
+        _ = writeFile("stale", app3 + ".migrating", 0o600)
+        HoldToken.migrate(appPath: app3, legacyPath: legacy, markerPath: marker3)
+        check("a stale staging copy does not block the move", (try? HoldToken.read(path: app3).get()) == later)
+
+        // Nothing to move means nothing is invented.
+        let app2 = dir + "/hold-token-2", marker2 = dir + "/.marker-2"
+        HoldToken.migrate(appPath: app2, legacyPath: dir + "/absent", markerPath: marker2)
+        check("no legacy file means no copy and no marker",
+              !FileManager.default.fileExists(atPath: app2) && !FileManager.default.fileExists(atPath: marker2))
+    }
+
+    @discardableResult
+    static func writeFile(_ text: String, _ path: String, _ mode: Int) -> String {
+        try? Data(text.utf8).write(to: URL(fileURLWithPath: path))
+        try? FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
+        return path
+    }
+
+    /// A throwaway token file in the shape the updater writes it: 64 hex, 0600, one trailing line.
     static func writeToken(_ token: String, _ tag: String) -> String {
         let path = NSTemporaryDirectory() + "hold-token-\(tag)-\(UUID().uuidString)"
         try? Data((token + "\n").utf8).write(to: URL(fileURLWithPath: path))
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
         return path
+    }
+
+    static func hexToken() -> String {
+        (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "").lowercased()
     }
 
     // MARK: Helpers
@@ -323,5 +414,19 @@ struct TestMaintenanceHold {
             return text
         }
         return nil
+    }
+}
+
+/// This suite builds MaintenanceHold.swift on its own, so only the one ShareFix member that
+/// file uses is defined here. It resolves the same directory the app does.
+enum ShareFix {
+    static var supportDirectory: URL {
+        let environment = ProcessInfo.processInfo.environment
+        if let override = environment["PRINTER_STUDIO_TEST_DATA_DIR"]
+            ?? environment["PRINTER_STUDIO_SUPPORT_DIR"] {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/PrinterStudio", isDirectory: true)
     }
 }

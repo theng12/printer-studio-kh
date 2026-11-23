@@ -4,8 +4,9 @@
 # path's gate, and the loopback route over real HTTP. No window, no desktop, no printer.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-maintenance-hold-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$OUT"
+# Scratch lives under TMPDIR: the checkout's _trash link points into the owner's Desktop
+# trash, which he can empty at any time.
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-maintenance-hold.XXXXXX")"
 
 # The suite would pass with the wiring deleted, so the wiring itself is checked here: every
 # action path claims through the gate that refuses in plain words.

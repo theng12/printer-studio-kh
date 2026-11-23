@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.41 — 2026-11-23
+- Printing is unchanged. The small handshake that lets an update pause the app now keeps its own key file and refuses one other people on the Mac could read, link from elsewhere, or wipe. Before, the app read that key from the old Updater folder and accepted whatever was there. An existing key moves across once, on its own, the first time the app starts; after that the old folder is never read again.
+- When a key is missing or unsafe, the app now says which of those it is — a missing file, a link, a folder, too large, empty, the wrong length, or permissions that are not yours alone — instead of simply refusing.
+
 ## 1.0.40 — 2026-11-22
 - No change in how printing works. This release carries the app's card metadata: the Launcher now shows Printer Studio KH with its own description and Utility label instead of an unlabelled generic card.
 

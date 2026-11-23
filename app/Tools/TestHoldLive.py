@@ -26,7 +26,7 @@ def run(args):
     return subprocess.run(args, capture_output=True, text=True, timeout=30)
 
 
-def launch(app, work, token_path=None):
+def launch(app, work, token_path=None, data_dir=None):
     work.mkdir(parents=True, exist_ok=True)
     ready = work / 'ready.json'
     if ready.exists():
@@ -39,6 +39,9 @@ def launch(app, work, token_path=None):
         # The hold route takes the updater's credential; the test plays the updater and points
         # the app at the same token file.
         environment['PRINTER_STUDIO_HOLD_TOKEN_FILE'] = str(token_path)
+    if data_dir:
+        # No token override here: the app must find its own file, as an install does.
+        environment['PRINTER_STUDIO_TEST_DATA_DIR'] = str(data_dir)
     plist.write_bytes(plistlib.dumps({
         'Label': label,
         'ProgramArguments': [str(app / 'Contents/MacOS/PrinterStudio')],
@@ -111,7 +114,8 @@ def main():
     ]}
 
     # The test plays the updater: it writes the token file, then points the app at it.
-    token = 'hold-live-' + uuid.uuid4().hex
+    # The app refuses any token that is not exactly 64 hex characters.
+    token = uuid.uuid4().hex + uuid.uuid4().hex
     token_path = work / 'hold-token'
     token_path.write_text(token + '\n')
     token_path.chmod(0o600)
@@ -183,6 +187,25 @@ def main():
         record['checks'] = failures or ['all passed']
         record['secondRun'] = health
         record['restartedWithoutOperatorStep'] = True
+    finally:
+        stop(job)
+
+    # The app's own file with no token override: the path a real install reads.
+    support = work / 'support'
+    support.mkdir(parents=True, exist_ok=True)
+    own = support / 'hold-token'
+    own.write_text(token + '\n')
+    own.chmod(0o600)
+    job, health = launch(args.app.resolve(), work / 'run3', data_dir=support)
+    try:
+        port = health.get('holdPort', -1)
+        status, reply = request(port, 'POST', '/api/maintenance/hold?timeout_s=0&pause_s=60',
+                                headers={'X-Hub-Token': token})
+        check('the app reads its own Application Support token with no override',
+              status == 200 and reply.get('dispatch_paused_s') == 60, failures)
+        request(port, 'DELETE', '/api/maintenance/hold', headers={'X-Hub-Token': token})
+        record['ownPathToken'] = str(own)
+        record['checks'] = failures or ['all passed']
     finally:
         stop(job)
 
