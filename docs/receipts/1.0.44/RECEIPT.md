@@ -37,6 +37,10 @@ generator reads
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 commits: this is a single-commit release — the tag names the gated commit itself, no docs commit in front of it
+tag, peeled: `refs/tags/1.0.44` is an **annotated tag object** `0fdb756d61d7` that peels to
+  `refs/tags/1.0.44^{}` = `33b9d04a6db90153a2efc744e74357b126fc20d7`. Quote the peeled line, not the tag object —
+  `ls-remote` prints the object, which reads exactly like a tag on a docs commit (that is what 1.0.43 did). Row
+  `20261123-186`.
 tag rule: before the GitHub release exists, `git/ref/tags/1.0.44` must equal the gated sha and
   `git show 1.0.44:app-meta.json` must name 1.0.44 — 1.0.43 was tagged at a later receipts commit, which is the
   mistake this rule prevents
