@@ -37,11 +37,14 @@ commits: gated commit 9682325; the docs commit that carries `docs/receipts/` fol
 retired: Printer Studio KH-1.0.41.dmg, with a manifest in $HOME/Desktop/_trash/printer-studio-kh/
 self-update: **enabled in code; the end-to-end loop still unproven** — 1.0.43 vendors the fixed shim
   (`818826a7…`, `expand_tilde()` via `getpwuid` at `khsparkle.m:182`), which the shim's harness proves on
-  these exact bytes: `5/token-home-missing-names-path` passes with the expanded path printed in full
-  (`refused: hold token file missing or unreadable: $HOME/…/studio.kh.harness/missing-token`) — that line is the
-  expansion, visible in a refusal. **Not** `2b/token-home`: that case passes an absolute path, so it proves only
-  that an explicit token path reads, and the comment above it in the harness overclaims.
-not proven: a version changing by itself (needs an install of this build plus a later release); **the shipped
+  these exact bytes: `2b/token-home` and `5/token-home-missing-names-path` both pass, and both prove the expansion — checked in
+  the harness source rather than taken on report: the fixture plist carries the literal
+  `~/Library/Caches/studio.kh.harness/hold-token` (`scripts/build-harness.sh:84-88`), `hold_case`'s third
+  argument goes to the **server** not the app (`run-harness.sh:148-152`), and the app runs with `HOME` pointed at
+  a directory holding no token (`run-harness.sh:102`). So a pass can only come from `getpwuid` resolution; 2b
+  shows it by behaviour, 5 by printing the expanded path in a refusal. System's later `2b/token-home-plist`
+  assertion postdates this run, so it is not cited.
+not proven: a version changing by itself (needs an install of this build plus a later release)not proven: a version changing by itself (needs an install of this build plus a later release); **the shipped
   plist's own `~/…` resolving end to end on this Mac** — proving that needs a real launch of the app, which puts
   a menu-bar item on the owner's desktop and is not done without his word or a quiet point; physical print; the
   login after a restart; ten-minute idle footprint
