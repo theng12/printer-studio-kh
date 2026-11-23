@@ -26,6 +26,9 @@ github release: CREATED — https://github.com/theng12/printer-studio-kh/release
   gated commit itself** (`33b9d04`, checked before the release existed: `git rev-parse 1.0.44^{commit}` equals the
   gated sha, and `git show 1.0.44:app-meta.json` names 1.0.44), non-draft, stored asset
   `bcf5c0afbd05-Printer.Studio.KH-1.0.44.dmg`, GitHub digest sha256:bcf5c0af…4106, 4,589,034 B
+body: edited on 2026-11-24 to the changelog paragraph only — a hand-appended "Signed release from the KH
+  Studio feed." sign-off was removed. **Artifact and asset untouched; the DMG's sha is unchanged and the release
+  was not re-published**, so the words changed and the bytes did not.
 readback: anonymous download of the release asset hashed to bcf5c0afbd059e913cb647fb5f20f4f71be3bb31c65bdb87f9c4c285de794106
   at 4,589,034 bytes — the bytes the gate scanned; READBACK OK
 appcast served: https://theng12.github.io/printer-studio-kh/appcast.xml — fetched from the internet in this
