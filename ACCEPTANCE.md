@@ -1,5 +1,16 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.44
+
+The pressable update check reports the feed the updater actually uses.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| A failed check never reads as "up to date" | `app/test-update-checker.sh` — an appcast with no version, and garbage, both produce a failure with a reason; `appcastState` has no path that reports up to date without a parsed version | Required on 1.0.44 |
+| The version named is one the app will install, and the sentence says so | The appcast item produces `.offered`, worded "X is offered; it installs the next time the app starts" — never "X is available", because Sparkle may still decline on system version; an older item never offers a downgrade | Required on 1.0.44; the rendered sentence is asserted from source, not photographed |
+| The press is visible and ends | `check()` sets `.checking`, uses a 15 s request / 20 s resource bound, and every exit sets a terminal state; the button is disabled while checking; the footer shows the state and its age | Required on 1.0.44 |
+| The app's own feed is what is asked | `SUFeedURL` from the bundle is read first (`UpdateChecker.check`); the signed KH feed is only a fallback when no appcast address exists | Required on 1.0.44 |
+
 ## Release scope: 1.0.43
 
 Fixes the vendored updater so the update path can actually run.

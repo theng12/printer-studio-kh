@@ -106,6 +106,34 @@ struct TestUpdateChecker {
                                bundleID: bundleID, installed: "1.0") == .missingKey,
                    "No pinned key stops the check instead of using the file's key")
 
+        // The appcast is what Sparkle installs from, so the pressable check reads it first.
+        func appcast(_ versions: [String]) -> Data {
+            let items = versions.map { v in
+                "<item><title>\(v)</title><sparkle:shortVersionString>\(v)</sparkle:shortVersionString></item>"
+            }.joined()
+            return Data("<rss><channel>\(items)</channel></rss>".utf8)
+        }
+        assertTest(appcastState(appcastData: appcast(["1.0.43"]), installed: "1.0.43") == .upToDate,
+                   "An appcast offering the installed version is up to date")
+        assertTest(appcastState(appcastData: appcast(["1.0.42"]), installed: "1.0.43") == .upToDate,
+                   "An older appcast item never offers a downgrade")
+        assertTest(appcastState(appcastData: appcast(["1.0.42", "1.0.44"]), installed: "1.0.43") == .offered(version: "1.0.44"),
+                   "The newest item is what is offered")
+        assertTest(appcastState(appcastData: appcast(["1.0.45", "1.0.44"]), installed: "1.0.43") == .offered(version: "1.0.45"),
+                   "Item order does not matter; the highest wins")
+        if case .failed = appcastState(appcastData: Data("<rss></rss>".utf8), installed: "1.0.43") {
+            assertTest(true, "An appcast with no version fails instead of reading as up to date")
+        } else {
+            assertTest(false, "An appcast with no version fails instead of reading as up to date")
+        }
+        if case .failed = appcastState(appcastData: Data("not xml".utf8), installed: "1.0.43") {
+            assertTest(true, "Garbage fails instead of reading as up to date")
+        } else {
+            assertTest(false, "Garbage fails instead of reading as up to date")
+        }
+        assertTest(UpdateState.failed(reason: "x") != UpdateState.upToDate,
+                   "A failure is never equal to up to date")
+
         // The footer's age text: a finished check ages in plain words instead of
         // reading "just now" for as long as the app stays open.
         let checked = Date(timeIntervalSince1970: 1_600_000_000)

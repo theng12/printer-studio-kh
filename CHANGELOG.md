@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.44 — 2026-11-23
+- "Check for updates" now asks the same place the app updates from. Before, it still looked for the old updater's file and told you this Mac was "not connected to an Update Studio" — while the app was quietly updating itself from its own feed. It now says what that feed offers and that the update installs the next time the app starts. When it cannot check, it says so and why, instead of reporting that you are up to date.
+
 ## 1.0.43 — 2026-11-23
 - The updater now finds this app's key file. The copy shipped in 1.0.42 could not read a "~" path, so it refused its own update before downloading anything; 1.0.42 still installs and works, it just cannot update itself. Nothing else changes.
 

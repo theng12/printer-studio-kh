@@ -15,6 +15,8 @@ enum UpdateState: Equatable {
     case checking
     case upToDate
     case available(version: String)
+    /// The appcast's newest item. Worded so it never promises what Sparkle may decline.
+    case offered(version: String)
     case failed(reason: String)
 
     /// Fail closed: no pinned key, no update check. Never the file's key instead.
@@ -137,6 +139,41 @@ func updateState(feedData: Data, pinnedKey: String?, bundleID: String?, installe
     return offered.isNewer(than: installedVersion) ? .available(version: version) : .upToDate
 }
 
+/// The newest item in the app's own appcast — the feed Sparkle installs from.
+/// Deliberately narrow: it reads the version strings and nothing else, because
+/// Sparkle is what verifies the signature and decides whether this Mac can take it.
+func appcastOfferedVersion(_ data: Data) -> String? {
+    guard let text = String(data: data, encoding: .utf8) else { return nil }
+    var newest: (String, KhVersion)?
+    var search = text[...]
+    while let open = search.range(of: "<item>"), let close = search.range(of: "</item>", range: open.upperBound..<search.endIndex) {
+        let item = search[open.upperBound..<close.lowerBound]
+        if let start = item.range(of: "<sparkle:shortVersionString>"),
+           let end = item.range(of: "</sparkle:shortVersionString>", range: start.upperBound..<item.endIndex) {
+            let version = String(item[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = KhVersion.parse(version), newest.map({ parsed.isNewer(than: $0.1) }) ?? true {
+                newest = (version, parsed)
+            }
+        }
+        search = search[close.upperBound...]
+    }
+    return newest?.0
+}
+
+/// What the pressable check reports when the appcast is the source of truth.
+func appcastState(appcastData: Data, installed: String?) -> UpdateState {
+    guard let offeredVersion = appcastOfferedVersion(appcastData) else {
+        return .failed(reason: "the update feed has no version in it")
+    }
+    guard let offered = KhVersion.parse(offeredVersion) else {
+        return .failed(reason: "the update feed version is invalid")
+    }
+    guard let installed, let installedVersion = KhVersion.parse(installed) else {
+        return .failed(reason: "this app's installed version is invalid")
+    }
+    return offered.isNewer(than: installedVersion) ? .offered(version: offeredVersion) : .upToDate
+}
+
 /// How long ago the last finished check was, in words: "just now", "5 min ago",
 /// "1 hr 30 min ago", "2 days ago". A stored verdict must never read as live.
 func checkedAge(since lastChecked: Date, now: Date) -> String {
@@ -165,6 +202,7 @@ final class UpdateChecker: ObservableObject {
         case .checking: return "Checking..."
         case .upToDate: return "Checked \(age) · up to date"
         case .available(let version): return "Checked \(age) · \(version) is available"
+        case .offered(let version): return "Checked \(age) · \(version) is offered; it installs the next time the app starts"
         case .failed(let reason): return "Check failed: \(reason). Try again."
         }
     }
@@ -179,31 +217,52 @@ final class UpdateChecker: ObservableObject {
         state = .checking
         defer { if state != .checking { lastChecked = Date() } }
 
-        // Before the file or the network: the key comes from the bundle, or not at all.
+        let installed = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 20
+        configuration.urlCache = nil
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        // The app's own appcast is the feed Sparkle installs from. Asking it here
+        // means the sentence on screen is about the update this app will actually take.
+        if let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+           let feedURL = URL(string: feed) {
+            let data: Data
+            do {
+                let (responseData, response) = try await session.data(from: feedURL)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    state = .failed(reason: "the update feed could not be reached (HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1))")
+                    return
+                }
+                data = responseData
+            } catch {
+                state = .failed(reason: "the update feed could not be reached (\(error.localizedDescription))")
+                return
+            }
+            state = appcastState(appcastData: data, installed: installed)
+            return
+        }
+
+        // No appcast address in the bundle: fall back to the signed KH feed, if this Mac has one.
         guard let pinnedKey = PinnedPublisherKey.bundleValue() else {
             state = .missingKey
             return
         }
-
         let publisherURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/KHUpdater/publisher.json")
         guard let publisherData = try? Data(contentsOf: publisherURL),
               let publisher = PublisherFile.address(publisherData) else {
-            state = .failed(reason: "this Mac is not connected to an Update Studio")
+            state = .failed(reason: "this app has no update feed to check")
             return
         }
         if let named = publisher.publicKey, named != pinnedKey {
             NSLog("Printer Studio KH: publisher.json names a different update key; only the key built into this app is used.")
         }
 
-        // Info.plist carries the tailnet ATS exception this needs; the signature
-        // check below, not the transport, is what makes the feed trustworthy.
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 10
-        configuration.urlCache = nil
-        let session = URLSession(configuration: configuration)
-        defer { session.invalidateAndCancel() }
+        // Info.plist carries the tailnet ATS exception this needs; the pinned key, not
+        // the transport, is what makes a signed KH feed trustworthy.
         let data: Data
         do {
             let (responseData, response) = try await session.data(from: publisher.feedURL)
@@ -219,6 +278,6 @@ final class UpdateChecker: ObservableObject {
         state = updateState(feedData: data,
                             pinnedKey: pinnedKey,
                             bundleID: Bundle.main.bundleIdentifier,
-                            installed: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+                            installed: installed)
     }
 }
