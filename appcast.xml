@@ -6,15 +6,15 @@
     <description>Printer Studio KH releases</description>
     <language>en</language>
     <item>
-      <title>1.0.42</title>
-      <pubDate>Mon, 23 Nov 2026 21:10:00 +0700</pubDate>
-      <sparkle:version>43</sparkle:version>
-      <sparkle:shortVersionString>1.0.42</sparkle:shortVersionString>
+      <title>1.0.43</title>
+      <pubDate>Mon, 23 Nov 2026 22:30:00 +0700</pubDate>
+      <sparkle:version>44</sparkle:version>
+      <sparkle:shortVersionString>1.0.43</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[Printer Studio KH can now update itself. It asks the app to pause before it fetches anything, installs the new version, and reopens by itself.]]></description>
-      <enclosure url="https://github.com/theng12/printer-studio-kh/releases/download/1.0.42/61e2ea3bf605-Printer.Studio.KH-1.0.42.dmg"
-                 sparkle:edSignature="6hkIeh/7EuetXQzYpEJH2KXW3RJFzkgYEPKUZk/4Q/MN1N6ZwBCWtFVJWDA/p8HQEsLVSVjs5kCCtl/AqKTdCQ=="
-                 length="4585019"
+      <description><![CDATA[The updater now finds this app's key file, so it can install an update.]]></description>
+      <enclosure url="https://github.com/theng12/printer-studio-kh/releases/download/1.0.43/005579eb4851-Printer.Studio.KH-1.0.43.dmg"
+                 sparkle:edSignature="C6uDolGxzWY7J7vWl0sKyO2Hx/K0ax/Q5PZ9YoTYJUTEKVo4XPNZzc7p/Aw4TcrWuEXOGqwSmhUAo52gy/0YDg=="
+                 length="4585008"
                  type="application/octet-stream"/>
     </item>
   </channel>
