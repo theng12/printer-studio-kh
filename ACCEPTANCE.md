@@ -7,7 +7,7 @@ Card metadata only; printing code is unchanged from 1.0.39.
 | User task | Check and evidence | State |
 | --- | --- | --- |
 | The Launcher card names the app's description and Utility type | Feed readback after publish: `type` `utility` and the owner-approved description present on the `printer-studio` 1.0.40 row; both carried by hand with `--type`/`--description` because 0.1.80's guard is new | Required on 1.0.40 |
-| The shared page-sync refuses a missing current publisher | `app/packaging/page-sync.sh` — the mirror step exits 3 naming the missing `base/current` instead of falling back to `bin/khu`; committed with this release | Required on 1.0.40 |
+| The shared page-sync refuses a missing current publisher | `app/packaging/page-sync.sh` — the mirror step exits 3 naming the missing `base/current` instead of falling back to `bin/khu`; committed with this release | Shipped in 1.0.40; the script was retired 2026-11-23 with §0 superseded (kh-releases is feed-only, §2b) |
 
 ## Release scope: 1.0.39
 
