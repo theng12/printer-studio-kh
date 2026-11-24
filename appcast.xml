@@ -6,6 +6,18 @@
     <description>Printer Studio KH releases</description>
     <language>en</language>
     <item>
+      <title>1.0.45</title>
+      <pubDate>Tue, 24 Nov 2026 17:12:05 +0700</pubDate>
+      <sparkle:version>46</sparkle:version>
+      <sparkle:shortVersionString>1.0.45</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[Taking the app off this Mac now refuses to run without your confirmation, and the release check starts the app the installer actually ships.]]></description>
+      <enclosure url="https://github.com/theng12/printer-studio-kh/releases/download/1.0.45/c989484b69f7-Printer.Studio.KH-1.0.45.dmg"
+                 sparkle:edSignature="fs5HbFAZLkBbjixQGcmq8BwPEDA/zr/L5ZnZxm79DNf800XxOKEHUro+r2QPzBLe4wR48Wtpa2f1qR+e6hAlAA=="
+                 length="4597721"
+                 type="application/octet-stream"/>
+    </item>
+    <item>
       <title>1.0.44</title>
       <pubDate>Mon, 23 Nov 2026 23:25:00 +0700</pubDate>
       <sparkle:version>45</sparkle:version>
