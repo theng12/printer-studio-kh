@@ -53,6 +53,9 @@ publish state: **PUBLISHED.** The owner gave the authorisation in his own messag
   i won't. please publish it." — after the two refusals quoted under Run history below. The publish protection cleared on
   that message, because it is the user's own words in this transcript; this session then ran `gh release create 1.0.45`
   at 10:07Z itself, and the remaining steps ran in the order the coordinating session gave, each with its readback.
+publish rule: the coordinating session also relays the owner's standing rule — publish on a green gate without asking
+  again each time. Recorded as a peer relay, not as a message in this transcript; the words that cleared this session's
+  guard were his own ("oh. you run it. i won't. please publish it."), and that is what this publish rests on.
 release: https://github.com/theng12/printer-studio-kh/releases/tag/1.0.45 — non-draft, not a prerelease. Asset
   c989484b69f7-Printer.Studio.KH-1.0.45.dmg, GitHub digest
   sha256:c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124, 4,597,721 B.
