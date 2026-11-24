@@ -81,6 +81,8 @@ feed readback: **SERVED 1.0.45.** Read back from Pages (https://theng12.github.i
   feed published_at 2026-11-24T10:30:40Z. The row was still 1.0.44 when the release went up; the publisher's own pass
   moved it. Nothing on this Mac ran that pass (`~/Library/LaunchAgents/com.khupdater.agent.plist` points at
   `khu-stub` and is not loaded), so the row is cited as an observation, not as a step this session performed.
+page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
+dirty: false
 retired: Printer Studio KH-1.0.43.dmg (4,585,008 B) moved to
   $HOME/Desktop/_trash/printer-studio-kh/2026-11-24 1.0.43 retired/ with MANIFEST.md, after checks found nothing
   pointing at it (no appcast item, no app-meta pointer, no process, no mounted image).
