@@ -824,9 +824,31 @@ final class AppState: ObservableObject {
         log("Cancelling…")
     }
 
+    /// Set only by the confirmation in Settings. Consumed by the removal that uses it.
+    private var removalAuthorisation: RemovalGuard.Authorisation?
+
+    /// Called by the confirmation's destructive button, and by nothing else.
+    func authoriseRemoval() {
+        removalAuthorisation = RemovalGuard.issue()
+    }
+
+    /// The sentence the command path gives when it is reached without a confirmation.
+    static let removalRefusal = "Removal was refused: taking the app off this Mac needs the confirmation in Settings."
+
     /// Takes the app back off this Mac and then quits, so nothing it installed is
     /// left behind. Settings and saved sizes are the person's, and stay.
+    ///
+    /// It runs only with a confirmation this call did not make itself: the token the
+    /// Settings dialog issues is consumed here, and an expired or absent one is a refusal.
     func removeEverything() {
+        guard RemovalGuard.permits(removalAuthorisation) else {
+            removalAuthorisation = nil
+            log(AppState.removalRefusal, kind: .warning)
+            reportFeedback = AppState.removalRefusal
+            return
+        }
+        removalAuthorisation = nil
+
         // Taking the app off this Mac is the person's own choice and is never refused by a hold —
         // but it is counted, so a hold taken while it runs sees it.
         let claim = MaintenanceHold.shared.register("Removing Printer Studio KH from this Mac…")

@@ -2008,7 +2008,11 @@ struct SettingsView: View {
                         Button("Remove Printer Studio KH…") { confirmingRemoval = true }
                             .confirmationDialog("Remove Printer Studio KH from this Mac?",
                                                 isPresented: $confirmingRemoval) {
-                                Button("Remove", role: .destructive) { state.removeEverything() }
+                                Button("Remove", role: .destructive) {
+                                    // The command path asks for this token; the dialog is the only issuer.
+                                    state.authoriseRemoval()
+                                    state.removeEverything()
+                                }
                                 Button("Cancel", role: .cancel) {}
                             } message: {
                                 Text("The app quits when this finishes.")
