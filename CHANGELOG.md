@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.45 — 2026-11-24
+- "Remove from this Mac" now refuses to run without the confirmation. Before, the question was asked only by the button that starts it, so anything else that reached the same command — a shortcut, a script, a route added later — would have taken the app off your Mac without asking. Reaching the command any other way now says so instead of removing anything.
+- The app is checked as the shipped installer, not only as a build: the release check now mounts the finished disk image and confirms the app in it starts.
+- Screenshots of the main screens are now in the app's own repository.
+
 ## 1.0.44 — 2026-11-23
 - "Check for updates" now asks the same place the app updates from. Before, it still looked for the old updater's file and told you this Mac was "not connected to an Update Studio" — while the app was quietly updating itself from its own feed. It now says what that feed offers and that the update installs the next time the app starts. When it cannot check, it says so and why, instead of reporting that you are up to date.
 

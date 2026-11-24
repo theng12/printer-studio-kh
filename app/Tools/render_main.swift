@@ -635,14 +635,28 @@ struct PageRenderHarness {
     static func makeFixtureState() -> AppState {
         let state = AppState()
 
-        let hp107 = Printer(name: "HP_Laser_107a", description: "HP Laser 107a", state: "idle", enabled: true, accepting: true,
-                            deviceURI: "usb://HP/Laser%20107a?serial=SN107AUSB", makeAndModel: "HP Laser 107a",
+        // Screenshot runs show invented printers. A released image is public, so it must never
+        // carry a real printer's name, model or address; the layout checks keep the familiar one.
+        let shots = ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_SCREENSHOTS"] == "1"
+        let n1 = shots ? "Studio_Printer_One" : "HP_Laser_107a"
+        let d1 = shots ? "Studio Printer One" : "HP Laser 107a"
+        let u1 = shots ? "usb://Studio/Printer%20One?serial=DEMO0001" : "usb://HP/Laser%20107a?serial=SN107AUSB"
+        let n2 = shots ? "Studio_Printer_Two" : "HP_Laser_108w"
+        let d2 = shots ? "Studio Printer Two" : "HP Laser 108w"
+        let u2 = shots ? "ipps://Studio%20Printer%20Two._ipps._tcp.local./" : "ipps://HP%20Laser%20108w._ipps._tcp.local./"
+        let n3 = shots ? "Label_Printer" : "Xprinter_Label"
+        let d3 = shots ? "Label Printer" : "Xprinter Label"
+        let u3 = shots ? "usb://Label/Printer?serial=DEMO0003" : "usb://Xprinter/XP-365B?serial=XPLABEL01"
+        let m3 = shots ? "Label Printer 4 inch" : "Xprinter XP-365B Label"
+
+        let hp107 = Printer(name: n1, description: d1, state: "idle", enabled: true, accepting: true,
+                            deviceURI: u1, makeAndModel: d1,
                             isShared: true, hasUserACL: true)
-        let hp108 = Printer(name: "HP_Laser_108w", description: "HP Laser 108w", state: "idle", enabled: true, accepting: true,
-                            deviceURI: "ipps://HP%20Laser%20108w._ipps._tcp.local./", makeAndModel: "HP Laser 108w",
+        let hp108 = Printer(name: n2, description: d2, state: "idle", enabled: true, accepting: true,
+                            deviceURI: u2, makeAndModel: d2,
                             isShared: true, hasUserACL: false)
-        let xprinter = Printer(name: "Xprinter_Label", description: "Xprinter Label", state: "stopped", enabled: false, accepting: true,
-                               deviceURI: "usb://Xprinter/XP-365B?serial=XPLABEL01", makeAndModel: "Xprinter XP-365B Label",
+        let xprinter = Printer(name: n3, description: d3, state: "stopped", enabled: false, accepting: true,
+                               deviceURI: u3, makeAndModel: m3,
                                isShared: false, hasUserACL: false)
 
         state.printers = [hp107, hp108, xprinter]
@@ -663,8 +677,8 @@ struct PageRenderHarness {
         ]
 
         // 2 USB devices where one is duplicated
-        let usb1 = USBDevice(name: "HP Laser 107a", vendorID: "0x03f0", productID: "0xe82a")
-        let usb2dup = USBDevice(name: "HP Laser 107a", vendorID: "0x03f0", productID: "0xe82a")
+        let usb1 = USBDevice(name: d1, vendorID: "0x03f0", productID: "0xe82a")
+        let usb2dup = USBDevice(name: d1, vendorID: "0x03f0", productID: "0xe82a")
         state.usbDevices = [usb1, usb2dup]
         state.printerHeldByIPPUSB = false
         state.airPrintInstalled = true
@@ -679,12 +693,12 @@ struct PageRenderHarness {
         ]
 
         state.labelQueues = [
-            (queue: "HP_Laser_107a", isLabel: false),
-            (queue: "Xprinter_Label", isLabel: true),
+            (queue: n1, isLabel: false),
+            (queue: n3, isLabel: true),
         ]
         state.offeredSizes = [
-            "HP_Laser_107a": ["A4", "A5", "Letter"],
-            "Xprinter_Label": ["psz1000x1500-shipping4x6", "psz500x300-small", "w288h432"],
+            n1: ["A4", "A5", "Letter"],
+            n3: ["psz1000x1500-shipping4x6", "psz500x300-small", "w288h432"],
         ]
 
         let hpChoices = [
@@ -693,26 +707,26 @@ struct PageRenderHarness {
             PageSizeInstaller.PaperChoice(key: "Letter", label: "Letter — 215.9 × 279.4 mm", widthMM: 215.9, heightMM: 279.4),
         ]
         state.paperChoices = [
-            "HP_Laser_107a": hpChoices,
-            "HP_Laser_108w": [
+            n1: hpChoices,
+            n2: [
                 PageSizeInstaller.PaperChoice(key: "A4", label: "A4 — 210.0 × 297.0 mm", widthMM: 210, heightMM: 297),
                 PageSizeInstaller.PaperChoice(key: "Letter", label: "Letter — 215.9 × 279.4 mm", widthMM: 215.9, heightMM: 279.4),
             ],
-            "Xprinter_Label": [
+            n3: [
                 PageSizeInstaller.PaperChoice(key: "psz1000x1500-shipping4x6", label: "Shipping 4x6 — 100.0 × 150.0 mm", widthMM: 100, heightMM: 150),
             ],
         ]
         state.selectedPaper = [
-            "HP_Laser_107a": "A4",
-            "HP_Laser_108w": "A4",
+            n1: "A4",
+            n2: "A4",
             "Xprinter_Label": "psz1000x1500-shipping4x6",
         ]
         state.printerNameDrafts = [:]
 
         // unfinished jobs with a duplicate
         state.unfinishedJobs = [
-            "HP_Laser_107a-42 alice 102400 bytes",
-            "HP_Laser_107a-42 alice 102400 bytes",
+            "\(n1)-42 alice 102400 bytes",
+            "\(n1)-42 alice 102400 bytes",
         ]
 
         // activity with repeated identical entries

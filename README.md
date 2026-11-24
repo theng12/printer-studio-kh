@@ -25,6 +25,25 @@ Four separate problems had to be solved to get there, all documented in
    `usb` backend cannot open it and the queue sits at "The printer is offline"
    forever. Releasing the device is what makes it work at all.
 
+## Screenshots
+
+The printers screen, with the per-printer controls it exists to give you:
+
+![The Printers screen: a card per printer with its paper size, sharing state and Test page button](docs/screenshots/printers-light.png)
+
+Settings, where the job alerts and the voice for them are chosen:
+
+![Settings: job alerts, announcement voice and the maintenance actions](docs/screenshots/settings-light.png)
+
+The rest of the set, from the same build:
+
+- [Overview in light](docs/screenshots/overview-light.png) — the status summary the app opens on.
+- [Printers in dark](docs/screenshots/printers-dark.png) — the same printers screen in dark mode.
+
+All four were rendered from the build this repository ships, offscreen, with demo printers
+("Studio Printer One", "Studio Printer Two", "Label Printer") in a throwaway data directory —
+no real printer's name, address or model appears in them.
+
 ## What it does
 
 ### 1. Sets up the HP Laser 107a

@@ -1,5 +1,18 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.45
+
+One destructive path is closed, the shipped installer is now checked before a release is called
+green, and the app's idle behaviour is measured rather than assumed. No screen layout changed.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| Taking the app off this Mac cannot happen without the confirmation | `app/test-removal-guard.sh` runs the decision (no confirmation, stale, and future-dated are all refused; a fresh one inside the window permits) and reads the wiring (the command path asks `RemovalGuard.permits`, the refusal reaches the person, the token is consumed by the attempt, and the Settings dialog is the only issuer). A second entry point into `removeEverything()` fails the source half | Required on 1.0.45; the guard is proven by the harness, the click behind it is not photographed |
+| The app the installer ships actually starts | The pinned `install-launch-check-847e77db5c99d5d6.sh` mounts `dist/Printer Studio KH-1.0.45.dmg`, copies the `.app` out of the image, launches it hidden with its own data dir, and requires a live pid, the version read back from the installed copy, and no new crash report. It is a blocking gate step and consumes the released image, never the build tree | Required on 1.0.45 |
+| The app is quiet when nobody is using it | A hidden full instance (`PRINTER_STUDIO_NO_WINDOW=1`, own data dir) idles ten minutes: `check-idle-footprint.sh <pid> 500 600` for the footprint, and ports, open files and threads sampled at both ends to prove they are flat. SIGTERM then ends it inside the bound, with no crash report and no pause left behind | Required on 1.0.45; numbers in the receipt, measurement in `lead/1.0.45-20261123/` |
+| The store page shows what the app looks like | `check-app-screenshots.sh` — four images in `docs/screenshots/`, each ≤400 KB, named `<screen>-<light\|dark>.png`, referenced from `README.md`, and clean in their own metadata and visible text. Rendered offscreen from the shipping build with invented printers | Required on 1.0.45 |
+| A physical print, a login after a restart | **NOT CHECKED** — no paper was printed by this release and no restart was made on an installed copy. Neither is in this release's scope | Not checked |
+
 ## Release scope: 1.0.44
 
 The pressable update check reports the feed the updater actually uses.

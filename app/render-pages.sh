@@ -161,7 +161,11 @@ if old_onchange in text:
 p.write_text(text)
 PY
 
-SDK_PATH=$(xcrun --show-sdk-path --sdk macosx 2>/dev/null || true)
+# The default CLT SDK (27.2) declares SwiftUI's @State as a macro whose plugin ships only with
+# Xcode, so sources that use @State do not compile against it. build.sh pins the newest SDK that
+# can; the harness must compile the same way or it fails on code the app builds fine.
+SDK_PATH=$(xcrun --show-sdk-path --sdk macosx26.5 2>/dev/null || true)
+[ -n "$SDK_PATH" ] || SDK_PATH=$(xcrun --show-sdk-path --sdk macosx 2>/dev/null || true)
 if [ -z "$SDK_PATH" ]; then
   echo "could not locate macOS SDK" >&2
   exit 1
