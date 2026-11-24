@@ -50,14 +50,20 @@ login item: registered: **no** — the system's own database has no row for this
   registration here that could have lost its approval. Needs a Mac where the login item was registered before
   2026-11-19; Printer's own install is the Launcher's job.
 publish state: **PUBLISHED.** The owner gave the authorisation in his own message in this transcript — "oh. you run it.
-  i won't. please publish it." — after the two refusals quoted under Run history below. The remaining steps ran in the
-  order the coordinating session gave, each with its readback.
+  i won't. please publish it." — after the two refusals quoted under Run history below. The publish protection cleared on
+  that message, because it is the user's own words in this transcript; this session then ran `gh release create 1.0.45`
+  at 10:07Z itself, and the remaining steps ran in the order the coordinating session gave, each with its readback.
 release: https://github.com/theng12/printer-studio-kh/releases/tag/1.0.45 — non-draft, not a prerelease. Asset
   c989484b69f7-Printer.Studio.KH-1.0.45.dmg, GitHub digest
   sha256:c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124, 4,597,721 B.
 readback: anonymous download (curl, no token) of the release asset hashed to
   c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124 at 4,597,721 bytes — the bytes the gate scanned;
   READBACK OK. `gh release view` reports isDraft false, isPrerelease false, and the same digest.
+anonymous download  https://github.com/theng12/printer-studio-kh/releases/download/1.0.45/c989484b69f7-Printer.Studio.KH-1.0.45.dmg
+                   -> HTTP 200, 4,597,721 B, sha256 c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124
+appcast item       -> SIGNATURE OK over that downloaded copy
+  Everyone can fetch the file, and the signature is over the bytes they fetch — not over a local file that happens to
+  share a name. The copy signed here was the anonymous download in the line above; the build-tree file was never signed.
 appcast: item added on main (1cff57e), signed over the **downloaded published DMG**, not the build-tree copy, with
   ~/.kh-sparkle/com.theng12/printerstudio/private.key. Verified twice, the producer not grading its own work:
   1. `_orchestra/tools/appcast-verify.sh` → `PASS signature verifies against this artifact`, rc=0;
