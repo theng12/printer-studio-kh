@@ -49,8 +49,14 @@ login item: registered: **no** — the system's own database has no row for this
   Re-approval after the 2026-11-19 certificate reissue: UNMEASURED — with nothing registered there is no earlier
   registration here that could have lost its approval. Needs a Mac where the login item was registered before
   2026-11-19; Printer's own install is the Launcher's job.
-feed readback: PENDING — nothing was uploaded in this task (publish not authorised), so there is no feed row and no
-  readback to make. No appcast item, no GitHub release, no push.
+publish state: **HALTED before the public release.** `main` (a7701c6), branch `release/1.0.45` and tag `1.0.45`
+  (peeled `e376d6900a54cfaaab6a1cdd36e1900f2e552c32`) are pushed. `release-preflight.sh` 314a5fd3241d (plugin
+  0.3.307) ended `PREFLIGHT PASS` — scan receipt bound to c989484b and clean, no GitHub release yet, feed serving
+  1.0.44, words and hold pair present, screenshots PASS. The GitHub release itself was refused by the session's own
+  publish protection: a peer session's instruction cannot authorise a public-surface action, and this task's brief
+  said not to publish. Nothing else was uploaded: no release asset, no appcast item, no feed row.
+feed readback: PENDING — no release asset exists yet, so there is nothing to read back. The appcast must name the
+  release asset URL, so it is committed only after the asset exists.
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 retired: Printer Studio KH-1.0.45.dmg from gate run gate-20261124-152857-22737 (the run that failed studio-scan on
@@ -58,8 +64,8 @@ retired: Printer Studio KH-1.0.45.dmg from gate run gate-20261124-152857-22737 (
   with a MANIFEST.md; it was never published and nothing referred to it. No released version was retired: dist
   still holds 1.0.43, 1.0.44 and 1.0.45, and the current+previous pair is settled at publish time.
 dist: 1.0.45 + 1.0.44 retained; 1.0.43 retires at publish once 1.0.45 is verified
-github release: NOT CREATED — no publish in this task
-tag: NOT CREATED — the tag is made at publish, on the gated commit itself
+github release: NOT CREATED — blocked pending the owner naming this release and repository (see publish state)
+tag: `1.0.45` — annotated, peels to e376d69; `git show 1.0.45:app-meta.json` names 1.0.45. Pushed.
 not proven: a physical print; the login after a restart (needs the owner to restart this Mac); the idle number's
   coverage — a hidden run returns before the job watcher and Sparkle start, so 22 MB is the app's floor, not a
   claim about a full session; SIGTERM with work in flight (unisolatable today, unchanged from 1.0.40); the
