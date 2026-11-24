@@ -69,6 +69,8 @@ feed readback: **PENDING** at the moment of writing — the Launcher feed row st
   (published_at 2026-11-24T10:02:07Z, url …/1.0.44/, sha bcf5c0af…) because its publisher runs on its own pass after the
   GitHub release exists. It must serve version 1.0.45 with the tagline "Print from any device to a USB-only printer" and
   sha c989484b… before this release is called closed.
+page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
+dirty: false
 retired: Printer Studio KH-1.0.43.dmg (4,585,008 B) moved to
   $HOME/Desktop/_trash/printer-studio-kh/2026-11-24 1.0.43 retired/ with MANIFEST.md, after checks found nothing
   pointing at it (no appcast item, no app-meta pointer, no process, no mounted image).
