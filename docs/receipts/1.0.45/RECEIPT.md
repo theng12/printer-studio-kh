@@ -74,14 +74,13 @@ appcast: item added on main (1cff57e), signed over the **downloaded published DM
      200, application/xml, 2,046 bytes, `<title>1.0.45</title>` present, enclosure
      …/releases/download/1.0.45/c989484b69f7-Printer.Studio.KH-1.0.45.dmg, length 4597721 — and the signature in that
      served file verified against the downloaded artifact → `PASS signature verifies against this artifact`, rc=0.
-feed readback: **PENDING — external dependency, named.** The Launcher feed row (`kh-releases/release.json`, read
-  decoded from Pages) still reads version 1.0.44, tagline "Print from any device to a USB-only printer", sha
-  bcf5c0af…, url …/1.0.44/, published_at 2026-11-24T10:02:07Z. It updates when the publisher runs its next pass, and
-  nothing here can make that pass: `~/Library/LaunchAgents/com.khupdater.agent.plist` runs `~/Library/KHUpdater/bin/khu-stub`
-  (a stub, not the publisher) and is not loaded (`launchctl print gui/501/com.khupdater.agent` → could not find service).
-  The row must show version 1.0.45, the tagline and sha c989484b… before this release is closed.
-page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
-dirty: false
+feed readback: **SERVED 1.0.45.** Read back from Pages (https://theng12.github.io/kh-releases/release.json, decoded
+  from the signed envelope) at 10:31Z: version `1.0.45`, tagline "Print from any device to a USB-only printer", sha
+  matching c989484b…, url
+  https://github.com/theng12/printer-studio-kh/releases/download/1.0.45/c989484b69f7-Printer.Studio.KH-1.0.45.dmg,
+  feed published_at 2026-11-24T10:30:40Z. The row was still 1.0.44 when the release went up; the publisher's own pass
+  moved it. Nothing on this Mac ran that pass (`~/Library/LaunchAgents/com.khupdater.agent.plist` points at
+  `khu-stub` and is not loaded), so the row is cited as an observation, not as a step this session performed.
 retired: Printer Studio KH-1.0.43.dmg (4,585,008 B) moved to
   $HOME/Desktop/_trash/printer-studio-kh/2026-11-24 1.0.43 retired/ with MANIFEST.md, after checks found nothing
   pointing at it (no appcast item, no app-meta pointer, no process, no mounted image).
