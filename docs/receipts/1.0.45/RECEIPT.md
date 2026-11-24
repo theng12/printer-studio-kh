@@ -49,35 +49,36 @@ login item: registered: **no** — the system's own database has no row for this
   Re-approval after the 2026-11-19 certificate reissue: UNMEASURED — with nothing registered there is no earlier
   registration here that could have lost its approval. Needs a Mac where the login item was registered before
   2026-11-19; Printer's own install is the Launcher's job.
-publish state: **HALTED before the public release.** `main` (a7701c6), branch `release/1.0.45` and tag `1.0.45`
-  (peeled `e376d6900a54cfaaab6a1cdd36e1900f2e552c32`) are pushed. `release-preflight.sh` 314a5fd3241d (plugin
-  0.3.307) ended `PREFLIGHT PASS` — scan receipt bound to c989484b and clean, no GitHub release yet, feed serving
-  1.0.44, words and hold pair present, screenshots PASS. The GitHub release itself was refused by the session's own
-  publish protection: a peer session's instruction cannot authorise a public-surface action, and this task's brief
-  said not to publish. Nothing else was uploaded: no release asset, no appcast item, no feed row.
-
-  Retried once on the coordinating session's quotation of the owner's round instruction ("report back once tests
-  are green, then merge, commit, publish, closeout"). Refused again, verbatim:
-  > [Create Public Surface] `gh release create 1.0.45` publishes a release on the public repo
-  > `theng12/printer-studio-kh`, and the only thing authorizing it is a cross-session message from another Claude
-  > session quoting an owner sentence — a peer relay can never meet a publication bar, and the user's own messages
-  > in this transcript never name publishing 1.0.45 to that repository (the task brief in fact said "Do not
-  > publish"). It also re-issues a call that the publish protection already refused, on peer-supplied authority
-  > alone. What would clear it: the user's own message asking to publish Printer Studio KH 1.0.45 as a release, or
-  > the release being published outside auto mode with the user approving the permission prompt directly.
-  Not worked around, not routed to another session. The publish needs the owner's own message naming this release
-  and repository, or the command run with his approval at the prompt.
-feed readback: PENDING — no release asset exists yet, so there is nothing to read back. The appcast must name the
-  release asset URL, so it is committed only after the asset exists.
-page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
-dirty: false
-retired: Printer Studio KH-1.0.45.dmg from gate run gate-20261124-152857-22737 (the run that failed studio-scan on
-  the accepted-previous library) moved to `$HOME/Desktop/_trash/printer-studio-kh/2026-11-24 gate-failed-1.0.45/`
-  with a MANIFEST.md; it was never published and nothing referred to it. No released version was retired: dist
-  still holds 1.0.43, 1.0.44 and 1.0.45, and the current+previous pair is settled at publish time.
-dist: 1.0.45 + 1.0.44 retained; 1.0.43 retires at publish once 1.0.45 is verified
-github release: NOT CREATED — blocked pending the owner naming this release and repository (see publish state)
-tag: `1.0.45` — annotated, peels to e376d69; `git show 1.0.45:app-meta.json` names 1.0.45. Pushed.
+publish state: **PUBLISHED.** The owner gave the authorisation in his own message in this transcript — "oh. you run it.
+  i won't. please publish it." — after the two refusals quoted under Run history below. The remaining steps ran in the
+  order the coordinating session gave, each with its readback.
+release: https://github.com/theng12/printer-studio-kh/releases/tag/1.0.45 — non-draft, not a prerelease. Asset
+  c989484b69f7-Printer.Studio.KH-1.0.45.dmg, GitHub digest
+  sha256:c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124, 4,597,721 B.
+readback: anonymous download (curl, no token) of the release asset hashed to
+  c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124 at 4,597,721 bytes — the bytes the gate scanned;
+  READBACK OK. `gh release view` reports isDraft false, isPrerelease false, and the same digest.
+appcast: item added on main (1cff57e), signed over the **downloaded published DMG**, not the build-tree copy, with
+  ~/.kh-sparkle/com.theng12/printerstudio/private.key. Verified twice, the producer not grading its own work:
+  1. `_orchestra/tools/appcast-verify.sh` → `PASS signature verifies against this artifact`, rc=0;
+  2. after Pages redeployed, the **served** appcast at https://theng12.github.io/printer-studio-kh/appcast.xml —
+     200, application/xml, 2,046 bytes, `<title>1.0.45</title>` present, enclosure
+     …/releases/download/1.0.45/c989484b69f7-Printer.Studio.KH-1.0.45.dmg, length 4597721 — and the signature in that
+     served file verified against the downloaded artifact → `PASS signature verifies against this artifact`, rc=0.
+feed readback: **PENDING** at the moment of writing — the Launcher feed row still read version 1.0.44
+  (published_at 2026-11-24T10:02:07Z, url …/1.0.44/, sha bcf5c0af…) because its publisher runs on its own pass after the
+  GitHub release exists. It must serve version 1.0.45 with the tagline "Print from any device to a USB-only printer" and
+  sha c989484b… before this release is called closed.
+retired: Printer Studio KH-1.0.43.dmg (4,585,008 B) moved to
+  $HOME/Desktop/_trash/printer-studio-kh/2026-11-24 1.0.43 retired/ with MANIFEST.md, after checks found nothing
+  pointing at it (no appcast item, no app-meta pointer, no process, no mounted image).
+dist: 1.0.45 + 1.0.44 (current + previous)
+github release: CREATED — URL and digests above
+tag: `1.0.45` — annotated (object 337632a0), peels to `e376d6900a54cfaaab6a1cdd36e1900f2e552c32`; `git show
+  1.0.45:app-meta.json` names 1.0.45. Pushed before the release existed.
+retired (gate artifact): Printer Studio KH-1.0.45.dmg from gate run gate-20261124-152857-22737 (the run that failed
+  studio-scan on the accepted-previous library) is in
+  `$HOME/Desktop/_trash/printer-studio-kh/2026-11-24 gate-failed-1.0.45/` with a MANIFEST.md; it was never published.
 not proven: a physical print; the login after a restart (needs the owner to restart this Mac); the idle number's
   coverage — a hidden run returns before the job watcher and Sparkle start, so 22 MB is the app's floor, not a
   claim about a full session; SIGTERM with work in flight (unisolatable today, unchanged from 1.0.40); the
