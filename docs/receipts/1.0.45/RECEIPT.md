@@ -71,10 +71,12 @@ appcast: item added on main (1cff57e), signed over the **downloaded published DM
      200, application/xml, 2,046 bytes, `<title>1.0.45</title>` present, enclosure
      …/releases/download/1.0.45/c989484b69f7-Printer.Studio.KH-1.0.45.dmg, length 4597721 — and the signature in that
      served file verified against the downloaded artifact → `PASS signature verifies against this artifact`, rc=0.
-feed readback: **PENDING** at the moment of writing — the Launcher feed row still read version 1.0.44
-  (published_at 2026-11-24T10:02:07Z, url …/1.0.44/, sha bcf5c0af…) because its publisher runs on its own pass after the
-  GitHub release exists. It must serve version 1.0.45 with the tagline "Print from any device to a USB-only printer" and
-  sha c989484b… before this release is called closed.
+feed readback: **PENDING — external dependency, named.** The Launcher feed row (`kh-releases/release.json`, read
+  decoded from Pages) still reads version 1.0.44, tagline "Print from any device to a USB-only printer", sha
+  bcf5c0af…, url …/1.0.44/, published_at 2026-11-24T10:02:07Z. It updates when the publisher runs its next pass, and
+  nothing here can make that pass: `~/Library/LaunchAgents/com.khupdater.agent.plist` runs `~/Library/KHUpdater/bin/khu-stub`
+  (a stub, not the publisher) and is not loaded (`launchctl print gui/501/com.khupdater.agent` → could not find service).
+  The row must show version 1.0.45, the tagline and sha c989484b… before this release is closed.
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 retired: Printer Studio KH-1.0.43.dmg (4,585,008 B) moved to
