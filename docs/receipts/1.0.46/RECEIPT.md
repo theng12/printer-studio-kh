@@ -72,15 +72,18 @@ appcast: item added on main (`003d71c`), signed over the **anonymous download ab
      `…/releases/download/1.0.46/Printer.Studio.KH-1.0.46.dmg`, length 4598040, `sparkle:version` 47 —
      and the signature in that served file verified against the downloaded artifact:
      `PASS signature verifies against this artifact`, rc=0.
-feed readback: **NOT MOVED BY THIS SESSION.** At the time of writing the Pages feed
-  (https://theng12.github.io/kh-releases/release.json, decoded from the signed envelope) still serves
-  `printer-studio` 1.0.45 / sha `c989484b…` / 4,597,721 B, feed `published_at` 2026-11-25T14:04:33Z.
-  The row is System's (S001, sole owner of the feed and the `khu` generator). The exact sha, bytes,
-  tag, asset name and URL were handed to that session at 15:0xZ; it verified all of them
-  independently (tag peels correctly, release non-draft, GitHub digest and anonymous curl both
-  `36414935…`) and queued the row in its batch pass. This release is **published** — a GitHub
-  release that anyone can download and a signed appcast that points at it — but its feed row is
-  pending S001's pass, and until that pass runs the estate feed still offers 1.0.45.
+feed readback: **SERVED 1.0.46.** Read back from Pages
+  (https://theng12.github.io/kh-releases/release.json, decoded from the signed envelope): version
+  `1.0.46`, sha `364149355c853be29f9d21f83e2c18e3ca44ba7bae7a554d27b44d80bc88117c`, 4,598,040 B, url
+  `https://github.com/theng12/printer-studio-kh/releases/download/1.0.46/Printer.Studio.KH-1.0.46.dmg`,
+  filed as `Printer Studio KH-1.0.46.dmg` (the app's own local name), type `utility`, tagline
+  "Print from any device to a USB-only printer" — sha and bytes equal to this receipt's artifact.
+  Feed `published_at` 2026-11-25T16:13:39.741Z.
+  The row is System's (S001, sole owner of the feed and the `khu` generator): this session did not
+  write it. At 15:0xZ Pages still served 1.0.45, so the exact sha, bytes, tag, asset name and URL
+  were handed to that session; it verified all of them independently and ran its pass, and the row
+  moved. The earlier "not moved" reading is recorded here only as the reason for the handover.
+page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 
 ## Measurement
 
@@ -89,7 +92,8 @@ idle footprint: ten minutes, hidden instance of this build, own data dir, one re
   ports 1 → 1, open files 37 → 36, threads 8 → 4, RSS 81 MB at the start of the window → 71 MB at the
   end. Pass is "flat" (nothing grew) and the number is the settled one, 71 MB. SIGTERM then ended it
   in 313 ms with no crash report added. Log: `lead/1.0.46-20261125/printer-idle-1046.log`.
-not exercised — recorded once, not as passed, and not a standing gap list:
+not proven: three items are **not exercised** by this release — recorded once, never as passed, and
+  not a standing gap list:
   - **a physical print** — no paper was printed by this release. Nothing in the printer path changed.
   - **the login-after-restart half** — the app coming back by itself after a restart was not
     exercised; it needs a restart of this Mac on an installed copy.
@@ -105,7 +109,8 @@ retired: `Printer Studio KH-1.0.44.dmg` (sha256 bcf5c0afbd059e913cb647fb5f20f4f7
   `$HOME/Desktop/_trash/printer-studio-kh/2026-11-25 1.0.44 retired at 1.0.46/` with a `MANIFEST.md`,
   after checks found no mounted image, no open handle, no process using it, and no local pointer:
   the appcast's 1.0.44 item names the GitHub release, not this folder.
-dirty: false — the released tree at `6a5e76bc2677dee804b186835edc28b71a0b8b18` is clean; the appcast
-  item and this receipt are the two docs-only commits after it.
+dirty: false
+  the released tree at `6a5e76bc2677dee804b186835edc28b71a0b8b18` is clean; the appcast item and
+  this receipt are the docs-only commits after it.
 worktree: `_orchestra/developer-utilities/printer-studio-kh/worktrees/1.0.46`, branch
   `release/1.0.46`, pushed, fast-forwarded into `main`. Kept until this release settles.
