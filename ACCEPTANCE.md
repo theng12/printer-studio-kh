@@ -1,5 +1,17 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.46
+
+The packaging path finds its tools in any shell. No screen, no behaviour and no bundled file
+changed.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| The build finds the tools it needs when no Terminal logged in | `app/Tools/test-toolchain.sh` sources `app/toolchain.sh` under a non-login PATH (`/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin:.`) and requires a `python3` that is not the 3.9 stub plus a resolvable `pkg-config`; a second source adds no PATH entry | Required on 1.0.46 |
+| A missing tool reads as itself, not as a traceback | Same suite — `toolchain_require_python 99.0` exits non-zero and its message names the version it needs and the PATH it searched, with no `Traceback` in the output | Required on 1.0.46 |
+| No packaging script silently resolves an unpinned `python3` | Same suite scans `app/build.sh`, `app/render-pages.sh`, `app/finalize-dist.sh`, `app/retain-dmgs.sh`, `app/release-notes.sh`, `app/signing.sh`: every one that calls a bare `python3` also sources the pin | Required on 1.0.46 |
+| The build says what it ran with | `app/build.sh` prints `==> Toolchain: Python 3.x.y …; pkg-config …; swiftc …` before compiling | Required on 1.0.46 |
+
 ## Release scope: 1.0.45
 
 One destructive path is closed, the shipped installer is now checked before a release is called

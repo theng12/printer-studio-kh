@@ -22,6 +22,10 @@
 #
 set -euo pipefail
 
+# A gate step or launchd shell has no Homebrew in its PATH; pin it, and say what the build ran with.
+source "$(dirname "$0")/toolchain.sh"
+echo "==> Toolchain: $(python3 --version 2>&1 || echo 'python3 missing'); pkg-config $(command -v pkg-config || echo missing); swiftc $(command -v swiftc || echo missing)"
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$ROOT/../dist"
 # Sparkle behind the studio's shim: a static library (nothing to embed), plus the

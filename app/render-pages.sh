@@ -20,6 +20,10 @@
 
 set -euo pipefail
 
+# This harness resolves `python3` by name; a gate or launchd shell would find the 3.9 stub.
+source "$(dirname "$0")/toolchain.sh"
+toolchain_require_python 3.9
+
 ROOT_DIR=$(cd -- "$(dirname -- "$0")/.." && pwd)
 PAGE_SPEC="${1:-all}"
 OUT_DIR="${2:-$ROOT_DIR/harness-out}"

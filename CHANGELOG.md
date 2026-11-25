@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.46 — 2026-11-25
+- The build now finds the same tools whichever shell runs it. Run from a background job or a script instead of Terminal, it could pick up an old Python and miss the packaging tools the Mac already has; it now looks where they actually are first, and prints which versions it used. Nothing about the app itself changed.
+- If a tool is missing, the build says which ones it looked for, the versions it needs and where it searched, instead of failing somewhere later with a confusing error.
+
 ## 1.0.45 — 2026-11-24
 - "Remove from this Mac" now refuses to run without the confirmation. Before, the question was asked only by the button that starts it, so anything else that reached the same command — a shortcut, a script, a route added later — would have taken the app off your Mac without asking. Reaching the command any other way now says so instead of removing anything.
 - The app is checked as the shipped installer, not only as a build: the release check now mounts the finished disk image and confirms the app in it starts.
