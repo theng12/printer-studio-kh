@@ -9,7 +9,7 @@ bytes: 4597721
 scan: sha256=c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124 clean (dmg-scan step:
   110 files, excused [], scanner scan-dmg/2026-11-20, exit 0). The scan receipt in the same summary names that
   sha, so the scanned artifact and the built artifact are one file.
-runner: `runner: gate-run.sh f05b010c16e5 at /Users/vengtheng/Developer/_orchestra/tools/gate-run.sh`, quoted from
+runner: `runner: gate-run.sh f05b010c16e5 at $HOME/Developer/_orchestra/tools/gate-run.sh`, quoted from
   the run's own summary. `shasum -a 256` of that file at launch and after:
   f05b010c16e577986c796341a43b41b450e4639b82159f664c15b7b89d06bd5a, 43,672 B — the sha Release Tooling froze.
 scanner: `tool studio-gate.sh 76dbf7aa09f5109bee4bb97705a0af3d1737e0b87230270c2f1bd3c779235ae9 at
