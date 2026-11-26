@@ -31,6 +31,8 @@ not proven: three items are **not exercised** by this release — recorded once,
   - **the login-after-restart half** — not exercised; it needs a restart of this Mac on an installed copy.
   - **a real self-update** — no unattended version change was observed on this Mac. Covered by
     `app/test-update-checker.sh` and `app/test-maintenance-hold*.sh`, not by an observed update.
+  Also not exercised for the idle footprint: a whole-fleet run and a long run of transfers or jobs.
+  One full cycle plus a ten-minute idle window was measured; the other two states were not.
 
 ## What changed
 
@@ -136,6 +138,22 @@ evidence produced: 2 gate evidence dirs (`gate-20261126-180146-72674` cited here
   wrote its own), `no-checkout-trash.sh`, `no-checkout-trash` step, `dmg-check.sh`, `shim-check.sh`,
   `hold-live-receipt.json`, `installed-readback-1.0.47.json`, `printer-idle-1047.log`. No scratch logs
   are cited as evidence.
+
+## Corrections after publish (artifact untouched)
+
+- **The release body had a self-heading and was corrected.** It began `## Printer Studio KH 1.0.47`,
+  so each install drive's `WHATS-NEW.txt` printed the app and version twice. Found by System (S001)
+  on its drive pass. The body was replaced with the plain `release-notes.sh` output
+  (`gh release edit 1.0.47 --notes-file`), read back clean. The artifact is untouched, so no new
+  version is owed; the rule goes in `printer-studio-kh/BACKLOG.md` so the next release does not repeat
+  it.
+- **A stale checkout `_trash` was retired, with its contents listed first.** `app/_trash/` held one
+  fixture tree (30 files, 128 KB: four mock DMGs of a few dozen bytes each, fixture receipts, call
+  logs, the pins document) left by a `test-dmg-retention.sh` run against the **pre-fix** code at
+  `92922de`. Listed and verified in `lead/1.0.47-20261126/STALE-TRASH-CONTENTS.md` before any move,
+  then retired with that as its manifest to
+  `$HOME/Desktop/_trash/printer-studio-kh/2026-11-26 stale test fixtures from the pre-fix checkout _trash/`.
+  No receipt cites any of those paths and the suite regenerates them under `$TMPDIR` now.
 
 ## Not this session's
 
