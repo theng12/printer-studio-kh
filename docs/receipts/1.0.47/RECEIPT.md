@@ -13,11 +13,14 @@ gate exit: 0 — `GATE PASS printer-studio 4c6f9a328fc4b28ab20086800e7f1342e4ea8
   runner `gate-run.sh 8df512ad14da` at `~/Developer/_orchestra/tools/gate-run.sh`,
   evidence `~/Developer/_orchestra/developer-utilities/printer-studio-kh/lead/gate-20261126-180146-72674`,
   22 steps ok. Second gate for the tooling follow-up — see below.
-feed readback: **SERVED 1.0.46 when this receipt was written.** The row is System's (S001); the exact
-  sha, bytes, tag, asset name and URL were handed over. Read back from Pages
-  (https://theng12.github.io/kh-releases/release.json, decoded from the signed envelope) at
-  2026-11-26T11:20Z: `printer-studio` row names `Printer Studio KH-1.0.46.dmg`, 4,598,040 B, version
-  1.0.46 — i.e. still the previous release. Not this release's row yet.
+feed readback: **SERVED 1.0.47.** `feed-verify.sh printer-studio --expect-version 1.0.47
+  --expect-sha 3dfe041f…` → `PASS signature — Ed25519 verified`, then version `1.0.47`, sha256
+  `3dfe041fd8111e54b576dda57526b49da3cc82c39b4922b7a02820fafd99fbc7`, 4,598,200 B, file
+  `Printer Studio KH-1.0.47.dmg`, tagline "Print from any device to a USB-only printer",
+  published `2026-11-26T11:24:07.762Z`, rc=0. Same sha and bytes as this receipt's artifact.
+  The row is System's (S001, sole owner of the feed and the `khu` generator): this session did not
+  write it. At 11:20Z Pages still served 1.0.46, so the exact sha, bytes, tag, asset name and URL were
+  handed over; S001 ran its pass and the row moved.
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 retired: `Printer Studio KH-1.0.45.dmg` (sha256 c989484b69f76dd0b37255c6b4c9add2559bbc3fea94375090ec3d011a696124,
@@ -136,6 +139,6 @@ evidence produced: 2 gate evidence dirs (`gate-20261126-180146-72674` cited here
 
 ## Not this session's
 
-The estate feed row (`kh-releases/release.json`) is System's (S001, sole owner of the feed and the
-`khu` generator). This session did not write it. At 11:26Z it still served 1.0.46. The exact sha,
-bytes, tag, asset name and URL were handed over.
+The estate feed row (`kh-releases/release.json`) is System's (S001). This session did not write it;
+it handed over the exact sha, bytes, tag, asset name and URL. S001 ran its pass: the row now serves
+1.0.47 at `published_at 2026-11-26T11:24:07.762Z`, verified independently above.
