@@ -145,12 +145,17 @@ evidence produced: 2 gate evidence dirs (`gate-20261126-180146-72674` cited here
 
 ## Corrections after publish (artifact untouched)
 
-- **The release body had a self-heading and was corrected.** It began `## Printer Studio KH 1.0.47`,
-  so each install drive's `WHATS-NEW.txt` printed the app and version twice. Found by System (S001)
-  on its drive pass. The body was replaced with the plain `release-notes.sh` output
-  (`gh release edit 1.0.47 --notes-file`), read back clean. The artifact is untouched, so no new
-  version is owed; the rule goes in `printer-studio-kh/BACKLOG.md` so the next release does not repeat
-  it.
+- **The release body had a self-heading and was corrected — but the drives keep the old notes.**
+  It began `## Printer Studio KH 1.0.47`, so each install drive's `WHATS-NEW.txt` printed the app and
+  version twice. Found by System (S001) on its drive pass. The body was replaced with the plain
+  `release-notes.sh` output (`gh release edit 1.0.47 --notes-file`), read back clean, asset digest
+  unchanged. **That does not reach the drives:** the feed generator only carries notes on a version
+  change (`FeedGenerator.swift:471-474`, "an untouched row keeps the notes it already serves"), and
+  `--refresh-notes` applies only to a row whose notes are the tool's placeholder (`:480`). Measured on
+  the served feed: printer's row still begins `## Printer Studio KH 1.0.47`. So the duplicate heading
+  stays on the four drives until 1.0.48 publishes the corrected body, or Release Tooling strips the
+  heading in `write_notes`. The artifact is untouched, so no new version is owed for the body edit;
+  the rule is in `printer-studio-kh/BACKLOG.md` so the next release does not repeat it.
 - **A stale checkout `_trash` was retired, with its contents listed first.** `app/_trash/` held one
   fixture tree (30 files, 128 KB: four mock DMGs of a few dozen bytes each, fixture receipts, call
   logs, the pins document) left by a `test-dmg-retention.sh` run against the **pre-fix** code at
