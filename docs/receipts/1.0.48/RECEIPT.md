@@ -33,6 +33,14 @@ not proven: three items are **not exercised** by this release — recorded once,
   - **the login-after-restart half** — not exercised; needs a restart of this Mac on an installed copy.
   - **a real self-update** — not exercised; no unattended version change was observed on this Mac.
   Also `idle-footprint: UNMEASURED — no IDLE_PID in the config`.
+  **Install readback is drives-only, measured by S001, not on this Mac:** all four installer drives
+  (ATLAS, NOVA, ORICO, UGREEN) refreshed in one pass each, exit 0, and afterwards hold 13 folders with one DMG
+  each, `Printer Studio KH-1.0.48.dmg` present, 1.0.47 moved to each drive's `_trash`; every drive's index
+  matches the feed on **14/14 rows** for version and notes (three drive ids differ from feed ids by design —
+  `updater`↔`launcher`, `relay`↔`relay-studio`, `story`↔`story-studio` — joined by `bundleID`), 13 notes files
+  per drive with **0 duplicate headings**. **This Mac is not installed:** no `/Applications/Printer Studio KH.app`
+  and no printer entry in the Launcher's config; the agent log records `updates=0` on every run since the
+  publish. "Installed everywhere" is therefore true of the drives only.
 not run by any gate: test-airprint-bridge.sh, test-airprint-installer.sh, test-appearance.sh, test-automatic-usb.py, test-bridge-reannounce.sh, test-helper-orphan.sh, test-label-media.sh, test-label-printing.sh, test-list-presentation.sh, test-paper-sizes.sh, test-remote-print.sh, test-urf-to-pdf.sh
 
 ## What changed
@@ -80,6 +88,8 @@ No app source and no screen changed.
   S001 also confirmed the notes body carries no duplicate heading this time (560 chars, no home path or
   internal names), and that the asset-name finding is the same shape as 1.0.47 (recorded in `BACKLOG.md`
   as a 1.0.49 fix-forward through `packaging/github-asset.sh`; a published asset is never renamed).
+  The same drive pass measured **0 duplicate headings across all four drives**, which closes the
+  1.0.47 backlog item ("the release notes must not start with a heading naming the app").
 
 ## Closeout
 
@@ -91,4 +101,8 @@ retired: `Printer Studio KH-1.0.46.dmg` (4,598,040 B) via `app/finalize-dist.sh`
 - gate log: `$HOME/Developer/_orchestra/developer-utilities/printer-studio-kh/lead/gate-20261126-222542-17801/summary.txt`
 - readback command and output: `curl -fsSL -o "$APPCAST" https://theng12.github.io/printer-studio-kh/appcast.xml` + `appcast-verify.sh` → `PASS signature verifies against this artifact` (`1.0.48`, `length="4597909"`);
   `feed-verify.sh printer-studio --expect-version 1.0.48 --expect-sha 6b57ae16… --public-key app/Resources/PublisherKey.txt` → `PASS signature — Ed25519 verified`, row `1.0.48` / `6b57ae16…` / `4,597,909 B`
-- install acceptance: `UNMEASURED` on an end-user Mac (covered by gate step `install-launch` mounting `Printer Studio KH-1.0.48.dmg` and launching hidden). Automatic install now has a served row; S001 reports all four install drives refreshing and will report the result — that readback is not yet in hand, so "installed everywhere" is NOT claimed.
+- install acceptance: the installer image starts (gate step `install-launch` mounted `Printer Studio KH-1.0.48.dmg`
+  and launched its copy hidden). **Installer drives: 4/4 refreshed and read back by S001** (numbers above).
+  **On a Mac: not installed and not verified** — this Mac carries no `/Applications/Printer Studio KH.app`,
+  and the update agent logged `updates=0` on every run since the publish. An automatic install on a machine
+  is therefore still `UNMEASURED`.
