@@ -88,7 +88,11 @@ No app source and no screen changed.
 - **Estate feed (`kh-releases`):** handed sha/bytes/tag/asset to S001 (`msg 94e8128f`); S001's pass landed —
   `published 2026-11-26T15:47:03.557Z`, publisher commit `9226a557054c`, `14 rows, integrity: 1 row(s) changed,
   0 removed by name`, verified here independently with `feed-verify.sh --public-key app/Resources/PublisherKey.txt`
-  → `PASS signature — Ed25519 verified` (24,149 feed bytes, 64 signature bytes), `rc=0`.
+  → `PASS signature — Ed25519 verified against key 615eaa69b3def113` (24,149 feed bytes,
+  64 signature bytes), `rc=0`. That anchor is sha256 of the key's 32 decoded bytes — the same number
+  `PinnedKey.fingerprint` shows — computed here with
+  `tr -d '[:space:]' < app/Resources/PublisherKey.txt | base64 -d | shasum -a 256 | cut -c1-16`,
+  not typed from memory.
   S001 also confirmed the notes body carries no duplicate heading this time (560 chars, no home path or
   internal names), and that the asset-name finding is the same shape as 1.0.47 (recorded in `BACKLOG.md`
   as a 1.0.49 fix-forward through `packaging/github-asset.sh`; a published asset is never renamed).
