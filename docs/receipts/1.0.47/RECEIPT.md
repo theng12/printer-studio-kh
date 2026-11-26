@@ -160,3 +160,14 @@ evidence produced: 2 gate evidence dirs (`gate-20261126-180146-72674` cited here
 The estate feed row (`kh-releases/release.json`) is System's (S001). This session did not write it;
 it handed over the exact sha, bytes, tag, asset name and URL. S001 ran its pass: the row now serves
 1.0.47 at `published_at 2026-11-26T11:24:07.762Z`, verified independently above.
+## Closeout guards (run last)
+
+- `zsh ~/Developer/_orchestra/tools/check-stranded-work.sh printer-studio-kh` → `OK: nothing stranded`
+  (18:36Z, after the worktree and the residue were retired).
+- `python3 -I ~/Developer/_orchestra/tools/check-request-records.py` → `0 problem(s), 148
+  waiting/deferred`; the 1.0.47 release record is written as `done` with this receipt as evidence.
+- `~/Developer/_orchestra/tools/check-dist-retention.sh printer-studio dist` →
+  `PASS every dist artifact is on the feed: 1.0.46, 1.0.47`.
+- No `_trash` exists in or beside the checkout: `lead/1.0.47-20261126/no-checkout-trash.sh` → PASS,
+  re-run after the worktree retired (its first version hard-coded the worktree path and broke once the
+  worktree moved; it now resolves the canonical checkout, an explicit argument first).
