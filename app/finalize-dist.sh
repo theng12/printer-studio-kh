@@ -26,16 +26,22 @@ PINS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/printer-finalize-dist.XXXXXX")"
 PINS="$PINS_DIR/pins.json"
 trap 'rm -rf "$PINS_DIR"' EXIT
 
-# The one trash the helper is allowed to retire into. It must be a real
-# directory, so make it rather than assuming an earlier run made it.
-mkdir -p "$HOME/Desktop/_trash"
+# The one trash folder this release retires into: ~/Desktop/_trash/<app>/<date> <what>/.
+# The shared helper appends `dist/` under the pin it is given, so the pin and the
+# sweep must both name THIS folder — two layouts inside one trash is the bug that
+# put 1.0.45 in a folder beside every other app's files.
+RETIRED_AT="$(/usr/bin/python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$RECEIPT")"
+[ -n "$RETIRED_AT" ] || { printf 'The receipt names no version; refusing.\n' >&2; exit 2; }
+RETIRE_DIR="$HOME/Desktop/_trash/printer-studio-kh/$(date +%Y-%m-%d) installers retired at $RETIRED_AT"
+mkdir -p "$RETIRE_DIR"
 
-/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$PINS" "$KEEP" <<'PY'
+/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$PINS" "$KEEP" "$RETIRE_DIR" <<'PY'
 import hashlib, json, re, sys
 from pathlib import Path
 
 root, receipt_path, pins_path = map(Path, sys.argv[1:4])
 keep = int(sys.argv[4])
+retire_dir = sys.argv[5]
 receipt = json.loads(receipt_path.read_text())
 version = receipt["version"]
 dmg = root / "dist" / f"Printer Studio KH-{version}.dmg"
@@ -85,7 +91,7 @@ for release in releases:
 
 pins = {"schema": 1, "apps": [{"app": "Printer Studio KH", "project": str(root),
                                "releases": releases,
-                               "retirement_trash": str(Path.home() / "Desktop/_trash")}]}
+                               "retirement_trash": retire_dir}]}
 pins_path.write_text(json.dumps(pins, indent=2) + "\n")
 print(f"Pinning {', '.join(r['version'] for r in releases)}")
 PY
@@ -94,16 +100,17 @@ bash "$ROOT/app/retain-dmgs.sh" "$RECEIPT" "$PINS"
 
 # Nothing older than `keep` stays in dist, and nobody has to tidy it. Anything
 # the retention helper did not place, or an extra version it kept, is moved —
-# never deleted — into a dated folder in the unified trash. Three guards hold: a
-# version named by a release manifest, by the ledger, or by a running job is
+# never deleted — into the same folder this run's pin named. Three guards hold:
+# a version named by a release manifest, by the ledger, or by a running job is
 # never moved, and every move is written into the receipt.
-/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$KEEP" <<'SWEEP'
+/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$KEEP" "$RETIRE_DIR" <<'SWEEP'
 import hashlib, json, re, shutil, subprocess, sys
 from datetime import date, datetime
 from pathlib import Path
 
 root, receipt_path = Path(sys.argv[1]), Path(sys.argv[2])
 keep = int(sys.argv[3])
+retire_dir = Path(sys.argv[4])
 dist = root / "dist"
 labels = ["com.theng12.printerstudio.app", "com.theng12.printerstudio.airprint",
           "com.theng12.printerstudio.sharefix", "com.theng12.printerstudio.usb"]
@@ -144,7 +151,7 @@ for index, candidate in enumerate(installers):
         print(f"Kept {candidate.name}: {version} is still named by a manifest, the ledger or a running job")
         continue
     data = candidate.read_bytes()
-    target = Path.home() / "Desktop/_trash" / f"{date.today().isoformat()} printer-studio-kh-retired-installers"
+    target = retire_dir
     target.mkdir(parents=True, exist_ok=True)
     destination, suffix = target / candidate.name, 1
     while destination.exists():

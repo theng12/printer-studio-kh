@@ -102,9 +102,18 @@ result = run(new_receipt)
 assert result.returncode == 0, result.stdout + result.stderr
 kept = sorted(p.name for p in dist.glob('Printer Studio KH-*.dmg'))
 assert kept == ['Printer Studio KH-1.0.10.dmg', 'Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], kept
-# The third installer is gone from dist and is recoverable in the one trash.
-retired = list((work / 'home/Desktop/_trash').rglob('Printer Studio KH-1.0.12.dmg'))
+# The third installer is gone from dist and is recoverable in the one trash shape:
+# ~/Desktop/_trash/<app>/<date> <what>/, never a mixed folder directly under _trash.
+app_trash = work / 'home/Desktop/_trash/printer-studio-kh'
+assert app_trash.is_dir(), 'the retirement folder is the app-and-date one, not the trash root'
+folders = list(app_trash.iterdir())
+assert len(folders) == 1, folders
+assert folders[0].name.endswith('installers retired at 1.0.14'), folders[0].name
+retired = list(folders[0].rglob('Printer Studio KH-1.0.12.dmg'))
 assert retired and retired[0].read_bytes() == b'mock installer 1.0.12', 'the third installer is retired recoverably'
+# The helper retires into <pin>/dist/ and the sweep into <pin>/: both must land in
+# the one folder, never two layouts inside one trash.
+assert all(folders[0] in p.parents for p in (work / 'home/Desktop/_trash').rglob('*.dmg')), 'both retirements share one folder'
 swept = list((work / 'home/Desktop/_trash').rglob('Printer Studio KH-1.0.11.dmg'))
 assert swept and swept[0].read_bytes() == b'mock installer 1.0.11', 'unmanaged older installer swept to the trash'
 assert not (dist / 'Printer Studio KH-1.0.11.dmg').exists(), 'the sweep must leave dist'
