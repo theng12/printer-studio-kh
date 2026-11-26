@@ -132,8 +132,12 @@ ledger: `dist/.release-dist.json` gained a truthful 1.0.46 entry (its own receip
   held only 1.0.39/1.0.40 before, which is why the pins stage would have refused. Still records
   1.0.39/1.0.40 entries whose files no longer exist; the shared helper drops a recorded file whose
   path is gone, and it did.
-worktree: `_orchestra/developer-utilities/printer-studio-kh/worktrees/1.0.47`, branch `release/1.0.47`,
-  merged into `main` (2d2e202) and pushed. Retired after this receipt is committed.
+worktree: `_orchestra/developer-utilities/printer-studio-kh/worktrees/1.0.47`, branch
+  `release/1.0.47` — a **local-only** branch, never pushed to origin (the earlier `release/1.0.35` …
+  `1.0.46` branches are on origin; this one was not). Its commits are on `main` and pushed there:
+  `4c6f9a3` fast-forwarded, `654e00a` merged as `2d2e202`. The worktree was retired to
+  `$HOME/Desktop/_trash/printer-studio-kh/2026-11-26 worktree 1.0.47 retired/` with a manifest, and the
+  merged local branch was deleted per the release procedure. Nothing is reachable only from it.
 evidence produced: 2 gate evidence dirs (`gate-20261126-180146-72674` cited here; the tooling gate
   wrote its own), `no-checkout-trash.sh`, `no-checkout-trash` step, `dmg-check.sh`, `shim-check.sh`,
   `hold-live-receipt.json`, `installed-readback-1.0.47.json`, `printer-idle-1047.log`. No scratch logs
