@@ -27,7 +27,11 @@ retired: `Printer Studio KH-1.0.46.dmg` (sha256 `364149355c853be29f9d21f83e2c18e
   4,598,040 B) moved to
   `$HOME/Desktop/_trash/printer-studio-kh/2026-11-26 installers retired at 1.0.48/dist/` with `MANIFEST.md`;
   worktree `1.0.48` (26 MB) and 1.0.47 `dist/Printer Studio KH.app` residue (12 MB) retired to
-  `$HOME/Desktop/_trash/printer-studio-kh/` with manifests
+  `$HOME/Desktop/_trash/printer-studio-kh/` with manifests. **That Desktop trash has since been emptied by the
+  owner** (`$HOME/Desktop/_trash/printer-studio-kh/` no longer exists), so those paths resolve to nothing by design.
+  The 1.0.46 bytes still survive, byte-identical, on all four installer drives at
+  `_trash/2026-11-26 older installers/Printer Studio KH-1.0.46.dmg` — re-hashed here 2026-11-26:
+  ATLAS / NOVA / ORICO / UGREEN all `364149355c853be2…`, 4,598,040 B.
 not proven: three items are **not exercised** by this release — recorded once, never as passed:
   - **a physical print** — not exercised; no paper was printed.
   - **the login-after-restart half** — not exercised; needs a restart of this Mac on an installed copy.
@@ -95,6 +99,8 @@ No app source and no screen changed.
 
 retired: `Printer Studio KH-1.0.46.dmg` (4,598,040 B) via `app/finalize-dist.sh` (`dist/` now holds `1.0.48` + `1.0.47`);
   `worktrees/1.0.48` (26 MB) and 1.0.47 `dist/Printer Studio KH.app` residue (12 MB) moved to `$HOME/Desktop/_trash/printer-studio-kh/` with manifests.
+  The owner has since emptied that Desktop trash; the 1.0.46 bytes survive byte-identical on the four installer
+  drives (`_trash/2026-11-26 older installers/`), re-hashed here.
 
 ## Evidence
 
