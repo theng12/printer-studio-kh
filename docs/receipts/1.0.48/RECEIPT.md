@@ -15,8 +15,12 @@ gate exit: 0 — `GATE PASS printer-studio 17b740b9f582bd0d5ecc6ecba3242112ed972
 feed readback: appcast **SERVED 1.0.48** `length="4597909"` (`https://theng12.github.io/printer-studio-kh/appcast.xml`,
   Ed25519 signature `dvNKEQB0VGixTyjt+fD0NlR7N9lmPREQEimXFrssDhf2+QrYls9PF3NGU6tIPY1Fy8gC18uMKXOMjT46SkbiAg==`
   verified rc=0 via `appcast-verify.sh` against anonymous download and `SUPublicEDKey`); estate feed row
-  (`kh-releases/release.json`) currently serves `1.0.47` — exact sha/bytes/tag/asset handed to S001
-  (msg `94e8128f`), `UNMEASURED` for 1.0.48 row until S001 lands its pass
+  **SERVED 1.0.48**, published `2026-11-26T15:47:03.557Z` (14 rows, publisher commit `9226a557054c`), verified
+  here independently with `feed-verify.sh --public-key app/Resources/PublisherKey.txt` →
+  `PASS signature — Ed25519 verified` (24,149 feed bytes, 64 signature bytes), row version `1.0.48`,
+  sha256 `6b57ae1630ffb21f55eb90d74cd66ccef446d0e1c6f0bcec0e1dac9a7f7d6bae`, 4,597,909 B, file
+  `Printer Studio KH-1.0.48.dmg`, tagline present, rc=0. The row is S001's; its pass landed after the
+  sha/bytes/tag/asset handoff (msg `94e8128f`).
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 retired: `Printer Studio KH-1.0.46.dmg` (sha256 `364149355c853be29f9d21f83e2c18e3ca44ba7bae7a554d27b44d80bc88117c`,
@@ -69,7 +73,13 @@ No app source and no screen changed.
   succeeded; anonymous readback of `https://theng12.github.io/printer-studio-kh/appcast.xml` serves item
   `1.0.48` (`length="4597909"`), and `appcast-verify.sh` verified its `sparkle:edSignature` (`rc=0`) against
   the anonymous release asset download and `app/Resources/Info.plist` `SUPublicEDKey`.
-- **Estate feed (`kh-releases`):** handed sha/bytes/tag/asset to S001 (`msg 94e8128f`).
+- **Estate feed (`kh-releases`):** handed sha/bytes/tag/asset to S001 (`msg 94e8128f`); S001's pass landed —
+  `published 2026-11-26T15:47:03.557Z`, publisher commit `9226a557054c`, `14 rows, integrity: 1 row(s) changed,
+  0 removed by name`, verified here independently with `feed-verify.sh --public-key app/Resources/PublisherKey.txt`
+  → `PASS signature — Ed25519 verified` (24,149 feed bytes, 64 signature bytes), `rc=0`.
+  S001 also confirmed the notes body carries no duplicate heading this time (560 chars, no home path or
+  internal names), and that the asset-name finding is the same shape as 1.0.47 (recorded in `BACKLOG.md`
+  as a 1.0.49 fix-forward through `packaging/github-asset.sh`; a published asset is never renamed).
 
 ## Closeout
 
@@ -79,5 +89,6 @@ retired: `Printer Studio KH-1.0.46.dmg` (4,598,040 B) via `app/finalize-dist.sh`
 ## Evidence
 
 - gate log: `$HOME/Developer/_orchestra/developer-utilities/printer-studio-kh/lead/gate-20261126-222542-17801/summary.txt`
-- readback command and output: `curl -fsSL -o "$APPCAST" https://theng12.github.io/printer-studio-kh/appcast.xml` + `appcast-verify.sh` → `PASS signature verifies against this artifact` (`1.0.48`, `length="4597909"`)
-- install acceptance: `UNMEASURED` on an end-user Mac (covered by gate step `install-launch` mounting `Printer Studio KH-1.0.48.dmg` and launching hidden; automatic Launcher install awaits S001 feed row)
+- readback command and output: `curl -fsSL -o "$APPCAST" https://theng12.github.io/printer-studio-kh/appcast.xml` + `appcast-verify.sh` → `PASS signature verifies against this artifact` (`1.0.48`, `length="4597909"`);
+  `feed-verify.sh printer-studio --expect-version 1.0.48 --expect-sha 6b57ae16… --public-key app/Resources/PublisherKey.txt` → `PASS signature — Ed25519 verified`, row `1.0.48` / `6b57ae16…` / `4,597,909 B`
+- install acceptance: `UNMEASURED` on an end-user Mac (covered by gate step `install-launch` mounting `Printer Studio KH-1.0.48.dmg` and launching hidden). Automatic install now has a served row; S001 reports all four install drives refreshing and will report the result — that readback is not yet in hand, so "installed everywhere" is NOT claimed.
