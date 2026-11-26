@@ -1,5 +1,19 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.47
+
+The release tooling keeps the shelf and the workspace the rules say it should. No screen changed
+and no printing behaviour changed.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| Two installers are kept, this release and the one before it | `app/Tools/test-finalize-dist.sh` — after a run against four installers in `dist/`, the kept set is exactly the new one, the previous one, and the manifest-protected older one; the third is in the one trash and not in `dist/` | Required on 1.0.47 |
+| Narrowing the shelf does not stop the previous installer being checked | Same suite — the previous installer's evidence is withdrawn from the ledger and the run refuses, naming it. A test that only counted the kept files would pass with the check silently narrowed | Required on 1.0.47 |
+| No script writes a `_trash` inside the project | `app/Tools/test-finalize-dist.sh` asserts the fixture project has none after a full run; `grep -rn "_trash" app/` shows only the sanctioned `~/Desktop/_trash`, fixtures, and the app's own runtime retirement folder | Required on 1.0.47 |
+| A refused run leaves no working file behind | `app/finalize-dist.sh` puts its pins document under `TMPDIR` and removes it on every exit path; the suite asserts it is gone | Required on 1.0.47 |
+| Retiring an installer into the Desktop trash still passes the shared helper | `app/Tools/test-dmg-retention.sh` runs the real `retain-dmgs.sh` and `release-dist.py` with a `retirement_trash` pin; its own fixture copies the shim and toolchain pin the build needs first | Required on 1.0.47 |
+| A physical print, a login after a restart, a real self-update | **NOT CHECKED** — none of the three is in this release's scope | Not checked |
+
 ## Release scope: 1.0.46
 
 The packaging path finds its tools in any shell. No screen, no behaviour and no bundled file

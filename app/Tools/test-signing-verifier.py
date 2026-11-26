@@ -15,9 +15,7 @@ spec.loader.exec_module(signing)
 
 class SigningVerifierTests(unittest.TestCase):
     def setUp(self):
-        retained = Path(__file__).resolve().parents[2] / '_trash'
-        retained.mkdir(exist_ok=True)
-        self.app = Path(tempfile.mkdtemp(prefix='signing-verifier-', dir=retained)) / 'Fixture.app'
+        self.app = Path(tempfile.mkdtemp(prefix='signing-verifier-')) / 'Fixture.app'
         contents = self.app / 'Contents'
         contents.mkdir(parents=True)
         (contents / 'Info.plist').write_bytes(plistlib.dumps({

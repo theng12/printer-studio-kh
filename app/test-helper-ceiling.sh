@@ -4,8 +4,7 @@
 # its ceiling and says so, and a large stderr cannot deadlock the reader.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-# Own scratch dir: the checkout's _trash link is emptied by the owner and may
-# dangle, so never assume it resolves.
+# Own scratch dir under TMPDIR; a checkout never gets a _trash.
 OUT="$(mktemp -d "${TMPDIR:-/tmp}/printer-helper-ceiling.XXXXXX")"
 
 /usr/bin/swiftc -swift-version 5 -D HELPER_CEILING_TEST \

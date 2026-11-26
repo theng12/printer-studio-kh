@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-selected-media-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$OUT"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-selected-media.XXXXXX")"
 SOURCES=()
 while IFS= read -r file; do
   case "$(basename "$file")" in App.swift|Views.swift|RenderFixtures.swift) continue ;; esac

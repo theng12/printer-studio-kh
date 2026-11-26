@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.47 — 2026-11-26
+- The keeper of finished installers now keeps the newest one and the one before it, which is the studio's rule, instead of three. The old third copy is still moved aside rather than deleted, and the copy it keeps is still checked against the release that built it — so narrowing the shelf did not also narrow the check.
+- Its own working files, and those of every test and helper that used to write a `_trash` folder inside the project, now go in the system's temporary folder and are cleaned up afterwards. Your Desktop trash folder is still the one place anything is retired to.
+
 ## 1.0.46 — 2026-11-25
 - The build now finds the same tools whichever shell runs it. Run from a background job or a script instead of Terminal, it could pick up an old Python and miss the packaging tools the Mac already has; it now looks where they actually are first, and prints which versions it used. Nothing about the app itself changed.
 - If a tool is missing, the build says which ones it looked for, the versions it needs and where it searched, instead of failing somewhere later with a confusing error.

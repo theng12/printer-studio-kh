@@ -58,12 +58,14 @@ fi
 mkdir -p "$OUT_DIR"
 
 # Nothing stale survives: every PNG in an evidence folder must be one this run
-# produced and measured, so earlier files are retired recoverably first.
+# produced and measured, so earlier files are retired recoverably first — under
+# TMPDIR, because an evidence folder may sit inside the checkout and a checkout
+# never gets a _trash (owner, 2026-11-18).
 case "$PAGE_SPEC" in
   switch-check|keyboard-check|theme-check) ;;
   *)
     if compgen -G "$OUT_DIR/*.png" > /dev/null 2>&1; then
-      STALE="$(dirname "$OUT_DIR")/_trash/$(basename "$OUT_DIR")-replaced-$(date +%Y%m%dT%H%M%SZ)"
+      STALE="$(mktemp -d "${TMPDIR:-/tmp}/printer-stale-pages.XXXXXX")"
       mkdir -p "$STALE"
       mv "$OUT_DIR"/*.png "$STALE"/
       echo "STALE_MOVED $(find "$STALE" -name '*.png' | wc -l | tr -d ' ') -> $STALE"

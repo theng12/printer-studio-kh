@@ -7,7 +7,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 ARCH="$(uname -m)"
-OUT="$ROOT/../_trash/test-bridge-reannounce-$(date +%Y%m%d-%H%M%S)-$$"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-bridge-reannounce.XXXXXX")"
 mkdir -p "$OUT/tools" "$OUT/home" "$OUT/fixtures"
 export HOME="$OUT/home"
 export PRINTER_STUDIO_TOOL_DIR="$OUT/tools"

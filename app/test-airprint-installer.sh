@@ -2,14 +2,13 @@
 #
 # Runs the focused AirPrint installer test suite.
 #
-# Retains build artifacts in _trash without deleting any files.
+# Keeps its build artifacts in a scratch dir under TMPDIR; nothing is deleted.
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 ARCH="$(uname -m)"
-OUT="$ROOT/../_trash/test-airprint-installer-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$OUT"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-airprint-installer.XXXXXX")"
 
 echo "==> Checking ShareFix never reaches the cupsctl sharing default"
 # Bug #33: both install and migration must inject their own sharing step.

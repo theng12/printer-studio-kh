@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="${1:-$ROOT/../_trash/urf-tests-$(/bin/date +%Y%m%d-%H%M%S)-$$}"
+OUT="${1:-$(mktemp -d "${TMPDIR:-/tmp}/urf-tests.XXXXXX")}"
 PPD_PATH="${2:-${PPD_PATH:-}}"
 if [ ! -r "$PPD_PATH" ]; then
   printf 'A readable label PPD is required as argument 2 (test-label-media.sh generates one).\n' >&2

@@ -3,8 +3,7 @@
 # the proof that nothing answers a device on the tailnet address.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-remote-print-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$OUT"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-remote-print.XXXXXX")"
 
 # Every source except the app shell and the views that need it: the policy and
 # the store must stand on their own, which is what this compiles.

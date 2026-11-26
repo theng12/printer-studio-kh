@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="${1:-$ROOT/../_trash/test-label-media-$(/bin/date +%Y%m%d-%H%M%S)-$$}"
+OUT="${1:-$(mktemp -d "${TMPDIR:-/tmp}/test-label-media.XXXXXX")}"
 /bin/mkdir -p "$OUT/bin" "$OUT/vendor/filter"
 OUT="$(cd "$OUT" && pwd -P)"
 SOURCES=()

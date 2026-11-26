@@ -33,8 +33,7 @@ mkdir -p "$(dirname "$OUT")"
 # Universal, like the app: the diagnostic should run on whatever Mac is in
 # front of you, including an Intel one.
 SLICES="$(mktemp -d)"
-TRASH="$ROOT/../_trash/report-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$TRASH"
+TRASH="$(mktemp -d "${TMPDIR:-/tmp}/printer-report.XXXXXX")"
 trap 'mv "$SLICES" "$TRASH/slices"' EXIT
 
 for ARCH in arm64 x86_64; do

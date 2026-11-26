@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-label-printing-$(/bin/date +%Y%m%d-%H%M%S)-$$"
-/bin/mkdir -p "$OUT"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-label-printing.XXXXXX")"
 OUT="$(cd "$OUT" && pwd -P)"
 /bin/bash "$ROOT/test-label-media.sh" "$OUT/media"
 /bin/bash "$ROOT/test-urf-to-pdf.sh" "$OUT/urf" "$OUT/media/xprinter-routed.ppd"

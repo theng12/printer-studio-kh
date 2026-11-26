@@ -9,7 +9,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 ARCH="$(uname -m)"
-OUT="$ROOT/../_trash/test-helper-orphan-$(date +%Y%m%d-%H%M%S)-$$"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-helper-orphan.XXXXXX")"
 mkdir -p "$OUT/tools" "$OUT/home/Library/LaunchAgents" "$OUT/home/Desktop/_trash"
 export HOME="$OUT/home"
 export PRINTER_STUDIO_TOOL_DIR="$OUT/tools"

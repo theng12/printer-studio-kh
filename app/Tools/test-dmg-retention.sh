@@ -17,8 +17,8 @@ root = Path(sys.argv[1])
 helper = Path(os.environ.get('PRINTER_STUDIO_RELEASE_DIST_HELPER',
     str(Path.home() / 'Developer/Shared Tools/portfolio/tools/release-dist.py')))
 assert helper.is_file(), f'shared helper unavailable: {helper}'
-(root / '_trash').mkdir(exist_ok=True)
-work = Path(tempfile.mkdtemp(prefix='test-installed-dist-', dir=root / '_trash'))
+work = Path(tempfile.mkdtemp(prefix='test-installed-dist-',
+                              dir=os.environ.get('TMPDIR', '/tmp')))
 project = work / 'project'
 (project / 'app/Resources').mkdir(parents=True)
 dist = project / 'dist'
@@ -101,6 +101,12 @@ print('PASS: shared helper keeps accepted pair, recoverable previous image and u
 
 # Existing installer collision must stop before signing or moving the app bundle.
 shutil.copy2(root / 'app/build.sh', project / 'app/build.sh')
+# build.sh checks the vendored shim and sources the toolchain pin (1.0.46) before
+# it reaches the installer-collision check, so the fixture needs both beside it.
+shutil.copy2(root / 'app/toolchain.sh', project / 'app/toolchain.sh')
+shutil.copytree(root / 'vendor' / 'khsparkle', project / 'vendor' / 'khsparkle')
+shutil.copy2(root / 'app/signing.sh', project / 'app/signing.sh')
+shutil.copytree(root / 'app/Resources', project / 'app/Resources', dirs_exist_ok=True)
 (project / 'app/Resources/Info.plist').write_bytes(plistlib.dumps({'CFBundleShortVersionString': '1.0.3'}))
 app = dist / 'Printer Studio KH.app'
 app.mkdir()

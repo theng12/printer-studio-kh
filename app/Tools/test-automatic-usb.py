@@ -8,9 +8,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-trash = root / "_trash"
-trash.mkdir(exist_ok=True)
-work = Path(tempfile.mkdtemp(dir=trash))
+work = Path(tempfile.mkdtemp(prefix='printer-usb-', dir=os.environ.get('TMPDIR', '/tmp')))
 
 helper = work / "helper"
 subprocess.run(

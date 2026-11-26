@@ -1,14 +1,13 @@
 #!/bin/bash
 #
 # Compiles and runs the focused TestAppearance suite on the native architecture.
-# Retains build artifacts in _trash without deleting any files.
+# Keeps its build artifacts in a scratch dir under TMPDIR; nothing is deleted.
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 ARCH="$(uname -m)"
-TRASH="$ROOT/../_trash/test-appearance-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$TRASH"
+TRASH="$(mktemp -d "${TMPDIR:-/tmp}/test-appearance.XXXXXX")"
 
 echo "==> Gathering sources for TestAppearance ($ARCH)"
 SOURCES=()

@@ -4,7 +4,7 @@
 # `list` only reads through the mock tools.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-airprint-discovery-$(/bin/date +%Y%m%d-%H%M%S)-$$"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-airprint-discovery.XXXXXX")"
 /bin/mkdir -p "$OUT/tools" "$OUT/home"
 export PRINTER_STUDIO_TOOL_DIR="$OUT/tools" PRINTER_STUDIO_FIXTURES="$OUT"
 export PRINTER_STUDIO_DNSSD_SECONDS=2 HOME="$OUT/home"

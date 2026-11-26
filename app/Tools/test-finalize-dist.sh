@@ -1,7 +1,8 @@
 #!/bin/bash
-# Focused check: app/finalize-dist.sh pins the newest three installers from one
-# receipt, and refuses a receipt the release rules reject. Mock DMG bytes, the
-# real scripts and the real shared helper.
+# Focused check: app/finalize-dist.sh pins the newest two installers (this
+# release and the one before it) from one receipt, and refuses a receipt the
+# release rules reject. Mock DMG bytes, the real scripts and the real shared
+# helper. Scratch lives under TMPDIR: a checkout never gets a _trash.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 /usr/bin/python3 -I -B - "$ROOT" <<'PY'
@@ -12,8 +13,7 @@ root = Path(sys.argv[1])
 helper = Path(os.environ.get('PRINTER_STUDIO_RELEASE_DIST_HELPER',
     str(Path.home() / 'Developer/Shared Tools/portfolio/tools/release-dist.py')))
 assert helper.is_file(), f'shared helper unavailable: {helper}'
-(root / '_trash').mkdir(exist_ok=True)
-work = Path(tempfile.mkdtemp(prefix='test-finalize-dist-', dir=root / '_trash'))
+work = Path(tempfile.mkdtemp(prefix='test-finalize-dist-')).resolve()
 project = work / 'project'
 (project / 'app').mkdir(parents=True)
 for name in ('finalize-dist.sh', 'retain-dmgs.sh'):
@@ -22,9 +22,11 @@ dist = project / 'dist'
 dist.mkdir()
 (work / 'home/Desktop/_trash').mkdir(parents=True)
 # The scripts retire into ~/Desktop/_trash, so the fixture gets its own HOME and
-# a test run can never move a real installer.
+# a test run can never move a real installer. TMPDIR is the fixture's too, so
+# finalize-dist's own pins scratch lands here and can be proved cleaned up.
+(work / 'tmp').mkdir()
 env = {**os.environ, 'PRINTER_STUDIO_RELEASE_DIST_HELPER': str(helper),
-       'HOME': str(work / 'home')}
+       'HOME': str(work / 'home'), 'TMPDIR': str(work / 'tmp')}
 
 # 1.0.11 is never recorded in the ledger: the helper will not touch it, so the
 # automatic sweep has to move it out of dist on its own. 1.0.10 is named by a
@@ -83,12 +85,26 @@ refused = run(missing_log)
 assert refused.returncode != 0 and 'missing or did not pass' in refused.stderr, refused.stderr
 assert snapshot() == before, 'refused receipts must not touch dist'
 
+# The kept depth is a validator, not only a counter: the installer retained as
+# the previous one must still be evidence-checked. Withdraw 1.0.13's evidence and
+# a run that still retains it has to refuse by name. A test that only counts the
+# kept files passes with the validator silently narrowed — this is that trap.
+saved_ledger = (dist / '.release-dist.json').read_text()
+no_evidence = json.loads(saved_ledger)
+del no_evidence['apps']['Printer Studio KH']['files']['Printer Studio KH-1.0.13.dmg']['evidence']
+(dist / '.release-dist.json').write_text(json.dumps(no_evidence))
+refused = run(new_receipt)
+assert refused.returncode != 0 and '1.0.13' in refused.stderr, refused.stderr
+assert snapshot() == before, 'a refused receipt must not touch dist'
+(dist / '.release-dist.json').write_text(saved_ledger)
+
 result = run(new_receipt)
 assert result.returncode == 0, result.stdout + result.stderr
 kept = sorted(p.name for p in dist.glob('Printer Studio KH-*.dmg'))
-assert kept == ['Printer Studio KH-1.0.10.dmg', 'Printer Studio KH-1.0.12.dmg', 'Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], kept
-retired = list(work.rglob('Printer Studio KH-1.0.12.dmg'))
-assert retired and retired[0].read_bytes() == b'mock installer 1.0.12', 'older installer retired recoverably'
+assert kept == ['Printer Studio KH-1.0.10.dmg', 'Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], kept
+# The third installer is gone from dist and is recoverable in the one trash.
+retired = list((work / 'home/Desktop/_trash').rglob('Printer Studio KH-1.0.12.dmg'))
+assert retired and retired[0].read_bytes() == b'mock installer 1.0.12', 'the third installer is retired recoverably'
 swept = list((work / 'home/Desktop/_trash').rglob('Printer Studio KH-1.0.11.dmg'))
 assert swept and swept[0].read_bytes() == b'mock installer 1.0.11', 'unmanaged older installer swept to the trash'
 assert not (dist / 'Printer Studio KH-1.0.11.dmg').exists(), 'the sweep must leave dist'
@@ -98,14 +114,18 @@ moved = [entry for entry in recorded if entry['version'] == '1.0.11']
 assert moved, 'every move is written into the receipt'
 assert len(moved[0]['sha256']) == 64 and moved[0]['destination'].endswith('Printer Studio KH-1.0.11.dmg')
 assert files['1.0.13'].read_bytes() == (dist / 'Printer Studio KH-1.0.13.dmg').read_bytes()
-pins = sorted((project / '_trash').glob('finalize-dist-*.json'))
-assert pins, 'no pins document written'
-document = json.loads(pins[-1].read_text())['apps'][0]
-assert [r['version'] for r in document['releases']] == ['1.0.14', '1.0.13', '1.0.12'], document['releases']
-assert document['releases'][1]['evidence'] == files_manifest['Printer Studio KH-1.0.13.dmg']['evidence']
+# What the pins document asked for is what the ledger now holds: this release
+# and the one before it, with the previous installer's evidence carried across.
+ledger = json.loads((dist / '.release-dist.json').read_text())['apps']['Printer Studio KH']['files']
+assert sorted(ledger) == ['Printer Studio KH-1.0.13.dmg', 'Printer Studio KH-1.0.14.dmg'], ledger
+assert ledger['Printer Studio KH-1.0.13.dmg']['evidence'] == files_manifest['Printer Studio KH-1.0.13.dmg']['evidence']
+# Its own pins scratch is under the fixture's TMPDIR and must not survive the run,
+# and nothing may have created a _trash inside the fixture project.
+assert not list((work / 'tmp').glob('printer-finalize-dist.*')), 'finalize-dist left its pins scratch behind'
+assert not (project / '_trash').exists(), 'finalize-dist must not write a _trash into the checkout'
 repeat = sorted(p.name for p in dist.iterdir())
 assert run(new_receipt).returncode == 0
 assert sorted(p.name for p in dist.iterdir()) == repeat, 'a repeat run must change nothing'
-print('PASS: finalize-dist pins the newest three, sweeps anything older into the trash without a hand step, and refuses an unverified install or a receipt whose gate is missing, failed or covers other bytes')
+print('PASS: finalize-dist pins the newest two (this release and the previous), sweeps the third into the trash without a hand step, still evidence-checks the one it retains, and refuses an unverified install or a receipt whose gate is missing, failed or covers other bytes')
 print(f'Fixtures retained: {work}')
 PY

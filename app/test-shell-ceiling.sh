@@ -4,8 +4,7 @@
 # cannot deadlock it. No window, no desktop, no printer.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/../_trash/test-shell-ceiling-$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$OUT"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/test-shell-ceiling.XXXXXX")"
 
 /usr/bin/swiftc -parse-as-library -swift-version 5 \
   "$ROOT/Sources/PrinterStudio/Shell.swift" "$ROOT/Tools/TestShell.swift" \

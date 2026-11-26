@@ -1,5 +1,5 @@
 #!/bin/bash
-# Retains the newest three installers in dist from one installed-acceptance
+# Retains the newest two installers in dist from one installed-acceptance
 # receipt, so nobody has to write the pins by hand.
 #
 # The receipt is still the gate: retain-dmgs.sh refuses it unless launch health
@@ -16,14 +16,26 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RECEIPT="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 [ -f "$RECEIPT" ] || { printf 'No such receipt: %s\n' "$RECEIPT" >&2; exit 2; }
 
-PINS="$ROOT/_trash/finalize-dist-$(date +%Y%m%d-%H%M%S)-$$.json"
-mkdir -p "$ROOT/_trash"
+# One named depth for both halves below: dist keeps this release and the one
+# before it (owner, 2026-11-16). The pins document and the sweep must agree.
+KEEP=2
 
-/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$PINS" <<'PY'
+# Scratch under TMPDIR, never inside the checkout (owner, 2026-11-18). Removed on
+# every exit path, so a refused run leaves nothing behind either.
+PINS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/printer-finalize-dist.XXXXXX")"
+PINS="$PINS_DIR/pins.json"
+trap 'rm -rf "$PINS_DIR"' EXIT
+
+# The one trash the helper is allowed to retire into. It must be a real
+# directory, so make it rather than assuming an earlier run made it.
+mkdir -p "$HOME/Desktop/_trash"
+
+/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$PINS" "$KEEP" <<'PY'
 import hashlib, json, re, sys
 from pathlib import Path
 
-root, receipt_path, pins_path = map(Path, sys.argv[1:])
+root, receipt_path, pins_path = map(Path, sys.argv[1:4])
+keep = int(sys.argv[4])
 receipt = json.loads(receipt_path.read_text())
 version = receipt["version"]
 dmg = root / "dist" / f"Printer Studio KH-{version}.dmg"
@@ -55,11 +67,13 @@ def version_of(path):
 def key(path):
     return tuple(int(p) for p in re.findall(r"\d+", version_of(path)))
 
-# Three verified versions stay in dist: this one plus the two before it.
+# dist keeps `keep` verified versions: this one plus the ones before it. Every
+# one of them is evidence-checked here, so a narrow keep cannot quietly stop
+# validating the installer it still retains.
 others = [p for p in (root / "dist").glob("Printer Studio KH-*.dmg") if p != dmg and p.is_file()]
 others.sort(key=key, reverse=True)
 releases = [{"version": version, "source": str(dmg), "evidence": str(receipt_path)}]
-for previous in others[:2]:
+for previous in others[:keep - 1]:
     evidence = manifest.get(previous.name, {}).get("evidence")
     if not (evidence and Path(evidence).is_file()):
         sys.exit(f"No recorded evidence for the retained installer {previous.name}")
@@ -78,17 +92,18 @@ PY
 
 bash "$ROOT/app/retain-dmgs.sh" "$RECEIPT" "$PINS"
 
-# Nothing older than the newest three stays in dist, and nobody has to tidy it.
-# Anything the retention helper did not place, or a third version it kept, is
-# moved — never deleted — into a dated folder in the unified trash. Three guards
-# hold: a version named by a release manifest, by the ledger, or by a running
-# job is never moved, and every move is written into the receipt.
-/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" <<'SWEEP'
+# Nothing older than `keep` stays in dist, and nobody has to tidy it. Anything
+# the retention helper did not place, or an extra version it kept, is moved —
+# never deleted — into a dated folder in the unified trash. Three guards hold: a
+# version named by a release manifest, by the ledger, or by a running job is
+# never moved, and every move is written into the receipt.
+/usr/bin/python3 -I -B - "$ROOT" "$RECEIPT" "$KEEP" <<'SWEEP'
 import hashlib, json, re, shutil, subprocess, sys
 from datetime import date, datetime
 from pathlib import Path
 
 root, receipt_path = Path(sys.argv[1]), Path(sys.argv[2])
+keep = int(sys.argv[3])
 dist = root / "dist"
 labels = ["com.theng12.printerstudio.app", "com.theng12.printerstudio.airprint",
           "com.theng12.printerstudio.sharefix", "com.theng12.printerstudio.usb"]
@@ -121,7 +136,7 @@ installers = sorted((p for p in dist.glob("Printer Studio KH-*.dmg") if p.is_fil
 kept, retired = [], []
 for index, candidate in enumerate(installers):
     version = ".".join(str(part) for part in version_of(candidate))
-    if index < 3:
+    if index < keep:
         kept.append(candidate.name)
         continue
     if version in named:

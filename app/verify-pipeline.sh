@@ -26,8 +26,7 @@ for file in "$PPD" "$FILTER" "$INPUT"; do
   fi
 done
 
-mkdir -p "$ROOT/_trash"
-WORK="$(mktemp -d "$ROOT/_trash/verify-pipeline-XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/verify-pipeline.XXXXXX")"
 
 # A PPD's *cupsFilter line is whitespace-separated, so the filter must sit at a
 # path containing no spaces. (The real install sidesteps this by putting the

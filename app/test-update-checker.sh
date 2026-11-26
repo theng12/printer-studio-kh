@@ -2,13 +2,13 @@
 #
 # Compiles and runs the focused TestUpdateChecker suite on the native
 # architecture. It never touches the network or the real publisher file.
-# Retains build artifacts in _trash without deleting any files.
+# Keeps its build artifacts in a scratch dir under TMPDIR; nothing is deleted.
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 ARCH="$(uname -m)"
-# Own scratch dir: the checkout _trash link may dangle.
+# Own scratch dir under TMPDIR; a checkout never gets a _trash.
 TRASH="$(mktemp -d "${TMPDIR:-/tmp}/printer-update-checker.XXXXXX")"
 
 echo "==> Gathering sources for TestUpdateChecker ($ARCH)"
