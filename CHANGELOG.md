@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.48 — 2026-11-26
+- Seven fast checks — signing verifier, test page, announcement voice, job watch, helper ceiling, disk space, and shell ceiling — now run as part of every release gate instead of sitting outside it.
+- Two full-UI checks (`test-selected-media` and `test-error-report`) now select the compatible macOS SDK the main build uses, so both pass again instead of failing on the Command Line Tools SwiftUI macro gap.
+- Every release receipt now names the remaining checks that no gate runs, so nothing untested is mistaken for passed. Nothing in the app itself changed.
+
 ## 1.0.47 — 2026-11-26
 - The keeper of finished installers now keeps the newest one and the one before it, which is the studio's rule, instead of three. The old third copy is still moved aside rather than deleted, and the copy it keeps is still checked against the release that built it — so narrowing the shelf did not also narrow the check.
 - Its own working files, and those of every test and helper that used to write a `_trash` folder inside the project, now go in the system's temporary folder and are cleaned up afterwards. Your Desktop trash folder is still the one place anything is retired to.

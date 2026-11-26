@@ -255,8 +255,10 @@ struct TestErrorReport {
 
     static func testTailFileFixtures() {
         let fm = FileManager.default
-        let trashBase = URL(fileURLWithPath: "_trash/test-fixtures-\(ProcessInfo.processInfo.globallyUniqueString)")
+        // Fixtures belong under TMPDIR; a checkout never gets a _trash.
+        let trashBase = fm.temporaryDirectory.appendingPathComponent("test-error-report-fixtures-\(ProcessInfo.processInfo.globallyUniqueString)")
         try? fm.createDirectory(at: trashBase, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: trashBase) }
 
         // 1. Missing file
         let missingPath = trashBase.appendingPathComponent("nonexistent.log").path

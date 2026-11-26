@@ -1,5 +1,16 @@
 # Printer Studio KH acceptance
 
+## Release scope: 1.0.48
+
+Seven fast unit/ceiling checks join the release gate, the two full-UI typecheck tests pin the same macOS SDK as `app/build.sh` and exit 0, and every receipt names the tests no gate runs so nothing untested passes in silence. No app source and no screen changed.
+
+| User task | Check and evidence | State |
+| --- | --- | --- |
+| Fast ungated suites run in every release gate | Gate step `fast-subset` in `gate-configs/printer-1.0.48.sh` runs `test-signing-verifier.py`, `test-test-page.sh`, `test-voice-clip.sh`, `test-job-watch.sh`, `test-helper-ceiling.sh`, `test-disk-space.sh`, and `test-shell-ceiling.sh` (~12.4 s total, all exit 0, each ≤5 s) | Required on 1.0.48 |
+| The two full-UI typecheck tests pass on a CLT-only Mac | `app/test-selected-media.sh` and `app/test-error-report.sh` pin `macosx26.5` (falling back to the default SDK) matching `app/build.sh:46-47`; `TestErrorReport.swift` writes its fixtures under `temporaryDirectory` (`$TMPDIR`) rather than a checkout `_trash`; both exit 0 (~14 s and ~26 s, kept outside the gated subset) | Required on 1.0.48 |
+| No test script sits uncounted | `docs/UNGATED-TESTS.txt` and `app/Tools/check-ungated-tests.sh` fail if any test script is neither in a gate config nor listed as not run, and `docs/receipts/1.0.48/RECEIPT.md` lists all 14 ungated tests as `not run by any gate` | Required on 1.0.48 |
+| A physical print, a login after a restart, a real self-update | **NOT CHECKED** — none of the three is in this release's scope | Not checked |
+
 ## Release scope: 1.0.47
 
 The release tooling keeps the shelf and the workspace the rules say it should. No screen changed

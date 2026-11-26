@@ -1,0 +1,26 @@
+# Tests no gate config runs, one per line: <name>  <why it is out>
+#
+# Every test script is either run by a gate config or named here; app/Tools/check-ungated-tests.sh
+# fails on a test in neither place, on a name that is gone, and on a name a gate does run.
+# A release receipt repeats this list. Silence is how test-dmg-retention.sh stayed red from
+# 1.0.46 to 1.0.47 — nothing ran it and nothing said so.
+#
+# The gated fast subset (1.0.48, 12.6 s, all exit 0) is the small suites that compile one or two
+# sources: test-signing-verifier, test-test-page, test-voice-clip, test-job-watch,
+# test-helper-ceiling, test-disk-space, test-shell-ceiling. Everything below takes longer
+# or needs a printer, a window or a device.
+
+test-airprint-bridge.sh      needs a real AirPrint bridge and a printer on the network
+test-airprint-installer.sh   installs a launchd agent and an AirPrint helper on this Mac
+test-appearance.sh           renders the real windows offscreen; a page acceptance, not a unit suite
+test-automatic-usb.py        needs a real USB printer attached
+test-bridge-reannounce.sh    needs a real bridge to reannounce on the network
+test-error-report.sh         ~26 s: compiles the whole UI. Green, but too slow for the fast subset
+test-helper-orphan.sh        spawns and orphans helper processes on this Mac
+test-label-media.sh          only reachable through test-label-printing.sh, which is itself out
+test-label-printing.sh       prints real labels on a real printer
+test-list-presentation.sh    renders the printers list offscreen; a page acceptance
+test-paper-sizes.sh          needs a real printer's paper size list
+test-remote-print.sh         needs a real printer reachable from another device
+test-selected-media.sh       ~14 s: compiles the whole UI. Green, but too slow for the fast subset
+test-urf-to-pdf.sh           only reachable through test-label-printing.sh, which is itself out
