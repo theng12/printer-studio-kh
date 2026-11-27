@@ -21,7 +21,12 @@ feed readback: appcast **SERVED 1.0.49** `length="4696382"` (`https://theng12.gi
   `feed-verify.sh printer-studio --expect-version 1.0.49 --expect-sha 3399ddb26e7cf5fe5be5d3948597811326d2dad5ae8a3833649aa2c52e5d6dc7
   --public-key app/Resources/PublisherKey.txt` → `PASS signature — Ed25519 verified against key …`
   (24,949 feed bytes, 64 signature bytes), row version `1.0.49`, sha256 `3399ddb2…`, 4,696,382 B,
-  tagline `Print from any device to a USB-only printer`, rc=0.
+  tagline `Print from any device to a USB-only printer`, rc=0. The publisher's own pass (S001, quoted from its
+  reply) records the envelope sha256 `516bf3ba83fe07271403fb48f090d881b8b0b581372d837ea56c19deb574eeaa`,
+  14 rows, `1 row(s) changed, 0 removed by name`, and confirms the anonymous download, the tag peel and the
+  served appcast independently. The row's `file` is the local name `Printer Studio KH-1.0.49.dmg`; the
+  GitHub asset carries the `3399ddb26e7c-` prefix — by design (`file` is the local name, `url` is GitHub's
+  stored name), not drift.
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 retired: `Printer Studio KH-1.0.47.dmg` (sha256 `3dfe041fd8111e54b576dda57526b49da3cc82c39b4922b7a02820fafd99fbc7`, 4,598,200 B) moved by
@@ -83,6 +88,10 @@ retired: `Printer Studio KH-1.0.47.dmg` (4,598,200 B) via `app/finalize-dist.sh`
 
 - gate log: `$HOME/Developer/_orchestra/developer-utilities/printer-studio-kh/lead/gate-20261127-125749-57684/summary.txt`
 - readback command and output: `curl -fsSL https://theng12.github.io/printer-studio-kh/appcast.xml` + `appcast-verify.sh /tmp/ps-1.0.49-asset.dmg <SUPublicEDKey> <edSignature>` → `PASS signature verifies against this artifact`; `appcast-serves-version.sh theng12/printer-studio-kh 1.0.49 --bundle "dist/Printer Studio KH.app" --app printer-studio` → `PASS … serves 1.0.49 (6 item, enclosure github.com 4696382 bytes)`
+- install-media readback: S001 refreshed NOVA, ORICO and UGREEN to 1.0.49 at snapshot
+  `516bf3ba83fe · 14 rows · 2026-11-27T06:12:30.795Z`, each drive retiring 1.0.48 to its own trash with a
+  manifest. S001's drive pass ends with a false `update-from-ssd.sh still needs Python` line on every drive
+  (its comment matched by the kit check, filed as issue `20261127-18`); nothing on the drives needs changing.
 - install acceptance: gate step `install-launch` mounted the DMG, copied the app out and launched that copy hidden → `PASS: Printer Studio KH.app 1.0.49 launched hidden and is alive after 10s (pid 61081; com.theng12.printerstudio)`; gate step `hold-live` ran the same app under launchd with the hold contract. **On a Mac: not installed and not verified** — this Mac carries no installed copy, so an automatic install is `UNMEASURED`.
 - estate feed: `feed-verify.sh printer-studio --expect-version 1.0.49 --expect-sha 3399ddb2… --public-key app/Resources/PublisherKey.txt` → `PASS signature — Ed25519 verified` (24,949 feed bytes), row `1.0.49` / `3399ddb2…` / 4,696,382 B
 - AirPrint measurement: this Mac, remote IPP client to the owner's shared queue, 2026-11-27 12:15–12:18 local. Details in the notes folder.
