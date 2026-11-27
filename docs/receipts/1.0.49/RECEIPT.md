@@ -16,8 +16,12 @@ feed readback: appcast **SERVED 1.0.49** `length="4696382"` (`https://theng12.gi
   Ed25519 signature `pf8xUqxNq8n/RAgp3K5OAHa1yX/fCWmF9esBPqNfzBILHjjk1FbQMsGBGNrNAjUnSUklwHfSjoSL1axC7EzLBw==`
   verified rc=0 via `appcast-verify.sh` against the anonymous download and `SUPublicEDKey`;
   `appcast-serves-version.sh … --bundle "dist/Printer Studio KH.app"` → `PASS appcast: printer-studio-kh serves 1.0.49
-  (feed printer-studio, 6 item, enclosure github.com 4696382 bytes)`). Estate feed row: handoff sent to S001
-  with sha/bytes/tag/asset; its readback is recorded below when it lands.
+  (feed printer-studio, 6 item, enclosure github.com 4696382 bytes)`).
+  Estate feed row **SERVED 1.0.49**, published `2026-11-27T06:12:30.795Z`, verified here with
+  `feed-verify.sh printer-studio --expect-version 1.0.49 --expect-sha 3399ddb26e7cf5fe5be5d3948597811326d2dad5ae8a3833649aa2c52e5d6dc7
+  --public-key app/Resources/PublisherKey.txt` → `PASS signature — Ed25519 verified against key …`
+  (24,949 feed bytes, 64 signature bytes), row version `1.0.49`, sha256 `3399ddb2…`, 4,696,382 B,
+  tagline `Print from any device to a USB-only printer`, rc=0.
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 retired: `Printer Studio KH-1.0.47.dmg` (sha256 `3dfe041fd8111e54b576dda57526b49da3cc82c39b4922b7a02820fafd99fbc7`, 4,598,200 B) moved by
@@ -80,4 +84,5 @@ retired: `Printer Studio KH-1.0.47.dmg` (4,598,200 B) via `app/finalize-dist.sh`
 - gate log: `$HOME/Developer/_orchestra/developer-utilities/printer-studio-kh/lead/gate-20261127-125749-57684/summary.txt`
 - readback command and output: `curl -fsSL https://theng12.github.io/printer-studio-kh/appcast.xml` + `appcast-verify.sh /tmp/ps-1.0.49-asset.dmg <SUPublicEDKey> <edSignature>` → `PASS signature verifies against this artifact`; `appcast-serves-version.sh theng12/printer-studio-kh 1.0.49 --bundle "dist/Printer Studio KH.app" --app printer-studio` → `PASS … serves 1.0.49 (6 item, enclosure github.com 4696382 bytes)`
 - install acceptance: gate step `install-launch` mounted the DMG, copied the app out and launched that copy hidden → `PASS: Printer Studio KH.app 1.0.49 launched hidden and is alive after 10s (pid 61081; com.theng12.printerstudio)`; gate step `hold-live` ran the same app under launchd with the hold contract. **On a Mac: not installed and not verified** — this Mac carries no installed copy, so an automatic install is `UNMEASURED`.
+- estate feed: `feed-verify.sh printer-studio --expect-version 1.0.49 --expect-sha 3399ddb2… --public-key app/Resources/PublisherKey.txt` → `PASS signature — Ed25519 verified` (24,949 feed bytes), row `1.0.49` / `3399ddb2…` / 4,696,382 B
 - AirPrint measurement: this Mac, remote IPP client to the owner's shared queue, 2026-11-27 12:15–12:18 local. Details in the notes folder.
