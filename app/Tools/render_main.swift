@@ -1383,7 +1383,11 @@ struct PageRenderHarness {
             .onPreferenceChange(ProbeFrames.self) { InteractionProbe.frames = $0 })
         controller.sizingOptions = []
         let hosting = controller.view
-        hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: opts.height)
+        // Tall enough for a whole page: a control below the fold cannot be
+        // clicked, and scrolling the offscreen host is fragile. The window is
+        // offscreen and transparent, so its size is not the owner's desktop.
+        let height = max(opts.height, 1100)
+        hosting.frame = NSRect(x: 0, y: 0, width: opts.width, height: height)
         let window = NSWindow(contentRect: hosting.frame,
                               styleMask: isWhatsNew ? [.titled, .closable, .resizable] : [.borderless],
                               backing: .buffered, defer: false)
@@ -1393,7 +1397,7 @@ struct PageRenderHarness {
             light.performAsCurrentDrawingAppearance { window.backgroundColor = NSColor.windowBackgroundColor }
         }
         window.contentViewController = controller
-        window.setContentSize(NSSize(width: opts.width, height: opts.height))
+        window.setContentSize(NSSize(width: opts.width, height: height))
         window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
         // Ordered in but fully transparent: SwiftUI only delivers clicks to an
         // ordered, key window, and alpha 0 keeps it off the owner's desktop.
@@ -1495,7 +1499,7 @@ struct PageRenderHarness {
         let capView = window.contentView?.superview ?? hosting
         if let rep = capView.bitmapImageRepForCachingDisplay(in: capView.bounds) {
             capView.cacheDisplay(in: capView.bounds, to: rep)
-            let name = "interaction-\(opts.target)-\(opts.width)x\(opts.height)-\(opts.appearance).png"
+            let name = "interaction-\(opts.target)-\(opts.width)x\(Int(capView.bounds.height))-\(opts.appearance).png"
             try? rep.representation(using: .png, properties: [:])?
                 .write(to: URL(fileURLWithPath: opts.outDir).appendingPathComponent(name))
             let g = measure(rep: rep, isWindow: false, accent: nil, sampleBottom: true)
