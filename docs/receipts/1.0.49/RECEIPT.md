@@ -27,6 +27,13 @@ feed readback: appcast **SERVED 1.0.49** `length="4696382"` (`https://theng12.gi
   served appcast independently. The row's `file` is the local name `Printer Studio KH-1.0.49.dmg`; the
   GitHub asset carries the `3399ddb26e7c-` prefix — by design (`file` is the local name, `url` is GitHub's
   stored name), not drift.
+  Byte identity of the served feed, measured independently by U001 and reproduced here: the served
+  `release.json` is **33,393 B**, sha256 `516bf3ba83fe07271403fb48f090d881b8b0b581372d837ea56c19deb574eeaa`,
+  `last-modified: Fri, 27 Nov 2026 06:28:01 GMT`, its git blob id `35c20fb43126883e80bcda5ab800d8a93e9178ec`
+  equals `kh-releases` `main:release.json` (so the served bytes are the committed bytes, not an earlier
+  envelope); the commit that changed it is `2e3bdfd` at 2026-11-27 06:27:23Z. The 24,949 bytes above are the
+  signed feed payload inside that envelope, not a different measurement. An earlier read of 1.0.48 was the
+  Pages edge cache (`max-age=600`), not a missing row.
 page state: not written — page-sync is retired (kh-releases is feed-only, RELEASE-POLICY §2b)
 dirty: false
 retired: `Printer Studio KH-1.0.47.dmg` (sha256 `3dfe041fd8111e54b576dda57526b49da3cc82c39b4922b7a02820fafd99fbc7`, 4,598,200 B) moved by
