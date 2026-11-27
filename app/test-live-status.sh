@@ -29,9 +29,9 @@ grep -q 'Text(state.statusSummary)' "$APP" && grep -q '.onAppear { state.refresh
   || fail "the menu bar summary is shown without re-reading it first"
 echo "PASS: opening the menu bar re-reads the summary"
 
-grep -q '.onAppear { state.refresh() }' "$VIEWS" \
-  || fail "showing the main window does not re-read the status"
-echo "PASS: showing the main window re-reads the status"
+grep -q 'if !state.renderActionsStubbed { state.refresh() }' "$VIEWS" \
+  || fail "showing the main window does not re-read the status, or it re-reads live in an offscreen render"
+echo "PASS: showing the main window re-reads the status, and an offscreen render keeps its fixtures"
 
 /usr/bin/python3 -I - "$APP" <<'PY' || exit 1
 import re, sys

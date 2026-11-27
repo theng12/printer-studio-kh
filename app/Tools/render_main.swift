@@ -32,6 +32,14 @@ struct RenderOptions {
         if args[1] == "interaction" {
             return RenderOptions(mode: "interaction", target: args.count > 2 ? args[2] : "", outDir: args.count > 3 ? args[3] : "", width: 1024, height: 720, appearance: "light", printersListMode: nil)
         }
+        if args[1] == "sidebar-check" {
+            var size = (1024, 720)
+            if args.count > 3 {
+                let parts = args[3].lowercased().split(separator: "x")
+                if parts.count == 2, let w = Int(parts[0]), let h = Int(parts[1]) { size = (w, h) }
+            }
+            return RenderOptions(mode: "sidebar-check", target: "sidebar", outDir: args.count > 2 ? args[2] : "", width: size.0, height: size.1, appearance: "light", printersListMode: nil)
+        }
         guard args.count >= 6 else { return nil }
         let mode = args[1]
         let target = args[2]
@@ -103,6 +111,10 @@ struct PageRenderHarness {
         }
         if opts.mode == "interaction" {
             runInteraction(opts)
+            return
+        }
+        if opts.mode == "sidebar-check" {
+            runSidebarCheck(opts)
             return
         }
         runRender(opts)
@@ -669,6 +681,20 @@ struct PageRenderHarness {
                     deviceURI: xprinter.deviceURI, makeAndModel: xprinter.makeAndModel, isShared: false, hasUserACL: false),
         ]
         state.sharingEnabled = true
+        // A shared queue whose printer is unreachable: CUPS accepts the job and
+        // waits, so the screens must say so. Off by default so the other
+        // renders keep their familiar fixtures.
+        if ProcessInfo.processInfo.environment["PRINTER_STUDIO_RENDER_OFFLINE"] == "1" {
+            state.detailedPrinters = state.detailedPrinters.map { printer in
+                var offline = printer
+                if printer.name == n2 {
+                    offline.stateMessage = "The printer is offline."
+                    offline.stateReasons = ["offline-report"]
+                }
+                return offline
+            }
+            state.automaticUSBRelease = false
+        }
         state.watcherInstalled = true
         state.watcherLoaded = true
         state.shareLog = [
@@ -1482,6 +1508,162 @@ struct PageRenderHarness {
         exit(met ? 0 : 1)
     }
 
+    // MARK: - Sidebar movement
+
+    /// The owner's defect: the sidebar visibly jumps when it is clicked, and
+    /// some buttons do the same. Measure the sidebar's parts and every nav row
+    /// before, during and after a real click, and across a busy toggle, in the
+    /// real chrome (titled window, the app's own toolbar). Fails when any
+    /// measured part moves.
+    static func runSidebarCheck(_ opts: RenderOptions) {
+        step("sidebar-check start")
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.appearance = NSAppearance(named: .aqua)
+        try? FileManager.default.createDirectory(atPath: opts.outDir, withIntermediateDirectories: true)
+        UserDefaults.standard.removeObject(forKey: "printersListMode")
+        UserDefaults.standard.removeObject(forKey: "appearance")
+
+        var failures: [String] = []
+        // The app's own minimum and its usual window: a column that only moves
+        // at one of them would be missed by measuring just one.
+        for (width, height) in [(860, 580), (1024, 720)] {
+            failures += measureSidebar(width: width, height: height, outDir: opts.outDir)
+        }
+        if failures.isEmpty {
+            print("SIDEBAR_CHECK PASS nothing moved across selection, busy or a banner at either size")
+            exit(0)
+        }
+        print("SIDEBAR_CHECK FAIL " + failures.joined(separator: " | "))
+        exit(1)
+    }
+
+    /// One window, every phase, one list of movements. Returns the faults.
+    static func measureSidebar(width: Int, height: Int, outDir: String) -> [String] {
+        let state = makeFixtureState()
+        state.screen = .overview
+        let controller = NSHostingController(rootView: MainWindow()
+            .environmentObject(state)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Palette.page)
+            .foregroundStyle(Palette.body)
+            .tint(Color.accentColor)
+            .groupBoxStyle(CardGroupStyle())
+            .environment(\.controlActiveState, .key)
+            .onPreferenceChange(ProbeFrames.self) { InteractionProbe.frames = $0 })
+        controller.sizingOptions = []
+        let hosting = controller.view
+        hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        let window = NSWindow(contentRect: hosting.frame,
+                              styleMask: [.titled, .closable, .resizable],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        if let light = NSAppearance(named: .aqua) {
+            window.appearance = light
+            light.performAsCurrentDrawingAppearance { window.backgroundColor = NSColor.windowBackgroundColor }
+        }
+        window.contentViewController = controller
+        window.setContentSize(NSSize(width: width, height: height))
+        window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+        window.alphaValue = 0
+        window.orderFront(nil)
+        window.makeKey()
+        pump(hosting: hosting, window: window)
+
+        var phases: [(String, [String: CGRect])] = []
+        func snap(_ phase: String) {
+            pump(hosting: hosting, window: window)
+            let frames = InteractionProbe.frames.filter {
+                $0.key.hasPrefix("nav.") || $0.key.hasPrefix("sidebar.") || $0.key == "detail.page"
+            }
+            phases.append((phase, frames))
+            let entries = frames.keys.sorted().map { key -> String in
+                let f = frames[key]!
+                return String(format: "%@=%.1f,%.1f,%.1f,%.1f", key,
+                              f.minX, f.minY, f.width, f.height)
+            }
+            print("SIDEBAR size=\(width)x\(height) phase=\(phase) "
+                  + "screen=\(state.screen.map { String(describing: $0) } ?? "nil") "
+                  + "window=\(Int(window.frame.width))x\(Int(window.frame.height)) "
+                  + entries.joined(separator: " "))
+            let capView = window.contentView?.superview ?? hosting
+            if let rep = capView.bitmapImageRepForCachingDisplay(in: capView.bounds) {
+                capView.cacheDisplay(in: capView.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?
+                    .write(to: URL(fileURLWithPath: outDir)
+                        .appendingPathComponent("sidebar-\(width)x\(height)-\(phase).png"))
+            }
+        }
+
+        guard InteractionProbe.frames["nav.Activity"] != nil,
+              InteractionProbe.frames["nav.Overview"] != nil else {
+            window.close()
+            return ["no nav probes at \(width)x\(height): \(InteractionProbe.frames.keys.sorted())"]
+        }
+        snap("idle")
+        // A real click cannot be delivered to a window whose app is not active,
+        // and activating would take the owner's desktop. Select the row the way
+        // a click makes the control select it: the list's own selection API.
+        // The rows are in Screen.allCases order.
+        var seen = Set<String>()
+        if let table = findTable(in: hosting) {
+            let rows = table.numberOfRows
+            print("SIDEBAR list rows=\(rows) selected=\(table.selectedRow)")
+            for (index, screen) in Screen.allCases.enumerated() where index < rows {
+                table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+                snap("select-\(screen.rawValue)")
+                seen.insert(state.screen.map { String(describing: $0) } ?? "nil")
+            }
+            table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+            snap("reselect")
+        } else {
+            print("SIDEBAR_CHECK note: no NSTableView found; selecting through the model")
+            for screen in Screen.allCases {
+                state.screen = screen
+                snap("select-\(screen.rawValue)")
+                seen.insert(String(describing: screen))
+            }
+            state.screen = .overview
+            snap("reselect")
+        }
+        state.busy = true
+        state.busyMessage = "Printing a test page..."
+        snap("busy")
+        state.busy = false
+        state.busyMessage = ""
+        snap("idle-again")
+        state.lastMessage = "Refreshed — 3 printers."
+        state.lastMessageOK = true
+        snap("banner")
+        state.lastMessage = nil
+        snap("banner-gone")
+        print("SIDEBAR window-key=\(window.isKeyWindow) app-active=\(NSApp.isActive)")
+
+        var faults: [String] = []
+        if seen.count != Screen.allCases.count {
+            faults.append("selection reached \(seen.count) of \(Screen.allCases.count) screens at \(width)x\(height)")
+        }
+        // Any measured part moving between phases is the jump. 0.5 pt is the
+        // measurement floor: probe frames are laid out in whole points. A nav
+        // row's own width changes when it is selected (the title turns
+        // semibold) and nothing moves, so only its position is compared.
+        let baseline = phases.first!.1
+        for (phase, frames) in phases.dropFirst() {
+            for key in baseline.keys.sorted() {
+                guard let a = baseline[key], let b = frames[key] else { continue }
+                let dx = abs(a.minX - b.minX), dy = abs(a.minY - b.minY)
+                let dw = abs(a.width - b.width), dh = abs(a.height - b.height)
+                let sized = !key.hasPrefix("nav.")
+                if max(dx, dy, sized ? max(dw, dh) : 0) > 0.5 {
+                    faults.append(String(format: "%dx%d %@ %@ dx=%.1f dy=%.1f dw=%.1f dh=%.1f",
+                                         width, height, phase, key, dx, dy, dw, dh))
+                }
+            }
+        }
+        window.close()
+        return faults
+    }
+
     static func pump(hosting: NSView, window: NSWindow, rounds: Int = 12) {
         for _ in 0..<rounds {
             RunLoop.current.run(until: Date().addingTimeInterval(0.12))
@@ -1577,6 +1759,29 @@ struct PageRenderHarness {
                                           eventNumber: 0, clickCount: 1, pressure: 0) else { return false }
         window.sendEvent(down)
         window.sendEvent(up)
+        return true
+    }
+
+    static func findTable(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView, table.numberOfRows > 1 { return table }
+        for child in view.subviews {
+            if let found = findTable(in: child) { return found }
+        }
+        return nil
+    }
+
+    /// Half a click, so the frame can be measured while the button is down.
+    static func pressProbeFrame(_ frame: CGRect, on window: NSWindow, hosting: NSView,
+                                down: Bool) -> Bool {
+        guard frame.width > 1, frame.height > 1 else { return false }
+        let point = NSPoint(x: frame.midX, y: hosting.bounds.height - frame.midY)
+        guard let event = NSEvent.mouseEvent(with: down ? .leftMouseDown : .leftMouseUp,
+                                             location: point, modifierFlags: [],
+                                             timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: window.windowNumber, context: nil,
+                                             eventNumber: 0, clickCount: 1,
+                                             pressure: down ? 1 : 0) else { return false }
+        window.sendEvent(event)
         return true
     }
 

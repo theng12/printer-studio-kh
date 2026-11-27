@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.49 — 2026-11-27
+- The sidebar no longer jumps. The busy line at the bottom of the sidebar used to appear as an extra row, which made the whole bottom of the sidebar move up and down on every action; it now replaces the status text in the line that is always there. A result message floats over the page instead of pushing it down. Both are measured: every sidebar row, a running action and a result message, at the smallest window and at the usual one.
+- When printing from a phone "doesn't work", the app now says which step is failing, in plain words. On the owner's Mac the phone could see the printer and the printer accepted the job — but the print queue was offline, so the job waited for ever and nothing said why. The Sharing page and Overview now carry the print service's own reason and offer the fix that matches it: release the printer from macOS's USB service, keep it ready after restarts, or check the cable or network.
+- A guided "Start here" path now opens Overview: plug in the printer, set it up, share it with your phone, then print a test page — in that order, each line turning green as it is done. Settings points to it, and the setup page's steps use plainer words.
+- The GitHub release asset is now published through the shared packaging script, so its name carries the sha12 prefix the release preflight expects.
+
 ## 1.0.48 — 2026-11-26
 - Seven fast checks — signing verifier, test page, announcement voice, job watch, helper ceiling, disk space, and shell ceiling — now run as part of every release gate instead of sitting outside it.
 - Two full-UI checks (`test-selected-media` and `test-error-report`) now select the compatible macOS SDK the main build uses, so both pass again instead of failing on the Command Line Tools SwiftUI macro gap.

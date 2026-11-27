@@ -141,31 +141,48 @@ struct MainWindow: View {
                     }
                 }
                 .scrollContentBackground(.hidden)
+                .probe("sidebar.list")
                 Rectangle().fill(Palette.border).frame(height: 1)
+                    .probe("sidebar.divider")
                 footer
+                    .probe("sidebar.footer")
             }
+            .probe("sidebar.container")
             .background(SidebarMaterial())
             .navigationSplitViewColumnWidth(min: 240, ideal: 248, max: 260)
         } detail: {
-            VStack(spacing: 0) {
+            Group {
+                switch state.screen ?? .overview {
+                case .overview: OverviewView()
+                case .printers: PrintersView()
+                case .sharing: SharingView()
+                case .setup: SetupView()
+                case .activity: ActivityView()
+                case .stickers: StickerSizesView()
+                case .settings: SettingsView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .probe("detail.page")
+            // A result floats over the page instead of pushing it down: every
+            // action used to shift the whole page by the banner's height and
+            // move it back when the banner went away. The bottom keeps it off
+            // the page heading.
+            .overlay(alignment: .bottom) {
                 if let message = state.lastMessage {
                     ResultBanner(message: message, ok: state.lastMessageOK) {
                         state.lastMessage = nil
                     }
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.surface))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.border, lineWidth: 1))
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 14)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                Group {
-                    switch state.screen ?? .overview {
-                    case .overview: OverviewView()
-                    case .printers: PrintersView()
-                    case .sharing: SharingView()
-                    case .setup: SetupView()
-                    case .activity: ActivityView()
-                    case .stickers: StickerSizesView()
-                    case .settings: SettingsView()
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .animation(.easeOut(duration: 0.18), value: state.lastMessage)
             .background(Palette.page)
             .foregroundStyle(Palette.body)
             .groupBoxStyle(CardGroupStyle())
@@ -209,18 +226,19 @@ struct MainWindow: View {
         // The printer and job state was read once and then held: a queue that
         // stopped, or a job that arrived from a phone, stayed invisible until
         // Refresh was pressed. Re-read whenever this window is shown again.
-        .onAppear { state.refresh() }
+        // An offscreen render run keeps its fixture state instead of reading
+        // live, as its harness promises.
+        .onAppear {
+            if !state.renderActionsStubbed { state.refresh() }
+        }
     }
 
     /// One left-aligned group, inside the sidebar so it shares its material.
+    /// The busy line lives in the always-present status row: an extra row that
+    /// appeared while an action ran made the footer taller and the list shorter,
+    /// so the whole bottom of the sidebar jumped on every button press.
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if state.busy {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text(state.busyMessage).font(.caption).lineLimit(2)
-                }
-            }
             Button { openWindow(id: "support") } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "heart").font(.system(size: 13))
@@ -280,12 +298,22 @@ struct MainWindow: View {
 
             // Re-evaluated every minute while the window is open, so the age of
             // the last check keeps moving instead of freezing at "just now".
-            TimelineView(.periodic(from: .now, by: 60)) { context in
-                Text(footerStatus(at: context.date))
+            // One fixed row: the busy message replaces the status text, so the
+            // footer is exactly as tall before, during and after an action.
+            HStack(spacing: 5) {
+                if state.busy {
+                    ProgressView().controlSize(.mini)
+                }
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    Text(state.busy ? state.busyMessage : footerStatus(at: context.date))
+                        .lineLimit(1)
+                }
             }
+            .frame(height: 14, alignment: .leading)
             .font(.system(size: 11))
             .foregroundStyle(Palette.muted)
-            .lineLimit(1)
+            .help(state.busy ? state.busyMessage : footerStatus(at: Date()))
+            .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.updatesFrequently)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -500,6 +528,124 @@ struct AdviceRow: View {
 
 // MARK: - Overview
 
+/// The first thing a new person sees: what to do, in order, one step at a
+/// time. Every step reads live state, so it cannot claim done when it is not.
+private struct StartHereCard: View {
+    @EnvironmentObject var state: AppState
+
+    private var printer: Printer? {
+        state.printers.first {
+            $0.name.lowercased().contains("107") || $0.deviceURI.lowercased().contains("03f0")
+        }
+    }
+    private var connected: Bool { state.laser107a != nil }
+    private var ready: Bool { Driver.isReady && printer != nil }
+    private var shared: Bool { state.sharingEnabled && state.airPrintInstalled }
+    private var doneCount: Int { [connected, ready, shared].filter { $0 }.count }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "hand.wave.fill").foregroundStyle(Palette.accent)
+                Text("Start here").font(.headline)
+                Spacer()
+                Text(doneCount == 3 ? "All three are done" : "\(doneCount) of 3 done")
+                    .font(.caption)
+                    .foregroundStyle(doneCount == 3 ? Palette.success : Palette.muted)
+            }
+            Text("Do these in order. Each line turns green when it is finished, and the button does the work.")
+                .font(.callout).foregroundStyle(Palette.muted).prose()
+
+            step(1, title: "Plug in the HP Laser 107a",
+                 detail: connected
+                    ? "Connected — the printer is plugged in and switched on."
+                    : "Use the USB cable, then switch the printer on. This Mac finds it by itself.",
+                 done: connected,
+                 actionTitle: connected ? nil : "Check again",
+                 enabled: !state.busy,
+                 action: { state.refreshNow() })
+
+            step(2, title: "Set it up for this Mac",
+                 detail: ready
+                    ? "The driver and the print queue are ready."
+                    : "One click installs the driver and creates the queue. macOS asks for your administrator password once.",
+                 done: ready,
+                 actionTitle: ready ? nil : "Set it up",
+                 enabled: connected && DriverInstaller.hasPayload && !state.busy,
+                 action: { state.installDriver() })
+
+            step(3, title: "Share it with your phone",
+                 detail: shared
+                    ? "Sharing is on — your iPhone lists it as “HP Laser 107a (AirPrint)”."
+                    : "Turns on Printer Sharing and the AirPrint announcement so your iPhone, iPad and other Macs can print to it.",
+                 done: shared,
+                 actionTitle: shared ? nil : "Turn on sharing",
+                 enabled: ready && !state.busy,
+                 action: { state.installAirPrint() })
+
+            if let printer {
+                Divider()
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: printer.isOffline ? "exclamationmark.triangle.fill" : "doc.text")
+                        .foregroundStyle(printer.isOffline ? Palette.warning : Palette.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(printer.isOffline ? "Print a test page when the printer is back" : "Print a test page")
+                            .font(.callout.weight(.medium))
+                        Text(printer.isOffline
+                             ? "The print queue is offline: \(printer.offlineSummary) \(QueueHealth.detail(recovery(for: printer)))"
+                             : "If paper comes out, everything is working. Nothing else to do.")
+                            .font(.caption).foregroundStyle(Palette.muted).prose()
+                    }
+                    Spacer(minLength: 8)
+                    Button("Print a test page") { state.testPrint(printer) }
+                        .buttonStyle(PrimaryButtonStyle(isDisabled: state.busy || printer.isOffline))
+                        .disabled(state.busy || printer.isOffline)
+                }
+            }
+        }
+        .padding(14)
+        .cardSurface()
+    }
+
+    private func recovery(for printer: Printer) -> QueueHealth.Recovery {
+        QueueHealth.recovery(printer: printer, laserPresent: state.laser107a != nil,
+                             heldByIPPUSB: state.printerHeldByIPPUSB,
+                             automaticRelease: state.automaticUSBRelease)
+    }
+
+    private func step(_ number: Int, title: String, detail: String, done: Bool,
+                      actionTitle: String?, enabled: Bool,
+                      action: @escaping () -> Void) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle().fill(done ? Palette.success : Palette.muted.opacity(0.2))
+                if done {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                } else {
+                    Text("\(number)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Palette.muted)
+                }
+            }
+            .frame(width: 22, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.callout.weight(done ? .regular : .medium))
+                Text(detail).font(.caption).foregroundStyle(Palette.muted).prose()
+            }
+            Spacer(minLength: 8)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(PrimaryButtonStyle(isDisabled: !enabled))
+                    .controlSize(.small)
+                    .disabled(!enabled)
+            }
+        }
+    }
+}
+
 struct OverviewView: View {
     @EnvironmentObject var state: AppState
 
@@ -511,6 +657,8 @@ struct OverviewView: View {
                     Text("Share this Mac's printers with every device on your network — and keep them working.")
                         .foregroundStyle(Palette.muted)
                 }
+
+                StartHereCard()
 
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) { statusCards }
@@ -622,6 +770,21 @@ struct OverviewView: View {
                 text: "The background watcher is not installed. Without it, re-saving the Sharing settings can lock the queues again.",
                 actionTitle: "Install",
                 action: { state.installWatcher() }))
+        }
+
+        // A shared queue that cannot reach its printer accepts jobs and then
+        // waits: the phone shows "printing" and no paper comes out. Say why.
+        for printer in state.detailedPrinters where printer.isShared && printer.isOffline {
+            let recovery = QueueHealth.recovery(
+                printer: printer, laserPresent: state.laser107a != nil,
+                heldByIPPUSB: state.printerHeldByIPPUSB,
+                automaticRelease: state.automaticUSBRelease)
+            items.append(AdviceItem(
+                symbol: "exclamationmark.triangle.fill", tint: .danger, kind: .needsAttention,
+                text: "\(printer.displayName): \(printer.offlineSummary) Jobs wait, including ones sent from a phone. \(QueueHealth.detail(recovery))",
+                actionTitle: QueueHealth.actionTitle(recovery),
+                action: QueueHealth.needsAutomaticRelease(recovery)
+                    ? { state.releasePrinter() } : nil))
         }
 
         if state.laser107a == nil {
@@ -1065,6 +1228,18 @@ struct StateBadge: View {
 struct SharingView: View {
     @EnvironmentObject var state: AppState
 
+    /// Shared queues whose printer cannot be reached right now. Phone jobs are
+    /// accepted and then wait, so "AirPrint is on" alone is not success.
+    private var offlineShared: [Printer] {
+        state.sharingEnabled ? state.detailedPrinters.filter { $0.isShared && $0.isOffline } : []
+    }
+
+    private func recovery(for printer: Printer) -> QueueHealth.Recovery {
+        QueueHealth.recovery(printer: printer, laserPresent: state.laser107a != nil,
+                             heldByIPPUSB: state.printerHeldByIPPUSB,
+                             automaticRelease: state.automaticUSBRelease)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -1081,10 +1256,12 @@ struct SharingView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Print from iPhone and iPad").font(.callout.weight(.medium))
                                 Text(!state.sharingEnabled
-                                     ? "Printer Sharing is off. Turn on AirPrint to enable sharing and make shared printers available on your network."
-                                     : state.airPrintInstalled
-                                     ? "Enabled — every shared printer is announced as its name followed by (AirPrint). iPhone visibility is not checked until you see the printers on your phone."
-                                     : "Off. Turn on to announce every shared printer to iPhone and iPad.")
+                                     ? "Printer Sharing is off. Turn it on so your phone and other devices can see this Mac's printers."
+                                     : !state.airPrintInstalled
+                                     ? "Off. Turn on to announce every shared printer to iPhone and iPad."
+                                     : !offlineShared.isEmpty
+                                     ? "On, but \(offlineShared.map(\.displayName).joined(separator: ", ")) \(offlineShared.count == 1 ? "is" : "are") offline, so jobs sent from the phone wait. Open the printer line below for the fix."
+                                     : "On — your iPhone lists each shared printer with “(AirPrint)” after its name. Print one page from the phone to confirm.")
                                     .font(.caption).foregroundStyle(Palette.muted)
                                     .prose()
                             }
@@ -1172,29 +1349,50 @@ struct SharingView: View {
                             .foregroundStyle(Palette.muted).font(.callout)
                     } else {
                         ForEach(shared) { printer in
-                            HStack(spacing: 10) {
-                                Image(systemName: printer.hasUserACL ? "lock.fill" : "lock.open.fill")
-                                    .foregroundStyle(printer.hasUserACL ? Palette.danger : Palette.success)
-                                Text(printer.displayName)
-                                Spacer()
-                                if printer.hasUserACL {
-                                    Text("Blocked").font(.caption).foregroundStyle(Palette.danger)
-                                    Button("Open to everyone") { state.openQueue(printer) }
-                                        .buttonStyle(PrimaryButtonStyle())
-                                        .controlSize(.small)
-                                        .help("Open \(printer.displayName) to everyone")
-                                } else {
-                                    Text("Open to LAN").font(.caption).foregroundStyle(Palette.success)
-                                    Menu {
-                                        Button("Restrict") { state.restrictQueue(printer) }
-                                    } label: {
-                                        Image(systemName: "ellipsis.circle")
-                                            .frame(width: 22, height: 22)
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: printer.hasUserACL ? "lock.fill" : "lock.open.fill")
+                                        .foregroundStyle(printer.hasUserACL ? Palette.danger : Palette.success)
+                                    Text(printer.displayName)
+                                    Spacer()
+                                    if printer.hasUserACL {
+                                        Text("Blocked").font(.caption).foregroundStyle(Palette.danger)
+                                        Button("Open to everyone") { state.openQueue(printer) }
+                                            .buttonStyle(PrimaryButtonStyle())
+                                            .controlSize(.small)
+                                            .help("Open \(printer.displayName) to everyone")
+                                    } else {
+                                        Text("Open to LAN").font(.caption).foregroundStyle(Palette.success)
+                                        Menu {
+                                            Button("Restrict") { state.restrictQueue(printer) }
+                                        } label: {
+                                            Image(systemName: "ellipsis.circle")
+                                                .frame(width: 22, height: 22)
+                                        }
+                                        .menuStyle(.borderlessButton)
+                                        .fixedSize()
+                                        .help("More actions for \(printer.displayName)")
+                                        .accessibilityLabel("More actions for \(printer.displayName)")
                                     }
-                                    .menuStyle(.borderlessButton)
-                                    .fixedSize()
-                                    .help("More actions for \(printer.displayName)")
-                                    .accessibilityLabel("More actions for \(printer.displayName)")
+                                }
+                                if printer.isOffline {
+                                    let recovery = recovery(for: printer)
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundStyle(Palette.warning)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Offline — \(printer.offlineSummary)")
+                                                .font(.caption).foregroundStyle(Palette.warning)
+                                            Text(QueueHealth.detail(recovery))
+                                                .font(.caption).foregroundStyle(Palette.muted).prose()
+                                        }
+                                        Spacer(minLength: 8)
+                                        if let title = QueueHealth.actionTitle(recovery) {
+                                            Button(title) { state.releasePrinter() }
+                                                .buttonStyle(PrimaryButtonStyle())
+                                                .controlSize(.small)
+                                        }
+                                    }
                                 }
                             }
                             .padding(10)
@@ -1291,7 +1489,7 @@ struct SetupView: View {
                     title: "Install the print driver",
                     detail: Driver.isFilterInstalled
                         ? "Filter installed at \(Driver.installedFilter!)"
-                        : "The splix rastertoqpdl filter and the HP Laser 10x PPD are not installed yet.",
+                        : "The driver that makes this printer work is not installed yet. “Set up the printer” below does it in one step.",
                     done: Driver.isReady)
 
                 SetupStep(
@@ -1312,10 +1510,10 @@ struct SetupView: View {
 
                 SetupStep(
                     number: 5,
-                    title: "Release it from macOS's IPP-over-USB service",
+                    title: "Stop macOS from taking the printer back",
                     detail: state.printerHeldByIPPUSB
-                        ? "The printer is being held by ippusbd, so the queue will report “offline” and nothing will print. Turn on automatic release below."
-                        : "Not held — CUPS has the device, so jobs can print.",
+                        ? "macOS's own USB service has taken the printer, so the queue reports “offline” and nothing prints — from this Mac or from a phone. “Keep it ready” below releases it and keeps it released."
+                        : "Nothing is holding the printer, so jobs can print. “Keep it ready” keeps it that way after a restart or a replug.",
                     done: !state.printerHeldByIPPUSB)
 
                 if setupComplete, let printer = setupPrinter {
@@ -1693,6 +1891,17 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Settings").font(.title2.weight(.semibold)).probe("heading")
+
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles").foregroundStyle(Palette.accent)
+                    Text("First time here? “Start here” on Overview walks through connecting, setting up and sharing the printer, in that order.")
+                        .font(.callout).foregroundStyle(Palette.muted).prose()
+                    Spacer(minLength: 8)
+                    Button("Open Start here") { state.screen = .overview }
+                        .controlSize(.small)
+                }
+                .padding(12)
+                .cardSurface()
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {

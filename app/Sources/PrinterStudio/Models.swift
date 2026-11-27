@@ -14,10 +14,28 @@ struct Printer: Identifiable, Hashable {
     var makeAndModel: String = ""
     var isShared: Bool = false
     var hasUserACL: Bool = false
+    var stateMessage: String = ""        // CUPS printer-state-message
+    var stateReasons: [String] = []      // CUPS printer-state-reasons
 
     var isIdle: Bool { state.lowercased().contains("idle") }
     var isPrinting: Bool { state.lowercased().contains("printing") }
     var isStopped: Bool { !enabled || state.lowercased().contains("stopped") }
+
+    /// The queue cannot reach the printer: every job waits, including one sent
+    /// from a phone. The installer uses CUPS's retry-job policy, so the job
+    /// never fails and nothing on screen says why.
+    var isOffline: Bool {
+        stateReasons.contains { reason in
+            let value = reason.lowercased()
+            return value.contains("offline") || value == "connecting-to-device"
+        }
+    }
+
+    /// What CUPS says is wrong, in its own words; never blank.
+    var offlineSummary: String {
+        let message = stateMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        return message.isEmpty ? "The printer is offline." : message
+    }
 
     var transport: Transport {
         if deviceURI.hasPrefix("usb://") { return .usb }

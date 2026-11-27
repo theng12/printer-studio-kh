@@ -136,6 +136,14 @@ enum CUPS {
             if let accepting = attributes["printer-accepting-jobs"] {
                 enriched.accepting = (accepting == "true")
             }
+            // A shared queue that cannot reach its printer accepts the job and
+            // then waits for ever. Carry CUPS's own explanation so the screens
+            // can say why a phone's job never comes out.
+            enriched.stateMessage = attributes["printer-state-message"] ?? ""
+            enriched.stateReasons = (attributes["printer-state-reasons"] ?? "")
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && $0 != "none" }
             return enriched
         }
     }

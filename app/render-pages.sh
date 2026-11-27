@@ -277,6 +277,19 @@ if [ "$PAGE_SPEC" = "keyboard-check" ]; then
   exit "$rc"
 fi
 
+# Sidebar movement: measures the sidebar's parts and every nav row before,
+# during and after a click, and across a busy toggle. Fails when one moves.
+if [ "$PAGE_SPEC" = "sidebar-check" ]; then
+  SIDEBAR_SIZE="${EXPLICIT_SIZES[0]:-1024x720}"
+  set +e
+  PRINTER_STUDIO_RENDER=1 PRINTER_STUDIO_NO_WINDOW=1 HOME="$WORK/home" \
+    "$BIN" sidebar-check "$OUT_DIR" "$SIDEBAR_SIZE" 2>&1 | tee "$OUT_DIR/sidebar-check.log"
+  rc=${PIPESTATUS[0]}
+  set -e
+  echo "SIDEBAR_CHECK_EXIT $rc"
+  exit "$rc"
+fi
+
 # A single page's interaction, for debugging: interaction-<page>.
 if [[ "$PAGE_SPEC" == interaction-* ]]; then
   page="${PAGE_SPEC#interaction-}"
